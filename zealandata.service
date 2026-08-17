@@ -1,0 +1,44 @@
+[Unit]
+Description=Zealandata media server
+After=network.target sound.target
+
+[Service]
+# Adjust User/paths to match your Pi setup.
+User=pj
+WorkingDirectory=/home/pj/zealandata
+Environment=ZEALANDATA_MEDIA_DIR=/home/pj/media
+# Environment=ZEALANDATA_PORT=8000
+# Set to 1 for headless DRM output (Raspberry Pi OS Lite, no desktop).
+# Leave at 0 and set ZEALANDATA_DISPLAY if you're running a desktop session.
+Environment=ZEALANDATA_USE_DRM=1
+# Environment=ZEALANDATA_DISPLAY=:0
+Environment=ZEALANDATA_SCREENSAVER_ENABLED=0
+# Environment=ZEALANDATA_SCREENSAVER_MUTED=1
+# Loop a selected video indefinitely instead of falling back to the random
+# screensaver after one play-through. On by default.
+Environment=ZEALANDATA_LOOP_SELECTED=1
+# If something's left PAUSED (not stopped) this long with no interaction,
+# auto-stop it and return to the screensaver. Off by default; 300 = 5 min.
+Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=0
+# Environment=ZEALANDATA_IDLE_TIMEOUT_SECONDS=300
+# Image sequence folders (frame_0001.png, frame_0002.png, ...) need at
+# least this many frames to be recognized, converted at this frame rate.
+# Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
+# Environment=ZEALANDATA_SEQUENCE_FPS=12
+# Live preview thumbnail width in the dock (HDMI mode only). Default 320.
+# Environment=ZEALANDATA_PREVIEW_WIDTH=320
+# Show the HDMI/NDI switch in the web UI. Off by default — most
+# deployments pick one output mode via ZEALANDATA_OUTPUT_MODE and leave it.
+Environment=ZEALANDATA_SHOW_OUTPUT_TOGGLE=0
+# Output mode: "hdmi" (default, mpv/local display) or "ndi" (ffmpeg,
+# network only — nothing plays out the Pi's HDMI in this mode). Pick one.
+Environment=ZEALANDATA_OUTPUT_MODE=hdmi
+# Environment=ZEALANDATA_NDI_FFMPEG=/opt/ffmpeg-ndi/bin/ffmpeg
+# Environment=ZEALANDATA_NDI_NAME=Zealandata
+# Environment=ZEALANDATA_NDI_SCALE=1280x720
+ExecStart=/usr/bin/python3 /home/pj/zealandata/server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
