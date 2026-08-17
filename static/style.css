@@ -291,31 +291,18 @@ main{ padding:6px 40px 150px; }
 
 .dock__preview{
   flex-shrink:0;
-  width:124px;
-  aspect-ratio:16/9;
+  width:72px;
+  aspect-ratio:1/1;
   border-radius:10px;
   overflow:hidden;
-  background:#000;
+  background:var(--panel-2);
   border:1px solid rgba(255,255,255,0.1);
-  position:relative;
 }
 .dock__preview img{
   width:100%; height:100%;
   object-fit:cover;
   display:block;
-  opacity:0;
-  transition:opacity .2s ease;
 }
-.dock__preview img.loaded{ opacity:1; }
-.dock__preview::after{
-  /* small "live" indicator dot, purely decorative */
-  content:"";
-  position:absolute; top:6px; right:6px;
-  width:6px; height:6px; border-radius:50%;
-  background:#ff453a;
-  box-shadow:0 0 4px rgba(255,69,58,0.8);
-}
-
 .dock__sprockets{ display:none; }
 
 .dock__info{ flex:1; min-width:0; }

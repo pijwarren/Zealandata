@@ -268,49 +268,20 @@ This only watches for the "paused and abandoned" case — a video that's
 actively playing (or looping) is left alone no matter how long it's been
 since anyone touched a button; that's normal viewing, not idleness.
 
-## Live preview in the web UI
+## Preview thumbnail in the web UI
 
-The now-playing dock includes a small live preview thumbnail — roughly
-once a second, it pulls a fresh screenshot of whatever's actually showing
-on the projector. Genuinely useful for confirming exactly which frame
-something landed on after stepping through a short image sequence, without
-needing to look up at the projector.
+The now-playing dock shows a small thumbnail of whatever's selected — the
+same auto-generated poster image used in the browsing grid, not a live
+video feed. Works identically in both HDMI and NDI output mode, since it's
+just a static image the server already had on hand rather than anything
+that depends on mpv or ffmpeg being interactively controllable.
 
-**HDMI mode only.** It works by asking mpv (which has an interactive
-control socket) to take a screenshot on demand; NDI mode has no equivalent
-easy mechanism (ffmpeg isn't interactively controllable that way), so the
-preview area just stays hidden in NDI mode.
-
-A couple of implementation details worth knowing:
-- It's on-demand, not a background capture loop — a screenshot is only
-  taken when a browser actually requests `/api/preview.jpg`, so it costs
-  nothing when nobody's looking at the web UI.
-- mpv always screenshots at full output resolution, which would mean
-  serving a large JPEG roughly once a second over what may be a Pi-hosted
-  wifi hotspot with several tablets connected. It's downscaled to
-  `ZEALANDATA_PREVIEW_WIDTH` (default 320px wide) before being served, to
-  keep that reasonable.
-- Taking the screenshot doesn't cause any visible flicker on the actual
-  projected output — it's a background operation, not an on-screen overlay.
-
-**If the preview shows solid black:** this is a known interaction with
-hardware-accelerated decoding. `--hwdec=auto` can decode straight into a
-GPU/DRM buffer that mpv's screenshot mechanism can't always read back from
-depending on which decode path it picked, producing a black frame instead
-of an error. Two things to try, in order:
-1. `ZEALANDATA_PREVIEW_SCREENSHOT_MODE` defaults to `window` (the
-   composited output mpv actually rendered) specifically because it tends
-   to be more reliable here than `video` (the raw decoded frame) — this is
-   already the default, so if you're still seeing black, it didn't fully
-   fix it for your setup.
-2. If it's still black, the more reliable (but heavier) fix is forcing
-   `--hwdec=auto-copy` instead of `--hwdec=auto` for mpv, which copies
-   decoded frames back to normal memory instead of a zero-copy GPU/DRM
-   buffer — trading a bit of CPU/GPU efficiency for every video filter and
-   screenshot working correctly, including this one. That's not currently
-   a separate environment variable; if `window` mode alone doesn't resolve
-   it, let me know and I'll wire that up as a proper toggle rather than a
-   blanket change to how all video decodes.
+(An earlier version of this tried to pull a live screenshot from mpv once
+a second. That turned out to be unreliable — mpv's screenshot mechanism
+can come back solid black with some hardware-decode setups, since the
+decoded frame can end up sitting in a GPU/DRM buffer it can't read back
+from. Showing the existing poster thumbnail instead is simpler and doesn't
+have that failure mode.)
 
 ## Idle Screensaver
 

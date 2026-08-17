@@ -25,8 +25,7 @@ Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=0
 # least this many frames to be recognized, converted at this frame rate.
 # Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
 # Environment=ZEALANDATA_SEQUENCE_FPS=12
-# Live preview thumbnail width in the dock (HDMI mode only). Default 320.
-# Environment=ZEALANDATA_PREVIEW_WIDTH=320
+
 # Show the HDMI/NDI switch in the web UI. Off by default — most
 # deployments pick one output mode via ZEALANDATA_OUTPUT_MODE and leave it.
 Environment=ZEALANDATA_SHOW_OUTPUT_TOGGLE=0

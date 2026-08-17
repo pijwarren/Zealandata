@@ -39,7 +39,7 @@ import random
 import hashlib
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory, render_template, send_file
+from flask import Flask, jsonify, request, send_from_directory, render_template
 
 # ---------------------------------------------------------------- config ---
 
@@ -48,21 +48,6 @@ MEDIA_DIR = os.environ.get("ZEALANDATA_MEDIA_DIR", "/home/pi/media")
 THUMB_DIR = os.path.join(BASE_DIR, "static", "thumbnails")
 SEQUENCE_CACHE_DIR = os.path.join(BASE_DIR, "static", "sequence_cache")
 PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
-PREVIEW_RAW_PATH = os.path.join(BASE_DIR, "preview_raw.jpg")  # mpv's full-res capture
-PREVIEW_PATH = os.path.join(BASE_DIR, "preview.jpg")  # downscaled, what's actually served
-PREVIEW_LOCK = threading.Lock()
-# Width to downscale live previews to before serving — keeps per-request
-# bandwidth low on what may be a Pi-hosted wifi hotspot with several
-# tablets polling it roughly once a second.
-PREVIEW_WIDTH = int(os.environ.get("ZEALANDATA_PREVIEW_WIDTH", "320"))
-# "window" (composited output, incl. anything mpv actually rendered) vs
-# "video" (raw decoded frame, before compositing). "video" can come out
-# black with some hardware-decode setups, since the frame data may still be
-# sitting in a GPU/DRM buffer that this screenshot mode can't read back
-# from — "window" tends to be more reliable for exactly that case. Try
-# "video" if you have a reason to want the frame without any OSD included
-# (moot here since the OSD is already off via --osc=no).
-PREVIEW_SCREENSHOT_MODE = os.environ.get("ZEALANDATA_PREVIEW_SCREENSHOT_MODE", "window")
 
 MPV_SOCKET = "/tmp/zealandata-mpv.sock"
 SCREENSAVER_SOCKET = "/tmp/zealandata-screensaver.sock"
@@ -166,7 +151,7 @@ ndi_state = {
 # /api/status can report a description without either backend needing to
 # know what a "description" is.
 meta_lock = threading.Lock()
-current_media_meta = {"id": None, "title": None, "description": None, "is_sequence": False, "frame_count": None}
+current_media_meta = {"id": None, "title": None, "description": None, "is_sequence": False, "frame_count": None, "thumbnail": None}
 
 # Last time any playback-control endpoint was hit — drives the idle timeout.
 _interaction_lock = threading.Lock()
@@ -418,11 +403,30 @@ def get_media_by_id(media_id):
 
 
 def _generate_thumbnail(video_path, thumb_path):
-    for timestamp in ("00:01:00", "00:00:02"):
+    """Grab a frame partway into the file for the poster thumbnail. Uses the
+    actual duration to pick a sensible timestamp rather than hardcoded
+    absolute times — a fixed "1 minute in, then 2 seconds in" fallback (the
+    previous approach) silently produces no thumbnail at all for anything
+    shorter than 2 seconds, which is common for short test clips and some
+    very brief image-sequence exports."""
+    duration = _probe_duration(video_path)
+    if duration and duration > 0.2:
+        # ~10% in feels representative without needing to decode too far;
+        # capped so a long file doesn't take forever to seek into, and kept
+        # a hair before the true end so we don't land past the last frame
+        timestamp = min(max(duration * 0.1, 0.1), 60.0, max(duration - 0.05, 0.0))
+    else:
+        timestamp = 0.0
+
+    candidates = [timestamp]
+    if timestamp > 0.05:
+        candidates.append(0.0)  # last-resort: the very first frame
+
+    for ts in candidates:
         try:
             subprocess.run(
                 [
-                    "ffmpeg", "-y", "-ss", timestamp, "-i", video_path,
+                    "ffmpeg", "-y", "-ss", f"{ts:.3f}", "-i", video_path,
                     "-frames:v", "1", "-vf", "scale=440:-1", thumb_path,
                 ],
                 capture_output=True, timeout=30,
@@ -432,6 +436,9 @@ def _generate_thumbnail(video_path, thumb_path):
             return
         if os.path.exists(thumb_path):
             return
+
+    print(f"[thumbnail] no frame could be extracted for {video_path} "
+          f"(duration={duration}) — is it a valid, playable video file?")
 
 
 # ------------------------------------------------------------- mpv IPC ---
@@ -953,42 +960,6 @@ def thumbnails(filename):
     return send_from_directory(THUMB_DIR, filename)
 
 
-@app.route("/api/preview.jpg")
-def api_preview():
-    """On-demand live preview: asks mpv to screenshot the current video
-    frame, downscales it (mpv always captures at full output resolution,
-    which would otherwise mean serving a large JPEG roughly once a second
-    over what may be a Pi-hosted wifi hotspot), and serves that back. Only
-    works in HDMI mode — NDI mode has no equivalent easy on-demand snapshot
-    mechanism (ffmpeg isn't interactively controllable the way mpv's IPC
-    is). Deliberately on-demand rather than a background capture loop, so
-    it costs nothing when nobody's looking at the web UI."""
-    if OUTPUT_MODE != "hdmi" or not _mpv_is_running():
-        return ("", 204)
-
-    with PREVIEW_LOCK:
-        mpv_send({"command": ["screenshot-to-file", PREVIEW_RAW_PATH, PREVIEW_SCREENSHOT_MODE]})
-        if not os.path.exists(PREVIEW_RAW_PATH):
-            return ("", 204)
-
-        try:
-            subprocess.run(
-                [
-                    "ffmpeg", "-y", "-i", PREVIEW_RAW_PATH,
-                    "-vf", f"scale={PREVIEW_WIDTH}:-1", "-q:v", "5",
-                    PREVIEW_PATH,
-                ],
-                capture_output=True, timeout=10,
-            )
-        except Exception as exc:
-            print(f"[preview] downscale failed: {exc}")
-
-        serve_path = PREVIEW_PATH if os.path.exists(PREVIEW_PATH) else PREVIEW_RAW_PATH
-        resp = send_file(serve_path, mimetype="image/jpeg")
-
-    resp.headers["Cache-Control"] = "no-store"
-    return resp
-
 
 @app.route("/api/output_mode", methods=["GET"])
 def api_get_output_mode():
@@ -1036,6 +1007,7 @@ def api_play(media_id):
             "description": match.get("description"),
             "is_sequence": match.get("is_sequence", False),
             "frame_count": match.get("frame_count"),
+            "thumbnail": match.get("thumbnail"),
         })
 
     stop_screensaver()
@@ -1120,6 +1092,7 @@ def api_status():
                 title = current_media_meta.get("title") or ndi_state["title"]
                 is_sequence = current_media_meta.get("is_sequence", False)
                 frame_count = current_media_meta.get("frame_count")
+                thumbnail = current_media_meta.get("thumbnail")
             return jsonify({
                 "playing": True,
                 "position": _ndi_get_position(),
@@ -1131,6 +1104,7 @@ def api_status():
                 "is_sequence": is_sequence,
                 "frame_count": frame_count,
                 "frame_number": None,  # frame stepping isn't available in NDI mode
+                "thumbnail": thumbnail,
                 "output": "ndi",
             })
 
@@ -1146,6 +1120,7 @@ def api_status():
         title = current_media_meta.get("title")
         is_sequence = current_media_meta.get("is_sequence", False)
         frame_count = current_media_meta.get("frame_count")
+        thumbnail = current_media_meta.get("thumbnail")
 
     return jsonify(
         {
@@ -1158,6 +1133,7 @@ def api_status():
             "description": description,
             "is_sequence": is_sequence,
             "frame_count": frame_count,
+            "thumbnail": thumbnail,
             # only worth the extra IPC round-trip for sequences, where the
             # dock actually shows a frame counter
             "frame_number": prop("estimated-frame-number") if is_sequence else None,

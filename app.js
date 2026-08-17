@@ -251,6 +251,7 @@ async function playItem(item, { restart = false } = {}) {
   dockDescription.textContent = item.description || "";
   dockDescription.classList.toggle("hidden", !item.description);
   setSequenceMode(!!item.is_sequence, item.frame_count, 0);
+  paintPreview(item.thumbnail);
   dock.classList.remove("hidden");
   setPauseIcon(false);
   await fetch(`/api/play/${item.id}`, {
@@ -258,6 +259,16 @@ async function playItem(item, { restart = false } = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ restart }),
   });
+}
+
+function paintPreview(thumbnail) {
+  if (thumbnail) {
+    dockPreview.src = thumbnail;
+    dockPreviewWrap.classList.remove("hidden");
+  } else {
+    dockPreviewWrap.classList.add("hidden");
+    dockPreview.removeAttribute("src");
+  }
 }
 
 async function control(action) {
@@ -416,11 +427,11 @@ async function pollStatus() {
       dockTitle.textContent = s.title || dockTitle.textContent;
       dockDescription.textContent = s.description || "";
       dockDescription.classList.toggle("hidden", !s.description);
-      if (s.output === "hdmi") {
-        dockPreviewWrap.classList.remove("hidden");
-        dockPreview.src = `/api/preview.jpg?t=${Date.now()}`;
-      } else {
-        dockPreviewWrap.classList.add("hidden");
+      if (s.thumbnail && dockPreview.getAttribute("src") !== s.thumbnail) {
+        // only worth repainting when it actually changes (e.g. a second
+        // client just loaded the page mid-playback) — it's a static image,
+        // not something that needs refreshing every poll tick
+        paintPreview(s.thumbnail);
       }
       if (s.is_sequence !== (currentFrameCount != null)) {
         // mode changed since our last paint (e.g. a second client just
@@ -431,8 +442,7 @@ async function pollStatus() {
       }
     } else {
       dock.classList.add("hidden");
-      dockPreview.removeAttribute("src");
-      dockPreview.classList.remove("loaded");
+      paintPreview(null);
       if (wasPlaying) {
         wasPlaying = false;
         loadMedia();
@@ -442,13 +452,6 @@ async function pollStatus() {
     // Pi may be mid-restart of mpv; ignore transient errors
   }
 }
-
-dockPreview.addEventListener("load", () => dockPreview.classList.add("loaded"));
-dockPreview.addEventListener("error", () => {
-  // 204 (no preview available yet, or NDI mode) or a transient fetch
-  // failure — don't show a broken-image icon, just wait for the next poll
-  dockPreview.classList.remove("loaded");
-});
 
 loadMedia();
 loadOutputMode();
