@@ -1,0 +1,21 @@
+# Generated at runtime — regenerated automatically on first scan/request,
+# don't belong in version control (and thumbnails/sequence_cache can get
+# large fast).
+static/thumbnails/
+static/sequence_cache/
+preview.jpg
+preview_raw.jpg
+progress.json
+
+# Python
+__pycache__/
+*.pyc
+
+# Editor/OS cruft
+.DS_Store
+*.swp
+
+# Your actual media library does NOT belong in this repo — it's typically
+# far too large for git, and doesn't need version history. Keep it on the
+# Pi's filesystem wherever ZEALANDATA_MEDIA_DIR points, entirely separate
+# from this repo.
