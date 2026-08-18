@@ -11,7 +11,7 @@
 <header class="topbar">
   <div class="topbar__title"><span class="topbar__dot"></span>Zealandata</div>
   <div class="topbar__controls">
-    <span class="tag tag-outline hidden" id="screensaverTag">Screensaver on</span>
+    <button type="button" class="tag tag-outline" id="screensaverTag" title="Toggle idle screensaver">Screensaver off</button>
     <button type="button" class="btn-icon" id="settingsBtn" aria-label="Settings" title="Settings">
       <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84c0-1.44,0-2.88-.09-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.19,8,8,0,0,0-6-3.93l-23.72-2.64c-1-1-2-2-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.19-10.87,8,8,0,0,0-7.06,1.49L130.16,40q-2.16-.09-4.32,0L107.2,25.16a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.95,34.55a8,8,0,0,0-3.93,6L67.38,64.27c-1,1-2,2-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.19,8,8,0,0,0,1.49,7.06L40,125.84c0,1.44,0,2.88,0,4.32L25.16,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.19,8,8,0,0,0,6,3.93l23.72,2.64c1,1,2,2,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.19,10.87,8,8,0,0,0,7.06-1.49L125.84,216c1.44.06,2.88.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.19-10.88,8,8,0,0,0,3.93-6l2.64-23.72c1-1,2-2,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.19,8,8,0,0,0-1.49-7.06Z"></path></svg>
     </button>
@@ -53,15 +53,6 @@
     <button type="button" class="btn-icon" id="settingsCloseBtn" aria-label="Close settings">
       <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
     </button>
-  </div>
-
-  <div class="field">
-    <label id="screensaverLabel">Idle screensaver</label>
-    <div class="seg" role="radiogroup" aria-labelledby="screensaverLabel">
-      <button type="button" class="seg-opt" id="screensaverOnBtn">On</button>
-      <button type="button" class="seg-opt" id="screensaverOffBtn">Off</button>
-    </div>
-    <p class="field__hint">Shuffles muted videos from the library when nothing's playing.</p>
   </div>
 
   <div class="field">

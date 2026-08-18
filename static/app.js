@@ -4,8 +4,6 @@ const settingsBtn = document.getElementById("settingsBtn");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const settingsScrim = document.getElementById("settingsScrim");
 const settingsDrawer = document.getElementById("settingsDrawer");
-const screensaverOnBtn = document.getElementById("screensaverOnBtn");
-const screensaverOffBtn = document.getElementById("screensaverOffBtn");
 const rescanBtn = document.getElementById("rescanBtn");
 
 const heroSection = document.getElementById("heroSection");
@@ -332,10 +330,13 @@ settingsBtn.addEventListener("click", openSettings);
 settingsCloseBtn.addEventListener("click", closeSettings);
 settingsScrim.addEventListener("click", closeSettings);
 
+let screensaverEnabled = false;
+
 function paintScreensaverToggle(enabled) {
-  screensaverOnBtn.classList.toggle("active", enabled);
-  screensaverOffBtn.classList.toggle("active", !enabled);
-  topbarScreensaverTag.classList.toggle("hidden", !enabled);
+  screensaverEnabled = enabled;
+  topbarScreensaverTag.textContent = enabled ? "Screensaver on" : "Screensaver off";
+  topbarScreensaverTag.classList.toggle("tag-accent", enabled);
+  topbarScreensaverTag.classList.toggle("tag-outline", !enabled);
 }
 async function loadScreensaverState() {
   const res = await fetch("/api/screensaver");
@@ -351,8 +352,7 @@ async function setScreensaver(enabled) {
   const data = await res.json();
   paintScreensaverToggle(data.enabled);
 }
-screensaverOnBtn.addEventListener("click", () => setScreensaver(true));
-screensaverOffBtn.addEventListener("click", () => setScreensaver(false));
+topbarScreensaverTag.addEventListener("click", () => setScreensaver(!screensaverEnabled));
 
 rescanBtn.addEventListener("click", async () => {
   rescanBtn.textContent = "Scanning…";

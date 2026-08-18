@@ -49,9 +49,9 @@ that source design, worth knowing if you're comparing against it:
   what's currently playing, which matters more for a control-tablet
   workflow than the more cinematic full-screen treatment. The design's
   hero banner and settings drawer are otherwise unchanged from the import.
-- **Idle screensaver is now live-toggleable** from Settings, not just an
-  env var at startup — the design's settings panel included this control,
-  so the backend gained a small `/api/screensaver` GET/POST pair to back it.
+- **Idle screensaver is now live-toggleable**, not just an env var at
+  startup — a single click on the "Screensaver on/off" pill in the top bar
+  flips it, backed by a small `/api/screensaver` GET/POST pair.
 
 ## 1. Install dependencies on the Pi
 
