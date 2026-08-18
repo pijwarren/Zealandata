@@ -793,13 +793,19 @@ def _screensaver_loop(gen, fade=True):
         fade = True
 
         while not screensaver_stop_event.is_set():
+            # Sleep before checking, not after -- mpv can still briefly
+            # report idle-active=true for a moment right after loadfile
+            # returns, while it's still opening the file. Checking
+            # immediately reads that as "this pick already finished" and
+            # jumps straight to the next one, firing a second fade
+            # transition right on top of the first.
+            time.sleep(1)
             with mpv_lock:
                 if gen != mpv_generation:
                     return
             r = mpv_send({"command": ["get_property", "idle-active"]})
             if r and r.get("data"):
                 break  # this pick finished naturally -> loop around to a new one
-            time.sleep(1)
 
 
 # ------------------------------------------------------- mpv playback ---
