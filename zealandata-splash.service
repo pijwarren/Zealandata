@@ -7,6 +7,7 @@ Description=Zealandata boot splash (shown until the main service takes over)
 DefaultDependencies=no
 After=local-fs.target
 Before=zealandata.service
+Conflicts=zealandata.service
 
 [Service]
 Type=simple
