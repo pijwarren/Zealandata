@@ -23,15 +23,15 @@ Environment=ZEALANDATA_SCREENSAVER_ENABLED=1
 # Environment=ZEALANDATA_LOOP_SELECTED=1
 # If something's left PAUSED (not stopped) this long with no interaction,
 # auto-stop it and return to the screensaver. Off by default; 300 = 5 min.
-Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=0
-# Environment=ZEALANDATA_IDLE_TIMEOUT_SECONDS=300
+Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=1
+Environment=ZEALANDATA_IDLE_TIMEOUT_SECONDS=300
 # Image sequence folders (frame_0001.png, frame_0002.png, ...) need at
 # least this many frames to be recognized, converted at this frame rate.
-# Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
-# Environment=ZEALANDATA_SEQUENCE_FPS=12
+Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
+Environment=ZEALANDATA_SEQUENCE_FPS=1
 # Unlocks admin mode (renaming videos) in the web UI, gated by this
 # 4-digit PIN. Unset by default -- admin mode is unavailable until set.
-# Environment=ZEALANDATA_ADMIN_PIN=1234
+Environment=ZEALANDATA_ADMIN_PIN=1234
 
 # Held up (via mpv's loadfile, not a separate process) any time nothing
 # else is queued -- server startup, an explicit stop, screensaver off --
