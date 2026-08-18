@@ -18,6 +18,17 @@ Type=simple
 # Adjust the path to loading.png and User to match your setup, same as
 # zealandata.service.
 User=pj
+# mpv's DRM/KMS backend needs a real VT to do exclusive VT-switching for
+# display access -- a systemd service gets no controlling terminal by
+# default, which is what "[vo/gpu/drm] Can't open TTY for VT control" /
+# "Failed initializing any suitable GPU context!" actually means. Binding
+# it to tty1 explicitly (and `sudo systemctl disable getty@tty1` so nothing
+# else is fighting mpv for it) is what actually fixes that, not a timing
+# issue with the splash/main handoff.
+StandardInput=tty
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
 ExecStart=/usr/bin/mpv --fs --msg-level=all=error --osc=no --no-audio --keep-open=yes --image-display-duration=inf --vo=gpu --gpu-context=drm /home/pj/zealandata/loading.png
 Restart=on-failure
 RestartSec=1
