@@ -505,6 +505,20 @@ def _hdmi_supervisor_loop():
         _enter_idle_state()
 
 
+def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None):
+    """Set the playback properties that should apply to the next file, then
+    load it. Done as separate set_property calls (rather than loadfile's
+    own trailing "options" argument) since that argument's exact position
+    varies across mpv versions and isn't worth chasing down per-build."""
+    if image_duration is not None:
+        mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
+    mpv_send({"command": ["set_property", "keep-open", keep_open]})
+    mpv_send({"command": ["set_property", "loop-file", loop_file]})
+    mpv_send({"command": ["set_property", "mute", mute]})
+    mpv_send({"command": ["set_property", "start", start]})
+    mpv_send({"command": ["loadfile", path, "replace"]})
+
+
 def _go_idle():
     """Show the loading image, held indefinitely, if one's configured;
     otherwise just unload whatever was playing and sit on mpv's own idle
@@ -512,8 +526,8 @@ def _go_idle():
     global current_kind
     current_kind = "idle"
     if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
-        mpv_send({"command": ["loadfile", LOADING_IMAGE_PATH, "replace", -1,
-                               "image-display-duration=inf,keep-open=yes,loop-file=no,mute=yes"]})
+        _hdmi_load(LOADING_IMAGE_PATH, keep_open="yes", loop_file="no",
+                   mute="yes", image_duration="inf")
     else:
         mpv_send({"command": ["stop"]})
 
@@ -610,11 +624,11 @@ def _screensaver_loop(gen):
         pick = random.choice(candidates)
         last_id = pick["id"]
 
-        opts = "keep-open=no,loop-file=no,mute=" + ("yes" if SCREENSAVER_MUTED else "no")
         with mpv_lock:
             if gen != mpv_generation:
                 return
-            mpv_send({"command": ["loadfile", pick["path"], "replace", -1, opts]})
+            _hdmi_load(pick["path"], keep_open="no", loop_file="no",
+                       mute="yes" if SCREENSAVER_MUTED else "no")
 
         while not screensaver_stop_event.is_set():
             with mpv_lock:
@@ -671,10 +685,10 @@ def _start_mpv_playback(match, resume_seconds, loop=None):
         current_kind = "video"
         mpv_generation += 1
         gen = mpv_generation
-        opts = "keep-open=yes,mute=no,loop-file=" + ("inf" if loop else "no")
-        if resume_seconds > 0:
-            opts += f",start={resume_seconds}"
-        mpv_send({"command": ["loadfile", match["path"], "replace", -1, opts]})
+        _hdmi_load(
+            match["path"], keep_open="yes", loop_file="inf" if loop else "no",
+            mute="no", start=str(resume_seconds) if resume_seconds > 0 else "none",
+        )
     threading.Thread(
         target=_watch_mpv_playback,
         args=(gen, match["id"], match["title"]),
