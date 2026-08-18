@@ -345,10 +345,13 @@ ffmpeg -f lavfi -i color=c=black:s=240x240 \
   "[1:v]format=rgba,colorchannelmixer=aa=1.0[d0];[2:v]format=rgba,colorchannelmixer=aa=0.863[d1];[3:v]format=rgba,colorchannelmixer=aa=0.745[d2];[4:v]format=rgba,colorchannelmixer=aa=0.627[d3];[5:v]format=rgba,colorchannelmixer=aa=0.510[d4];[6:v]format=rgba,colorchannelmixer=aa=0.392[d5];[7:v]format=rgba,colorchannelmixer=aa=0.275[d6];[8:v]format=rgba,colorchannelmixer=aa=0.176[d7];[0:v][d0]overlay=182:112[t0];[t0][d1]overlay=162:162[t1];[t1][d2]overlay=112:182[t2];[t2][d3]overlay=63:162[t3];[t3][d4]overlay=42:112[t4];[t4][d5]overlay=63:63[t5];[t5][d6]overlay=112:42[t6];[t6][d7]overlay=162:63[t7]" \
   -map "[t7]" -frames:v 1 -update 1 spinner_dot.png
 
-# 3. spin that ring continuously, composited onto a full-screen black canvas
-ffmpeg -f lavfi -i color=c=black:s=1920x1080:d=1:r=30 -loop 1 -t 1 -i spinner_dot.png -filter_complex \
-  "[1:v]format=rgba,rotate=2*PI*t:c=black@0:ow=240:oh=240[spin];[0:v][spin]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p[out]" \
-  -map "[out]" -r 30 -c:v libx264 -pix_fmt yuv420p -movflags +faststart static/spinner.mp4
+# 3. spin that ring continuously, composited onto a full-screen black canvas.
+#    rotate=...t/1.5 + exactly 45 frames at 30fps makes one full turn land
+#    precisely at the end of SPINNER_HOLD_SECONDS (1.5s) -- keep these two
+#    in sync if you change SPINNER_HOLD_SECONDS in server.py.
+ffmpeg -f lavfi -i color=c=black:s=1920x1080:r=30 -loop 1 -i spinner_dot.png -filter_complex \
+  "[1:v]format=rgba,rotate=2*PI*t/1.5:c=black@0:ow=240:oh=240[spin];[0:v][spin]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p[out]" \
+  -map "[out]" -frames:v 45 -r 30 -c:v libx264 -pix_fmt yuv420p -movflags +faststart static/spinner.mp4
 
 rm circle.png spinner_dot.png  # build artifacts, not needed once spinner.mp4 exists
 ```
