@@ -92,15 +92,6 @@ ADMIN_PIN = os.environ.get("ZEALANDATA_ADMIN_PIN", "").strip() or None
 ADMIN_MAX_ATTEMPTS = 5
 ADMIN_LOCKOUT_SECONDS = 120
 
-# Total fade-to-black-and-back time around every HDMI transition (a
-# selected video, a screensaver pick, the idle image) -- half spent fading
-# the outgoing frame to black, half fading the incoming one back up. See
-# _fade()/_fade_broken below for why this backs off automatically rather
-# than retrying into a crash loop if the mpv build/GPU driver on this Pi
-# doesn't like it.
-FADE_SECONDS = 1.0
-FADE_STEPS = 6
-
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
 # "resuming" something that's basically already finished).
@@ -125,12 +116,6 @@ current_kind = "idle"  # "idle" | "video" | "screensaver" — whatever the
 
 screensaver_thread = None
 screensaver_stop_event = threading.Event()
-
-# Flips permanently true the first time mpv rejects (or stops responding to)
-# the "brightness" property used for fading -- see _fade(). Fails safe: once
-# broken, every future transition just cuts instantly instead of retrying
-# the same property into a crash loop for the rest of this run.
-_fade_broken = False
 
 # Metadata for whatever's currently playing — mainly so /api/status can
 # report a description without mpv needing to know what one is.
@@ -585,38 +570,10 @@ def _hdmi_supervisor_loop():
             print("[mpv] persistent HDMI process died — restarting")
             _spawn_hdmi_process()
             mpv_generation += 1
-        _enter_idle_state(fade=False)
+        _enter_idle_state()
 
 
-def _fade(from_value, to_value, duration):
-    """Ramps mpv's "brightness" equalizer property between two values over
-    duration seconds -- the standard workaround for fading to/from black
-    between separate loadfile calls, since mpv has no built-in cross-fade.
-    Bails out (and disables fading for the rest of this run) the moment mpv
-    either rejects the property or stops responding at all, rather than
-    hammering the same call into a crash loop -- better to silently lose the
-    cosmetic fade than risk destabilizing the one persistent process this
-    whole app depends on."""
-    global _fade_broken
-    if _fade_broken or duration <= 0:
-        if not _fade_broken:
-            mpv_send({"command": ["set_property", "brightness", to_value]})
-        return
-    steps = max(1, FADE_STEPS)
-    interval = duration / steps
-    for i in range(1, steps + 1):
-        value = round(from_value + (to_value - from_value) * i / steps)
-        result = mpv_send({"command": ["set_property", "brightness", value]})
-        if result is None or result.get("error") != "success":
-            print("[fade] brightness property unsupported or mpv unresponsive "
-                  "-- disabling fade for the rest of this run")
-            _fade_broken = True
-            mpv_send({"command": ["set_property", "brightness", 0]})
-            return
-        time.sleep(interval)
-
-
-def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, fade=True):
+def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None):
     """Set the playback properties that should apply to the next file, then
     load it. Done as separate set_property calls (rather than loadfile's
     own trailing "options" argument) since that argument's exact position
@@ -624,14 +581,7 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     "pause" is reset explicitly too -- unlike the others, it's not a
     per-file property, so pausing one video and then stopping it would
     otherwise leave the *next* thing loaded (a screensaver pick, another
-    video) starting paused as well.
-
-    fade=False skips the brightness ramp entirely -- used only for the very
-    first idle-image load right after mpv is spawned, since fading that
-    early risks touching mpv before its DRM context has actually settled."""
-    half = FADE_SECONDS / 2
-    if fade:
-        _fade(0, -100, half)
+    video) starting paused as well."""
     if image_duration is not None:
         mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
     mpv_send({"command": ["set_property", "keep-open", keep_open]})
@@ -640,11 +590,9 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     mpv_send({"command": ["set_property", "start", start]})
     mpv_send({"command": ["set_property", "pause", "no"]})
     mpv_send({"command": ["loadfile", path, "replace"]})
-    if fade:
-        _fade(-100, 0, half)
 
 
-def _go_idle(fade=True):
+def _go_idle():
     """Show the loading image, held indefinitely, if one's configured;
     otherwise just unload whatever was playing and sit on mpv's own idle
     black frame."""
@@ -652,24 +600,22 @@ def _go_idle(fade=True):
     current_kind = "idle"
     if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
         _hdmi_load(LOADING_IMAGE_PATH, keep_open="yes", loop_file="no",
-                   mute="yes", image_duration="inf", fade=fade)
+                   mute="yes", image_duration="inf")
     else:
         mpv_send({"command": ["stop"]})
 
 
-def _enter_idle_state(fade=True):
+def _enter_idle_state():
     """Called whenever HDMI has nothing queued next. Prefers the
     screensaver when it's enabled; otherwise holds the idle image so the
-    console is never what ends up on screen. fade=False is passed through
-    right after a fresh mpv spawn (startup, or a crash-restart) so the very
-    first load doesn't fade before mpv's DRM context has settled."""
+    console is never what ends up on screen."""
     if SCREENSAVER_ENABLED:
-        start_screensaver(fade=fade)
+        start_screensaver()
     else:
         global mpv_generation
         with mpv_lock:
             mpv_generation += 1
-        _go_idle(fade=fade)
+        _go_idle()
 
 
 # ------------------------------------------------------------- idle timer ---
@@ -719,7 +665,7 @@ def _boot_grace_then_screensaver():
 # --------------------------------------------------------- screensaver ---
 
 
-def start_screensaver(fade=True):
+def start_screensaver():
     """Kick off a background thread that shuffles through random library
     videos, one after another, until stop_screensaver() is called (i.e.
     someone picks something to watch)."""
@@ -733,7 +679,7 @@ def start_screensaver(fade=True):
         current_kind = "screensaver"
         mpv_generation += 1
         gen = mpv_generation
-    screensaver_thread = threading.Thread(target=_screensaver_loop, args=(gen, fade), daemon=True)
+    screensaver_thread = threading.Thread(target=_screensaver_loop, args=(gen,), daemon=True)
     screensaver_thread.start()
 
 
@@ -744,14 +690,13 @@ def stop_screensaver():
         thread.join(timeout=8)
 
 
-def _screensaver_loop(gen, fade=True):
+def _screensaver_loop(gen):
     """Runs in its own thread: repeatedly picks a random library video and
     plays it (muted by default) until it ends naturally, then picks another
     — until screensaver_stop_event is set, or something newer (a real
     selection, or a crash-restart of the persistent mpv process) takes
     over. Individual picks are never looped — that's what keeps the
-    shuffle actually shuffling. fade is only honored for the very first
-    pick — see _enter_idle_state — every pick after that always fades."""
+    shuffle actually shuffling."""
     last_id = None
     while not screensaver_stop_event.is_set():
         with mpv_lock:
@@ -771,8 +716,7 @@ def _screensaver_loop(gen, fade=True):
             if gen != mpv_generation:
                 return
             _hdmi_load(pick["path"], keep_open="no", loop_file="no",
-                       mute="yes" if SCREENSAVER_MUTED else "no", fade=fade)
-        fade = True
+                       mute="yes" if SCREENSAVER_MUTED else "no")
 
         while not screensaver_stop_event.is_set():
             with mpv_lock:
@@ -1124,7 +1068,7 @@ def api_status():
 
 if __name__ == "__main__":
     _spawn_hdmi_process()
-    _go_idle(fade=False)
+    _go_idle()
     threading.Thread(target=_hdmi_supervisor_loop, daemon=True).start()
     threading.Thread(target=_boot_grace_then_screensaver, daemon=True).start()
     threading.Thread(target=_idle_watcher_loop, daemon=True).start()
