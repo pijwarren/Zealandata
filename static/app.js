@@ -104,12 +104,31 @@ function wrapScroller(scroller) {
 
 const continueScrollUpdate = wrapScroller(continueGrid);
 
+// A card must be clicked once to select it (arms the play glyph), and
+// clicked again to actually play -- avoids accidentally launching playback
+// with a stray touch/click while browsing. Selecting a different card (or
+// clicking outside all cards) clears the previous selection rather than
+// requiring an explicit deselect step.
+let selectedCard = null;
+
+function deselectCard() {
+  if (!selectedCard) return;
+  selectedCard.classList.remove("card--selected");
+  selectedCard.setAttribute("aria-label", selectedCard.dataset.title ? `Select ${selectedCard.dataset.title}` : "Select");
+  selectedCard = null;
+}
+
+document.addEventListener("click", (e) => {
+  if (selectedCard && !selectedCard.contains(e.target)) deselectCard();
+});
+
 function buildCard(item, { badge, showRestart } = {}) {
   const card = document.createElement("div");
   card.className = "card";
   card.tabIndex = 0;
+  card.dataset.title = item.title;
   card.setAttribute("role", "button");
-  card.setAttribute("aria-label", `Play ${item.title}`);
+  card.setAttribute("aria-label", `Select ${item.title}`);
 
   const thumbWrap = document.createElement("div");
   thumbWrap.className = "card__frame";
@@ -185,9 +204,21 @@ function buildCard(item, { badge, showRestart } = {}) {
   thumbWrap.appendChild(title);
 
   card.appendChild(thumbWrap);
-  card.addEventListener("click", () => playItem(item));
+
+  const activate = () => {
+    if (selectedCard === card) {
+      deselectCard();
+      playItem(item);
+      return;
+    }
+    deselectCard();
+    selectedCard = card;
+    card.classList.add("card--selected");
+    card.setAttribute("aria-label", `Play ${item.title}`);
+  };
+  card.addEventListener("click", activate);
   card.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); playItem(item); }
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); activate(); }
   });
   return card;
 }
@@ -195,6 +226,7 @@ function buildCard(item, { badge, showRestart } = {}) {
 let allMediaItems = [];
 
 function renderCategories(items) {
+  selectedCard = null; // about to be torn down along with the old cards
   categoryRows.innerHTML = "";
   const byCategory = new Map();
   for (const item of items) {

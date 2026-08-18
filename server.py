@@ -96,7 +96,7 @@ ADMIN_LOCKOUT_SECONDS = 120
 # selected video, a screensaver pick, the idle image) rather than a
 # brightness-based cross-fade -- see SPINNER_VIDEO_PATH/_hdmi_load. Held for
 # this long before the real content loads.
-SPINNER_HOLD_SECONDS = 0.6
+SPINNER_HOLD_SECONDS = 1.5
 SPINNER_VIDEO_PATH = os.path.join(BASE_DIR, "static", "spinner.mp4")
 
 # Resume threshold: only offer/apply "continue watching" if between these

@@ -27,6 +27,13 @@ into it (a projector, a TV, etc.) — not streamed into your browser tab.
   dimmed) — it doesn't pop in and out, and its controls only ever act on a
   deliberate selection, never on whatever the screensaver happens to be
   showing.
+- **Poster clicks are two-step**: clicking a poster once selects it (a
+  highlighted border, a filled play glyph) rather than playing immediately —
+  clicking that same poster again is what actually starts it. Clicking
+  elsewhere, or selecting a different poster, clears the selection. This is
+  meant to guard against an accidental tap while browsing/scrolling; the
+  restart and rename buttons on a poster remain single-click, since they're
+  explicit, deliberately-placed controls rather than the poster itself.
 
 ### About the current visual design
 
@@ -309,10 +316,11 @@ itself, not with a particular video file.
 ## Spinner between transitions
 
 Every HDMI transition — a selected video, each screensaver pick, the idle
-image — briefly cuts to a small spinner animation (`static/spinner.mp4`)
-before the real content loads, rather than cutting straight to it. 0.6
-seconds by default, tuned via `SPINNER_HOLD_SECONDS` near the top of
-`server.py` (not an env var — edit directly if you want it shorter/longer).
+image — briefly cuts to a small spinner animation (`static/spinner.mp4`,
+8 round dots fading around a ring) before the real content loads, rather
+than cutting straight to it. 1.5 seconds by default, tuned via
+`SPINNER_HOLD_SECONDS` near the top of `server.py` (not an env var — edit
+directly if you want it shorter/longer).
 
 An earlier version of this cross-faded to black instead, by animating
 mpv's `brightness` equalizer property. That turned out to be the wrong
@@ -325,12 +333,24 @@ videos, and screensaver picks — nothing exotic, no per-file properties
 animated in a loop, so there's nothing new that can leave the display in a
 broken state. Regenerate it any time with:
 ```bash
-ffmpeg -f lavfi -i color=c=black:s=240x240 -frames:v 1 -update 1 -vf \
-  "drawbox=x=184:y=114:w=12:h=12:color=0xFFFFFF@1.0:t=fill,drawbox=x=163:y=163:w=12:h=12:color=0xDCDCDC@1.0:t=fill,drawbox=x=114:y=184:w=12:h=12:color=0xBEBEBE@1.0:t=fill,drawbox=x=64:y=163:w=12:h=12:color=0xA0A0A0@1.0:t=fill,drawbox=x=44:y=114:w=12:h=12:color=0x828282@1.0:t=fill,drawbox=x=64:y=64:w=12:h=12:color=0x646464@1.0:t=fill,drawbox=x=114:y=44:w=12:h=12:color=0x464646@1.0:t=fill,drawbox=x=163:y=64:w=12:h=12:color=0x2D2D2D@1.0:t=fill" \
-  spinner_dot.png
+# 1. a small round dot, alpha-masked so it composites cleanly
+ffmpeg -f lavfi -i color=c=white:s=16x16 -frames:v 1 -update 1 -vf \
+  "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(hypot(X-8,Y-8),7),255,0)'" \
+  circle.png
+
+# 2. composite 8 copies of it around a ring, opacity fading like a comet trail
+ffmpeg -f lavfi -i color=c=black:s=240x240 \
+  -i circle.png -i circle.png -i circle.png -i circle.png -i circle.png -i circle.png -i circle.png -i circle.png \
+  -filter_complex \
+  "[1:v]format=rgba,colorchannelmixer=aa=1.0[d0];[2:v]format=rgba,colorchannelmixer=aa=0.863[d1];[3:v]format=rgba,colorchannelmixer=aa=0.745[d2];[4:v]format=rgba,colorchannelmixer=aa=0.627[d3];[5:v]format=rgba,colorchannelmixer=aa=0.510[d4];[6:v]format=rgba,colorchannelmixer=aa=0.392[d5];[7:v]format=rgba,colorchannelmixer=aa=0.275[d6];[8:v]format=rgba,colorchannelmixer=aa=0.176[d7];[0:v][d0]overlay=182:112[t0];[t0][d1]overlay=162:162[t1];[t1][d2]overlay=112:182[t2];[t2][d3]overlay=63:162[t3];[t3][d4]overlay=42:112[t4];[t4][d5]overlay=63:63[t5];[t5][d6]overlay=112:42[t6];[t6][d7]overlay=162:63[t7]" \
+  -map "[t7]" -frames:v 1 -update 1 spinner_dot.png
+
+# 3. spin that ring continuously, composited onto a full-screen black canvas
 ffmpeg -f lavfi -i color=c=black:s=1920x1080:d=1:r=30 -loop 1 -t 1 -i spinner_dot.png -filter_complex \
   "[1:v]format=rgba,rotate=2*PI*t:c=black@0:ow=240:oh=240[spin];[0:v][spin]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p[out]" \
   -map "[out]" -r 30 -c:v libx264 -pix_fmt yuv420p -movflags +faststart static/spinner.mp4
+
+rm circle.png spinner_dot.png  # build artifacts, not needed once spinner.mp4 exists
 ```
 The very first idle-image load right after mpv starts (fresh boot, or a
 crash-restart) skips the spinner outright, since that's the highest-risk

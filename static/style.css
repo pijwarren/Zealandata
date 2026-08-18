@@ -217,6 +217,11 @@ button:focus-visible, .card:focus-visible{
   z-index:2;
 }
 .card:focus-visible{ outline:none; }
+.card--selected{
+  transform:scale(1.08) translateY(-4px);
+  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(0,0,0,0.55), 0 0 34px rgba(145,132,217,0.35);
+  z-index:2;
+}
 
 .card__thumb{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
 .card__thumb--placeholder{ display:flex; align-items:center; justify-content:center; color:var(--color-neutral-600); font-size:32px; }
@@ -233,6 +238,10 @@ button:focus-visible, .card:focus-visible{
   pointer-events:none;
 }
 .card:hover .card__play, .card:focus-visible .card__play{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+.card--selected .card__play{
+  opacity:1; transform:translate(-50%,-50%) scale(1);
+  background:var(--color-accent); border-color:var(--color-accent); color:#fff;
+}
 .card__title{ position:absolute; left:13px; right:13px; bottom:13px; font-size:13px; font-weight:500; color:var(--color-text); }
 .card__top-right{
   position:absolute; top:9px; right:9px;
@@ -250,7 +259,7 @@ button:focus-visible, .card:focus-visible{
   opacity:0; transition:opacity .15s, border-color .15s, background .15s;
 }
 body.admin-mode .card__rename{ display:flex; }
-body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .card__rename{ opacity:1; }
+body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .card__rename, body.admin-mode .card--selected .card__rename{ opacity:1; }
 .card__rename:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
 .card__restart{
   position:absolute; top:9px; left:9px; width:28px; height:28px; border-radius:50%;
@@ -259,7 +268,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   display:flex; align-items:center; justify-content:center;
   opacity:0; transition:opacity .15s, border-color .15s, background .15s;
 }
-.card:hover .card__restart, .card:focus-within .card__restart{ opacity:1; }
+.card:hover .card__restart, .card:focus-within .card__restart, .card--selected .card__restart{ opacity:1; }
 .card__restart:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
 .card__progress{ position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(233,233,237,0.15); z-index:1; }
 .card__progress-fill{ height:100%; background:var(--color-accent); }
