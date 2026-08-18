@@ -514,8 +514,17 @@ def mpv_send(command):
             s.connect(MPV_SOCKET)
             s.sendall((json.dumps(command) + "\n").encode())
             resp = s.recv(4096)
-            return json.loads(resp.decode()) if resp else None
     except (FileNotFoundError, ConnectionRefusedError, OSError, socket.timeout):
+        return None
+    if not resp:
+        return None
+    # mpv can push an unsolicited event notification on the same connection
+    # right after a command's own reply -- the reply itself is always the
+    # first line, so parse just that rather than the whole (possibly
+    # multi-line) buffer.
+    try:
+        return json.loads(resp.split(b"\n", 1)[0].decode())
+    except (json.JSONDecodeError, UnicodeDecodeError):
         return None
 
 
@@ -599,8 +608,11 @@ def _fade(from_value, to_value, duration):
     whole app depends on."""
     global _fade_broken
     if _fade_broken or duration <= 0:
-        if not _fade_broken:
-            mpv_send({"command": ["set_property", "brightness", to_value]})
+        # Always still attempt the single reset call, even once "broken" --
+        # a one-off set_property is low-risk (it's the ramping loop that
+        # gets disabled), and it's what lets brightness self-correct on the
+        # next transition if it was ever left stuck at a non-zero value.
+        mpv_send({"command": ["set_property", "brightness", to_value]})
         return
     steps = max(1, FADE_STEPS)
     interval = duration / steps
@@ -628,20 +640,26 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
 
     fade=False skips the brightness ramp entirely -- used only for the very
     first idle-image load right after mpv is spawned, since fading that
-    early risks touching mpv before its DRM context has actually settled."""
+    early risks touching mpv before its DRM context has actually settled.
+
+    The fade-in half runs in a finally block so brightness always gets
+    restored even if something between the two halves errors -- otherwise
+    an exception there would leave the picture stuck dark indefinitely."""
     half = FADE_SECONDS / 2
     if fade:
         _fade(0, -100, half)
-    if image_duration is not None:
-        mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
-    mpv_send({"command": ["set_property", "keep-open", keep_open]})
-    mpv_send({"command": ["set_property", "loop-file", loop_file]})
-    mpv_send({"command": ["set_property", "mute", mute]})
-    mpv_send({"command": ["set_property", "start", start]})
-    mpv_send({"command": ["set_property", "pause", "no"]})
-    mpv_send({"command": ["loadfile", path, "replace"]})
-    if fade:
-        _fade(-100, 0, half)
+    try:
+        if image_duration is not None:
+            mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
+        mpv_send({"command": ["set_property", "keep-open", keep_open]})
+        mpv_send({"command": ["set_property", "loop-file", loop_file]})
+        mpv_send({"command": ["set_property", "mute", mute]})
+        mpv_send({"command": ["set_property", "start", start]})
+        mpv_send({"command": ["set_property", "pause", "no"]})
+        mpv_send({"command": ["loadfile", path, "replace"]})
+    finally:
+        if fade:
+            _fade(-100, 0, half)
 
 
 def _go_idle(fade=True):
