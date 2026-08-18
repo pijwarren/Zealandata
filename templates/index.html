@@ -63,7 +63,33 @@
   <div class="field">
     <label>Admin mode</label>
     <button type="button" class="btn btn-secondary btn-block" id="adminModeBtn">Unlock admin mode</button>
-    <p class="field__hint">PIN-protected — lets you rename videos from the library grid.</p>
+    <p class="field__hint">PIN-protected — lets you rename videos and set the hero banner.</p>
+  </div>
+</div>
+
+<div class="scrim hidden" id="pinScrim"></div>
+<div class="pinpad hidden" id="pinModal" role="dialog" aria-modal="true" aria-label="Enter admin PIN">
+  <div class="pinpad__title" id="pinTitle">Enter Admin PIN</div>
+  <div class="pinpad__dots" id="pinDots">
+    <span class="pinpad__dot"></span>
+    <span class="pinpad__dot"></span>
+    <span class="pinpad__dot"></span>
+    <span class="pinpad__dot"></span>
+  </div>
+  <p class="pinpad__error hidden" id="pinError">Incorrect PIN</p>
+  <div class="pinpad__grid">
+    <button type="button" class="pinpad__key" data-digit="1">1</button>
+    <button type="button" class="pinpad__key" data-digit="2">2</button>
+    <button type="button" class="pinpad__key" data-digit="3">3</button>
+    <button type="button" class="pinpad__key" data-digit="4">4</button>
+    <button type="button" class="pinpad__key" data-digit="5">5</button>
+    <button type="button" class="pinpad__key" data-digit="6">6</button>
+    <button type="button" class="pinpad__key" data-digit="7">7</button>
+    <button type="button" class="pinpad__key" data-digit="8">8</button>
+    <button type="button" class="pinpad__key" data-digit="9">9</button>
+    <button type="button" class="pinpad__key pinpad__key--ghost" id="pinCancelBtn">Cancel</button>
+    <button type="button" class="pinpad__key" data-digit="0">0</button>
+    <button type="button" class="pinpad__key pinpad__key--ghost" id="pinBackBtn" aria-label="Backspace">⌫</button>
   </div>
 </div>
 

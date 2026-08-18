@@ -6,6 +6,13 @@ const settingsScrim = document.getElementById("settingsScrim");
 const settingsDrawer = document.getElementById("settingsDrawer");
 const rescanBtn = document.getElementById("rescanBtn");
 const adminModeBtn = document.getElementById("adminModeBtn");
+const pinScrim = document.getElementById("pinScrim");
+const pinModal = document.getElementById("pinModal");
+const pinTitle = document.getElementById("pinTitle");
+const pinDots = document.getElementById("pinDots");
+const pinError = document.getElementById("pinError");
+const pinCancelBtn = document.getElementById("pinCancelBtn");
+const pinBackBtn = document.getElementById("pinBackBtn");
 
 const heroSection = document.getElementById("heroSection");
 const heroImg = document.getElementById("heroImg");
@@ -376,16 +383,99 @@ rescanBtn.addEventListener("click", async () => {
 });
 
 // ----------------------------------------------------------------------
-// Admin mode (PIN-gated renaming)
+// PIN pad (used to unlock admin mode)
+
+let pinEntry = "";
+let pinVerify = null;   // async (candidatePin) => boolean, set per openPinPad() call
+let pinResolve = null;  // resolves the promise returned by openPinPad()
+let pinChecking = false;
+
+function paintPinDots() {
+  [...pinDots.children].forEach((dot, i) => {
+    dot.classList.toggle("pinpad__dot--filled", i < pinEntry.length);
+  });
+}
+
+// Opens the PIN pad and resolves with the correct PIN string once
+// verifyFn(candidate) returns true, or with null if the user cancels.
+// The modal stays open and shakes on a wrong guess rather than closing,
+// so retrying doesn't mean reopening it.
+function openPinPad(title, verifyFn) {
+  return new Promise((resolve) => {
+    pinEntry = "";
+    pinChecking = false;
+    pinVerify = verifyFn;
+    pinResolve = resolve;
+    pinTitle.textContent = title;
+    pinError.classList.add("hidden");
+    paintPinDots();
+    pinScrim.classList.remove("hidden");
+    pinModal.classList.remove("hidden");
+  });
+}
+
+function closePinPad(result) {
+  pinScrim.classList.add("hidden");
+  pinModal.classList.add("hidden");
+  const resolve = pinResolve;
+  pinResolve = null;
+  pinVerify = null;
+  if (resolve) resolve(result);
+}
+
+function pinPadFail() {
+  pinError.classList.remove("hidden");
+  pinModal.classList.add("pinpad--shake");
+  setTimeout(() => pinModal.classList.remove("pinpad--shake"), 400);
+  pinEntry = "";
+  paintPinDots();
+}
+
+async function pinDigit(d) {
+  if (pinChecking || pinEntry.length >= 4) return;
+  pinEntry += d;
+  paintPinDots();
+  if (pinEntry.length < 4) return;
+  pinChecking = true;
+  const candidate = pinEntry;
+  const ok = pinVerify ? await pinVerify(candidate) : true;
+  pinChecking = false;
+  if (ok) closePinPad(candidate);
+  else pinPadFail();
+}
+
+pinModal.querySelectorAll(".pinpad__key[data-digit]").forEach((btn) => {
+  btn.addEventListener("click", () => pinDigit(btn.dataset.digit));
+});
+pinBackBtn.addEventListener("click", () => {
+  pinEntry = pinEntry.slice(0, -1);
+  paintPinDots();
+});
+pinCancelBtn.addEventListener("click", () => closePinPad(null));
+pinScrim.addEventListener("click", () => closePinPad(null));
+
+// ----------------------------------------------------------------------
+// Admin mode (PIN-gated renaming + hero selection)
 
 // Held in memory only for this tab -- never persisted -- and sent with
-// each rename request so the server independently re-checks it rather
+// each admin request so the server independently re-checks it rather
 // than trusting a client-side "unlocked" flag alone.
 let adminPin = null;
 
 function paintAdminMode() {
   document.body.classList.toggle("admin-mode", !!adminPin);
   adminModeBtn.textContent = adminPin ? "Lock admin mode" : "Unlock admin mode";
+  paintSetHeroBtn();
+}
+
+async function verifyAdminPin(candidate) {
+  const res = await fetch("/api/admin/unlock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: candidate }),
+  });
+  const data = await res.json().catch(() => ({}));
+  return !!data.ok;
 }
 
 adminModeBtn.addEventListener("click", async () => {
@@ -394,19 +484,10 @@ adminModeBtn.addEventListener("click", async () => {
     paintAdminMode();
     return;
   }
-  const pin = prompt("Enter the 4-digit admin PIN:");
-  if (!pin) return;
-  const res = await fetch("/api/admin/unlock", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (data.ok) {
+  const pin = await openPinPad("Enter Admin PIN", verifyAdminPin);
+  if (pin) {
     adminPin = pin;
     paintAdminMode();
-  } else {
-    alert(data.error || "Incorrect PIN.");
   }
 });
 

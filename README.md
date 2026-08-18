@@ -197,11 +197,12 @@ recent Continue Watching item, or the first item of the first category if
 nothing's in progress. The ★ button in the now-playing dock lets you
 override that: while something's playing, tap it to pin that item as the
 hero permanently (tap again to unpin and go back to the automatic pick).
+Only visible in admin mode (below), so it can't be pinned by accident.
 Persists across restarts (stored in `hero.json`, gitignored like
 `progress.json`). If the pinned file is later removed from the library, it
 just falls back to the automatic pick again rather than showing nothing.
 
-## Admin mode (renaming videos)
+## Admin mode (renaming videos, setting the hero banner)
 
 Set `ZEALANDATA_ADMIN_PIN` to a 4-digit PIN to unlock a small admin mode
 in the web UI — off entirely (no admin-mode UI, no endpoints active)
@@ -209,12 +210,22 @@ until you set one:
 ```
 Environment=ZEALANDATA_ADMIN_PIN=1234
 ```
-"Unlock admin mode" in Settings prompts for the PIN; once entered
-correctly, every poster in the browse grid grows a small ✎ button (on
-hover) that lets you rename it. The PIN itself is only held in that
-browser tab's memory — never stored — and is re-checked by the server on
-every rename request, so it isn't enough to just flip something in
-devtools.
+Set the real value directly on the Pi's deployed
+`/etc/systemd/system/zealandata.service`, not in this repo — a PIN
+committed to git stays in its history even after you change it.
+
+"Unlock admin mode" in Settings brings up an on-screen number pad rather
+than a plain text prompt (shakes and clears on a wrong entry, no need to
+close and reopen to retry). Once unlocked, two things become available
+that are hidden the rest of the time, specifically so neither happens by
+accident:
+- Every poster in the browse grid grows a small ✎ button (on hover) that
+  renames it.
+- The ★ "set as hero" button reappears in the now-playing dock.
+
+The PIN itself is only held in that browser tab's memory — never
+stored — and is re-checked by the server on every rename request, so it
+isn't enough to just flip something in devtools.
 
 Renaming only changes the **display title** — it never touches the
 actual file on disk. Overrides are stored in `titles.json` (gitignored,
