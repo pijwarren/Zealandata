@@ -33,7 +33,7 @@ Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=0
 # Show a static loading image during the moment between one video ending
 # and the next starting (see zealandata-splash.service for the separate
 # boot-time version of this). Off unless you set an image path.
-# Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata/loading.png
+Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata/loading.png
 # Environment=ZEALANDATA_LOADING_FLASH_SECONDS=1.2
 
 # Show the HDMI/NDI switch in the web UI. Off by default — most
