@@ -343,6 +343,15 @@ its startup default here:
 Environment=ZEALANDATA_SCREENSAVER_ENABLED=1
 # Environment=ZEALANDATA_SCREENSAVER_MUTED=1
 ```
+
+**On boot or a service restart**, the screensaver doesn't start shuffling
+immediately — the loading image (if configured) is held for
+`ZEALANDATA_IDLE_TIMEOUT_SECONDS` (default 300s = 5 min, the same value
+the idle-timeout feature below uses) first, so a restart mid-event or
+mid-setup doesn't suddenly start playing an unrelated video on screen.
+This is a one-time startup delay only — every other idle transition (a
+video ending, an explicit stop) still brings the screensaver back
+immediately, same as always.
 It starts right after boot, and comes back automatically a few seconds
 after a video finishes, is stopped, or the idle timeout fires. It picks a
 new random item (never immediately repeating the last one) each time a

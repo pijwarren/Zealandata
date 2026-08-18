@@ -647,6 +647,21 @@ def _idle_watcher_loop():
                 _mark_interaction()
 
 
+def _boot_grace_then_screensaver():
+    """On startup (a cold boot or a service restart), hold the idle image
+    for IDLE_TIMEOUT_SECONDS before letting the screensaver take over,
+    rather than jumping straight into shuffling videos the instant the
+    process comes up -- e.g. a restart mid-event shouldn't immediately
+    start playing something unrelated. Reuses IDLE_TIMEOUT_SECONDS rather
+    than a separate setting since it's the same "how long is quiet before
+    something automatic kicks in" idea. Only a one-time startup delay —
+    every other idle transition (a stop, a pause timeout) still brings the
+    screensaver back immediately, same as before."""
+    time.sleep(IDLE_TIMEOUT_SECONDS)
+    if current_kind == "idle":
+        start_screensaver()
+
+
 # --------------------------------------------------------- screensaver ---
 
 
@@ -1055,7 +1070,7 @@ if __name__ == "__main__":
     _spawn_hdmi_process()
     _go_idle()
     threading.Thread(target=_hdmi_supervisor_loop, daemon=True).start()
-    start_screensaver()
+    threading.Thread(target=_boot_grace_then_screensaver, daemon=True).start()
     threading.Thread(target=_idle_watcher_loop, daemon=True).start()
     port = int(os.environ.get("ZEALANDATA_PORT", "8000"))
     app.run(host="0.0.0.0", port=port, threaded=True)
