@@ -306,21 +306,6 @@ rather than leaving the console exposed. Check `journalctl -u zealandata`
 if that ever happens repeatedly — it means something's wrong with `mpv`
 itself, not with a particular video file.
 
-## Fade to black between transitions
-
-Every HDMI transition — a selected video, a screensaver pick, the idle
-image — fades to black, swaps files while the screen is dark, then fades
-back in, rather than cutting instantly. `FADE_SECONDS` (1.0 by default,
-half spent fading out and half fading back in) and `FADE_STEPS` (12,
-controls smoothness) are constants near the top of `server.py`, not env
-vars — edit them directly if you want a longer or shorter transition.
-
-Technically this animates mpv's `brightness` equalizer property (a
-real-time video-processing knob, not a filter that needs reconfiguring per
-file) down to -100 and back up to 0 around each `loadfile` — mpv has no
-built-in cross-fade between separate file loads, so ramping brightness is
-the standard workaround.
-
 ## Idle timeout
 
 If a video is left **paused** (not stopped) with no further interaction for

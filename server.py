@@ -92,12 +92,6 @@ ADMIN_PIN = os.environ.get("ZEALANDATA_ADMIN_PIN", "").strip() or None
 ADMIN_MAX_ATTEMPTS = 5
 ADMIN_LOCKOUT_SECONDS = 120
 
-# Total fade-to-black-and-back time around every HDMI transition (a
-# selected video, a screensaver pick, the idle image) -- half spent fading
-# the outgoing frame to black, half fading the incoming one back up.
-FADE_SECONDS = 1.0
-FADE_STEPS = 12
-
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
 # "resuming" something that's basically already finished).
@@ -579,24 +573,6 @@ def _hdmi_supervisor_loop():
         _enter_idle_state()
 
 
-def _fade(from_value, to_value, duration):
-    """Ramps mpv's "brightness" equalizer property between two values over
-    duration seconds. mpv has no built-in cross-fade between separate
-    loadfile calls, but animating brightness down to -100 (black) and back
-    is the standard workaround -- it's a real-time video-equalizer knob,
-    not a filter that needs reconfiguring per file, so it works identically
-    whether the frame underneath is holding still or actively playing."""
-    if duration <= 0:
-        mpv_send({"command": ["set_property", "brightness", to_value]})
-        return
-    steps = max(1, FADE_STEPS)
-    interval = duration / steps
-    for i in range(1, steps + 1):
-        value = round(from_value + (to_value - from_value) * i / steps)
-        mpv_send({"command": ["set_property", "brightness", value]})
-        time.sleep(interval)
-
-
 def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None):
     """Set the playback properties that should apply to the next file, then
     load it. Done as separate set_property calls (rather than loadfile's
@@ -605,15 +581,7 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     "pause" is reset explicitly too -- unlike the others, it's not a
     per-file property, so pausing one video and then stopping it would
     otherwise leave the *next* thing loaded (a screensaver pick, another
-    video) starting paused as well.
-
-    Fades to black over the outgoing frame, swaps files while the screen
-    is dark, then fades back in over the new one -- the fade-in's own
-    ramp-up gives mpv a moment to actually decode the new file's first
-    frame before it becomes visible, so there's no need to wait for it
-    explicitly."""
-    half = FADE_SECONDS / 2
-    _fade(0, -100, half)
+    video) starting paused as well."""
     if image_duration is not None:
         mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
     mpv_send({"command": ["set_property", "keep-open", keep_open]})
@@ -622,7 +590,6 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     mpv_send({"command": ["set_property", "start", start]})
     mpv_send({"command": ["set_property", "pause", "no"]})
     mpv_send({"command": ["loadfile", path, "replace"]})
-    _fade(-100, 0, half)
 
 
 def _go_idle():
