@@ -306,30 +306,36 @@ rather than leaving the console exposed. Check `journalctl -u zealandata`
 if that ever happens repeatedly — it means something's wrong with `mpv`
 itself, not with a particular video file.
 
-## Fade to black between transitions
+## Spinner between transitions
 
 Every HDMI transition — a selected video, each screensaver pick, the idle
-image — fades to black and back rather than cutting instantly, holding on
-the outgoing frame while it dims and on the new one as it comes back up. 1
-second total by default, tuned via `FADE_SECONDS`/`FADE_STEPS` near the top
-of `server.py` (not env vars — edit directly if you want it faster/slower or
-smoother/coarser).
+image — briefly cuts to a small spinner animation (`static/spinner.mp4`)
+before the real content loads, rather than cutting straight to it. 0.6
+seconds by default, tuned via `SPINNER_HOLD_SECONDS` near the top of
+`server.py` (not an env var — edit directly if you want it shorter/longer).
 
-mpv has no built-in cross-fade between separate `loadfile` calls, so this
-works by animating its `brightness` equalizer property down to -100 and
-back up to 0 around every transition — a real-time video-processing knob,
-not a per-file filter, so it applies identically whether the frame
-underneath is holding still or actively playing. If your mpv build or GPU
-driver doesn't like having `brightness` set repeatedly, the very first
-rejected (or unanswered) property set permanently disables fading for the
-rest of that run — every transition after that just cuts instantly instead
-of retrying the same call into a crash loop, since the mpv process staying
-alive matters far more than the cosmetic fade does. Check
-`journalctl -u zealandata` for a `[fade] brightness property unsupported...`
-line if that ever happens. The very first idle-image load right after mpv
-starts (fresh boot, or a crash-restart) skips fading outright, since that's
-the highest-risk moment to be touching a brand new mpv process before its
-DRM context has settled.
+An earlier version of this cross-faded to black instead, by animating
+mpv's `brightness` equalizer property. That turned out to be the wrong
+tool for the job — it needed a rapid sequence of IPC property-set calls
+per transition, which was fragile in practice (a stray malformed reply
+from mpv could abort mid-ramp and leave the picture stuck dark) and looked
+visibly choppy even once that was fixed. The spinner instead reuses the
+exact same `loadfile` mechanism already used for the idle image, selected
+videos, and screensaver picks — nothing exotic, no per-file properties
+animated in a loop, so there's nothing new that can leave the display in a
+broken state. Regenerate it any time with:
+```bash
+ffmpeg -f lavfi -i color=c=black:s=240x240 -frames:v 1 -update 1 -vf \
+  "drawbox=x=184:y=114:w=12:h=12:color=0xFFFFFF@1.0:t=fill,drawbox=x=163:y=163:w=12:h=12:color=0xDCDCDC@1.0:t=fill,drawbox=x=114:y=184:w=12:h=12:color=0xBEBEBE@1.0:t=fill,drawbox=x=64:y=163:w=12:h=12:color=0xA0A0A0@1.0:t=fill,drawbox=x=44:y=114:w=12:h=12:color=0x828282@1.0:t=fill,drawbox=x=64:y=64:w=12:h=12:color=0x646464@1.0:t=fill,drawbox=x=114:y=44:w=12:h=12:color=0x464646@1.0:t=fill,drawbox=x=163:y=64:w=12:h=12:color=0x2D2D2D@1.0:t=fill" \
+  spinner_dot.png
+ffmpeg -f lavfi -i color=c=black:s=1920x1080:d=1:r=30 -loop 1 -t 1 -i spinner_dot.png -filter_complex \
+  "[1:v]format=rgba,rotate=2*PI*t:c=black@0:ow=240:oh=240[spin];[0:v][spin]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p[out]" \
+  -map "[out]" -r 30 -c:v libx264 -pix_fmt yuv420p -movflags +faststart static/spinner.mp4
+```
+The very first idle-image load right after mpv starts (fresh boot, or a
+crash-restart) skips the spinner outright, since that's the highest-risk
+moment to be touching a brand new mpv process before its DRM context has
+settled.
 
 ## Idle timeout
 

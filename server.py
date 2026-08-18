@@ -92,14 +92,12 @@ ADMIN_PIN = os.environ.get("ZEALANDATA_ADMIN_PIN", "").strip() or None
 ADMIN_MAX_ATTEMPTS = 5
 ADMIN_LOCKOUT_SECONDS = 120
 
-# Total fade-to-black-and-back time around every HDMI transition (a
-# selected video, a screensaver pick, the idle image) -- half spent fading
-# the outgoing frame to black, half fading the incoming one back up. See
-# _fade()/_fade_broken below for why this backs off automatically rather
-# than retrying into a crash loop if the mpv build/GPU driver on this Pi
-# doesn't like it.
-FADE_SECONDS = 1.0
-FADE_STEPS = 12
+# A short spinner animation is shown between every HDMI transition (a
+# selected video, a screensaver pick, the idle image) rather than a
+# brightness-based cross-fade -- see SPINNER_VIDEO_PATH/_hdmi_load. Held for
+# this long before the real content loads.
+SPINNER_HOLD_SECONDS = 0.6
+SPINNER_VIDEO_PATH = os.path.join(BASE_DIR, "static", "spinner.mp4")
 
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
@@ -125,12 +123,6 @@ current_kind = "idle"  # "idle" | "video" | "screensaver" — whatever the
 
 screensaver_thread = None
 screensaver_stop_event = threading.Event()
-
-# Flips permanently true the first time mpv rejects (or stops responding to)
-# the "brightness" property used for fading -- see _fade(). Fails safe: once
-# broken, every future transition just cuts instantly instead of retrying
-# the same property into a crash loop for the rest of this run.
-_fade_broken = False
 
 # Metadata for whatever's currently playing — mainly so /api/status can
 # report a description without mpv needing to know what one is.
@@ -594,7 +586,7 @@ def _hdmi_supervisor_loop():
             print("[mpv] persistent HDMI process died — restarting")
             _spawn_hdmi_process()
             mpv_generation += 1
-        _enter_idle_state(fade=False)
+        _enter_idle_state(spinner=False)
 
 
 def _still_current(gen):
@@ -602,16 +594,16 @@ def _still_current(gen):
     None was passed (meaning "not tracking a generation, always proceed").
     Read without mpv_lock -- same as the other generation checks in this
     file; it's a bare int comparison, and the whole point is for a stale
-    fade/load to notice it's been superseded and bail immediately rather
-    than running to completion first (see _fade/_hdmi_load)."""
+    load to notice it's been superseded and bail immediately rather than
+    running to completion first (see _hdmi_load)."""
     return gen is None or gen == mpv_generation
 
 
 def _claim_generation(kind):
     """Bump mpv_generation and set current_kind, atomically, and hand back
     the new generation number -- the one thing that actually needs the
-    lock. Everything after this (the fade, the loadfile) runs lock-free, so
-    a competing claim can supersede it immediately instead of having to
+    lock. Everything after this (the spinner, the loadfile) runs lock-free,
+    so a competing claim can supersede it immediately instead of having to
     wait for it to finish first."""
     global mpv_generation, current_kind
     with mpv_lock:
@@ -620,45 +612,7 @@ def _claim_generation(kind):
         return mpv_generation
 
 
-def _fade(from_value, to_value, duration, gen=None):
-    """Ramps mpv's "brightness" equalizer property between two values over
-    duration seconds -- the standard workaround for fading to/from black
-    between separate loadfile calls, since mpv has no built-in cross-fade.
-    Bails out (and disables fading for the rest of this run) the moment mpv
-    either rejects the property or stops responding at all, rather than
-    hammering the same call into a crash loop -- better to silently lose the
-    cosmetic fade than risk destabilizing the one persistent process this
-    whole app depends on. Also bails out immediately, mid-ramp, the moment
-    gen is no longer current -- e.g. someone picked a video while this was
-    still fading in a screensaver pick -- rather than finishing a fade
-    that's about to be immediately overwritten anyway."""
-    global _fade_broken
-    if _fade_broken or duration <= 0:
-        # Always still attempt the single reset call, even once "broken" --
-        # a one-off set_property is low-risk (it's the ramping loop that
-        # gets disabled), and it's what lets brightness self-correct on the
-        # next transition if it was ever left stuck at a non-zero value.
-        if _still_current(gen):
-            mpv_send({"command": ["set_property", "brightness", to_value]})
-        return
-    steps = max(1, FADE_STEPS)
-    interval = duration / steps
-    for i in range(1, steps + 1):
-        if not _still_current(gen):
-            return
-        value = round(from_value + (to_value - from_value) * i / steps)
-        result = mpv_send({"command": ["set_property", "brightness", value]})
-        if result is None or result.get("error") != "success":
-            print("[fade] brightness property unsupported or mpv unresponsive "
-                  "-- disabling fade for the rest of this run")
-            _fade_broken = True
-            if _still_current(gen):
-                mpv_send({"command": ["set_property", "brightness", 0]})
-            return
-        time.sleep(interval)
-
-
-def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, fade=True, gen=None):
+def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, spinner=True, gen=None):
     """Set the playback properties that should apply to the next file, then
     load it. Done as separate set_property calls (rather than loadfile's
     own trailing "options" argument) since that argument's exact position
@@ -668,41 +622,44 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     otherwise leave the *next* thing loaded (a screensaver pick, another
     video) starting paused as well.
 
-    fade=False skips the brightness ramp entirely -- used only for the very
-    first idle-image load right after mpv is spawned, since fading that
-    early risks touching mpv before its DRM context has actually settled.
+    spinner=True briefly cuts to a short spinner animation (an ordinary
+    video, played via the same loadfile mechanism as everything else)
+    before loading the real content -- a cross-fade (an earlier approach)
+    needed mpv's "brightness" equalizer property animated via a rapid
+    sequence of IPC calls, which turned out to be fragile on real hardware
+    and produced a visibly choppy ramp; this needs nothing exotic at all.
+    spinner=False skips it entirely -- used only for the very first
+    idle-image load right after mpv is spawned, since touching mpv that
+    early risks it before its DRM context has actually settled.
 
-    gen, if given, is checked before and after the fade-out -- if something
-    newer has already claimed the generation by then, this bails out
-    without touching the file at all, letting whatever superseded it
-    proceed immediately instead of queuing up behind a stale transition.
-
-    The fade-in half runs in a finally block (when this wasn't already
-    superseded) so brightness always gets restored even if something
-    between the two halves errors -- otherwise an exception there would
-    leave the picture stuck dark indefinitely."""
+    gen, if given, is checked before the spinner, after its hold, and
+    before the real loadfile -- if something newer has already claimed the
+    generation by any of those points, this bails out immediately rather
+    than finishing a transition that's about to be immediately overwritten
+    (e.g. someone picked a video while a screensaver pick's spinner was
+    still showing)."""
     if not _still_current(gen):
         return
-    half = FADE_SECONDS / 2
-    if fade:
-        _fade(0, -100, half, gen=gen)
-    if not _still_current(gen):
-        return
-    try:
-        if image_duration is not None:
-            mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
-        mpv_send({"command": ["set_property", "keep-open", keep_open]})
-        mpv_send({"command": ["set_property", "loop-file", loop_file]})
-        mpv_send({"command": ["set_property", "mute", mute]})
-        mpv_send({"command": ["set_property", "start", start]})
+    if spinner and os.path.exists(SPINNER_VIDEO_PATH):
+        mpv_send({"command": ["set_property", "keep-open", "no"]})
+        mpv_send({"command": ["set_property", "loop-file", "inf"]})
+        mpv_send({"command": ["set_property", "mute", "yes"]})
         mpv_send({"command": ["set_property", "pause", "no"]})
-        mpv_send({"command": ["loadfile", path, "replace"]})
-    finally:
-        if fade:
-            _fade(-100, 0, half, gen=gen)
+        mpv_send({"command": ["loadfile", SPINNER_VIDEO_PATH, "replace"]})
+        time.sleep(SPINNER_HOLD_SECONDS)
+        if not _still_current(gen):
+            return
+    if image_duration is not None:
+        mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
+    mpv_send({"command": ["set_property", "keep-open", keep_open]})
+    mpv_send({"command": ["set_property", "loop-file", loop_file]})
+    mpv_send({"command": ["set_property", "mute", mute]})
+    mpv_send({"command": ["set_property", "start", start]})
+    mpv_send({"command": ["set_property", "pause", "no"]})
+    mpv_send({"command": ["loadfile", path, "replace"]})
 
 
-def _go_idle(fade=True, gen=None):
+def _go_idle(spinner=True, gen=None):
     """Show the loading image, held indefinitely, if one's configured;
     otherwise just unload whatever was playing and sit on mpv's own idle
     black frame."""
@@ -710,22 +667,23 @@ def _go_idle(fade=True, gen=None):
     current_kind = "idle"
     if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
         _hdmi_load(LOADING_IMAGE_PATH, keep_open="yes", loop_file="no",
-                   mute="yes", image_duration="inf", fade=fade, gen=gen)
+                   mute="yes", image_duration="inf", spinner=spinner, gen=gen)
     else:
         mpv_send({"command": ["stop"]})
 
 
-def _enter_idle_state(fade=True):
+def _enter_idle_state(spinner=True):
     """Called whenever HDMI has nothing queued next. Prefers the
     screensaver when it's enabled; otherwise holds the idle image so the
-    console is never what ends up on screen. fade=False is passed through
-    right after a fresh mpv spawn (startup, or a crash-restart) so the very
-    first load doesn't fade before mpv's DRM context has settled."""
+    console is never what ends up on screen. spinner=False is passed
+    through right after a fresh mpv spawn (startup, or a crash-restart) so
+    the very first load doesn't touch mpv before its DRM context has
+    settled."""
     if SCREENSAVER_ENABLED:
-        start_screensaver(fade=fade)
+        start_screensaver(spinner=spinner)
     else:
         gen = _claim_generation("idle")
-        _go_idle(fade=fade, gen=gen)
+        _go_idle(spinner=spinner, gen=gen)
 
 
 # ------------------------------------------------------------- idle timer ---
@@ -775,7 +733,7 @@ def _boot_grace_then_screensaver():
 # --------------------------------------------------------- screensaver ---
 
 
-def start_screensaver(fade=True):
+def start_screensaver(spinner=True):
     """Kick off a background thread that shuffles through random library
     videos, one after another, until stop_screensaver() is called (i.e.
     someone picks something to watch)."""
@@ -789,7 +747,7 @@ def start_screensaver(fade=True):
         current_kind = "screensaver"
         mpv_generation += 1
         gen = mpv_generation
-    screensaver_thread = threading.Thread(target=_screensaver_loop, args=(gen, fade), daemon=True)
+    screensaver_thread = threading.Thread(target=_screensaver_loop, args=(gen, spinner), daemon=True)
     screensaver_thread.start()
 
 
@@ -800,14 +758,14 @@ def stop_screensaver():
         thread.join(timeout=8)
 
 
-def _screensaver_loop(gen, fade=True):
+def _screensaver_loop(gen, spinner=True):
     """Runs in its own thread: repeatedly picks a random library video and
     plays it (muted by default) until it ends naturally, then picks another
     — until screensaver_stop_event is set, or something newer (a real
     selection, or a crash-restart of the persistent mpv process) takes
     over. Individual picks are never looped — that's what keeps the
-    shuffle actually shuffling. fade is only honored for the very first
-    pick — see _enter_idle_state — every pick after that always fades."""
+    shuffle actually shuffling. spinner is only honored for the very first
+    pick — see _enter_idle_state — every pick after that always shows it."""
     last_id = None
     while not screensaver_stop_event.is_set():
         with mpv_lock:
@@ -825,21 +783,21 @@ def _screensaver_loop(gen, fade=True):
 
         if not _still_current(gen):
             return
-        # Not held under mpv_lock -- _hdmi_load checks gen itself at each
-        # step and bails the instant something newer claims the generation
-        # (a real selection, a crash-restart), instead of finishing this
-        # pick's fade first and making the newer thing wait behind it.
+        # Not held under mpv_lock -- _hdmi_load checks gen itself and bails
+        # the instant something newer claims the generation (a real
+        # selection, a crash-restart), instead of finishing this pick's
+        # transition first and making the newer thing wait behind it.
         _hdmi_load(pick["path"], keep_open="no", loop_file="no",
-                   mute="yes" if SCREENSAVER_MUTED else "no", fade=fade, gen=gen)
-        fade = True
+                   mute="yes" if SCREENSAVER_MUTED else "no", spinner=spinner, gen=gen)
+        spinner = True
 
         while not screensaver_stop_event.is_set():
             # Sleep before checking, not after -- mpv can still briefly
             # report idle-active=true for a moment right after loadfile
             # returns, while it's still opening the file. Checking
             # immediately reads that as "this pick already finished" and
-            # jumps straight to the next one, firing a second fade
-            # transition right on top of the first.
+            # jumps straight to the next one, firing a second transition
+            # right on top of the first.
             time.sleep(1)
             with mpv_lock:
                 if gen != mpv_generation:
@@ -972,8 +930,9 @@ def api_set_screensaver():
     if not enabled:
         if not _is_foreground_playing():
             # Same reasoning as api_play: claim the generation before
-            # stopping the screensaver, so a mid-fade pick notices right
-            # away instead of finishing first and queuing this behind it.
+            # stopping the screensaver, so a mid-transition pick notices
+            # right away instead of finishing first and queuing this
+            # behind it.
             gen = _claim_generation("idle")
             stop_screensaver()
             _go_idle(gen=gen)
@@ -1105,10 +1064,10 @@ def api_play(media_id):
         })
 
     # Claim the generation *before* stopping the screensaver, not after --
-    # if a screensaver pick is mid-fade right now, this makes it notice
-    # immediately (its gen is now stale) and bail out of its own fade
-    # instead of finishing it first and making this selection's fade wait
-    # behind it, which is what produced a visible double fade back-to-back.
+    # if a screensaver pick is mid-transition right now, this makes it
+    # notice immediately (its gen is now stale) and bail out instead of
+    # finishing first and making this selection's own transition wait
+    # behind it, which is what produced a visible double transition.
     gen = _claim_generation("video")
     stop_screensaver()
     _start_mpv_playback(match, resume_seconds=resume_seconds, gen=gen)
@@ -1199,7 +1158,7 @@ def api_status():
 
 if __name__ == "__main__":
     _spawn_hdmi_process()
-    _go_idle(fade=False)
+    _go_idle(spinner=False)
     threading.Thread(target=_hdmi_supervisor_loop, daemon=True).start()
     threading.Thread(target=_boot_grace_then_screensaver, daemon=True).start()
     threading.Thread(target=_idle_watcher_loop, daemon=True).start()
