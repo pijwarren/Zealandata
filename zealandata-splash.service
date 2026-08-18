@@ -1,0 +1,21 @@
+[Unit]
+Description=Zealandata boot splash (shown until the main service takes over)
+# Starts as early as practical during boot, and is automatically stopped
+# the moment zealandata.service starts — see the matching Conflicts=/After=
+# lines added to zealandata.service. No custom code needed for the
+# handoff; systemd does it natively.
+DefaultDependencies=no
+After=local-fs.target
+Before=zealandata.service
+
+[Service]
+Type=simple
+# Adjust the path to loading.png and User to match your setup, same as
+# zealandata.service.
+User=pj
+ExecStart=/usr/bin/mpv --fs --msg-level=all=error --osc=no --no-audio --keep-open=yes --image-display-duration=inf --vo=gpu --gpu-context=drm /home/pj/zealandata/loading.png
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=multi-user.target

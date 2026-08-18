@@ -305,6 +305,48 @@ why via `journalctl -u zealandata`. mpv's own error messages are no longer
 fully suppressed (previously `--really-quiet`, now `--msg-level=all=error`),
 specifically so that log has something useful in it if this happens.
 
+## Loading screen instead of the console flashing through
+
+On headless HDMI/DRM output, mpv only owns the physical display while it's
+actually running — the instant one mpv process exits and before the next
+one starts, whatever's normally on the Linux console underneath (by
+default, a login prompt) can flash into view for that gap. There are two
+separate versions of this, with two separate fixes:
+
+**At boot** (and if the service ever crash-loops) — `zealandata-splash.service`
+shows a static image via mpv from very early in boot, and is automatically
+stopped by systemd the instant `zealandata.service` starts — no custom code
+involved, just systemd's native `Conflicts=`/`Before=`/`After=` unit
+ordering. Install it once:
+```bash
+cp loading.png zealandata-splash.service # adjust paths/User inside first
+sudo cp zealandata-splash.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable zealandata-splash
+```
+(`zealandata.service` already references it via `Conflicts=`/`After=` — that
+line is harmless even if you never install the splash service at all.)
+
+**Between videos during normal operation** — set `ZEALANDATA_LOADING_IMAGE`
+to a real image path and the same loading image briefly appears (default
+1.2s, `ZEALANDATA_LOADING_FLASH_SECONDS`) at every transition into
+foreground playback and between each screensaver pick, covering the gap
+instead of leaving it empty. Off by default — nothing changes unless you
+set this. NDI mode never needs it (no shared physical console there).
+
+A basic default `loading.png` (dark background, "Zealandata" wordmark,
+matching the app's own color palette) is included — replace it with
+your own artwork any time, it's just a static file.
+
+One honest caveat: the between-videos version adds an actual process
+transition into the mix (old content ends → loading image → new content
+starts), which I can't fully verify the real-world timing of without
+testing on your actual Pi hardware. If it ends up feeling like it makes
+transitions choppier rather than smoother, lower
+`ZEALANDATA_LOADING_FLASH_SECONDS` first, or unset `ZEALANDATA_LOADING_IMAGE`
+entirely to go back to a plain gap (much improved already by disabling the
+console getty, per the note above).
+
 ## Idle timeout
 
 If a video is left **paused** (not stopped) with no further interaction for

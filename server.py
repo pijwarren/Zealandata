@@ -111,6 +111,14 @@ NDI_SOURCE_NAME = os.environ.get("ZEALANDATA_NDI_NAME", "Zealandata")
 # CPU load reasonable on a Pi. Leave unset to send at source resolution.
 NDI_SCALE = os.environ.get("ZEALANDATA_NDI_SCALE", "").strip() or None
 
+# Optional: briefly show a static loading image (via mpv, same as
+# everything else) during the moment between one HDMI/DRM mpv process
+# ending and the next one starting. Without this, that gap can let the
+# Linux console underneath flash into view for an instant. No-op if unset
+# — this is opt-in since it needs an actual image file to show.
+LOADING_IMAGE_PATH = os.environ.get("ZEALANDATA_LOADING_IMAGE", "").strip() or None
+LOADING_FLASH_SECONDS = float(os.environ.get("ZEALANDATA_LOADING_FLASH_SECONDS", "1.2"))
+
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
 # "resuming" something that's basically already finished).
@@ -496,6 +504,29 @@ def _env_for_display():
     return env
 
 
+def _show_loading_flash(duration=None):
+    """Briefly show a static loading image (blocking — the caller waits for
+    it) to cover the gap between one HDMI mpv process ending and the next
+    beginning. A no-op if ZEALANDATA_LOADING_IMAGE isn't configured or
+    doesn't exist, so this is entirely opt-in. NDI mode never needs this —
+    it doesn't share the Pi's physical console the way DRM output does."""
+    if not LOADING_IMAGE_PATH or not os.path.exists(LOADING_IMAGE_PATH):
+        return
+    if duration is None:
+        duration = LOADING_FLASH_SECONDS
+    cmd = [
+        "mpv", "--fs", "--msg-level=all=error", "--osc=no", "--no-audio",
+        "--keep-open=no", f"--image-display-duration={duration}",
+    ]
+    if USE_DRM:
+        cmd += ["--vo=gpu", "--gpu-context=drm"]
+    cmd.append(LOADING_IMAGE_PATH)
+    try:
+        subprocess.run(cmd, env=_env_for_display(), timeout=duration + 5)
+    except Exception as exc:
+        print(f"[loading-flash] failed: {exc}")
+
+
 # ------------------------------------------------------------- idle timer ---
 
 
@@ -762,6 +793,11 @@ def _screensaver_loop():
     last_id = None
 
     while not screensaver_stop_event.is_set():
+        if OUTPUT_MODE == "hdmi":
+            _show_loading_flash()
+            if screensaver_stop_event.is_set():
+                break
+
         items = get_media()
         if not items:
             time.sleep(10)
@@ -890,6 +926,18 @@ def _start_mpv_playback(match, resume_seconds, loop=None, _retry_count=0):
             mpv_process.wait(timeout=5)
         if os.path.exists(MPV_SOCKET):
             os.remove(MPV_SOCKET)
+
+        # Covers the gap between whatever was showing before (a previous
+        # selection just quit above, or the screensaver already stopped by
+        # the caller) and this one actually starting. Any previous mpv
+        # instance is guaranteed to have released the display by this
+        # point — showing this any earlier would conflict with it for DRM
+        # ownership. Skipped for the self-healing relaunch path
+        # (_retry_count > 0) — a rarer error-recovery case where an extra
+        # second of delay isn't worth adding on top of the crash-loop-cap
+        # timing.
+        if _retry_count == 0:
+            _show_loading_flash()
 
         cmd = [
             "mpv", "--fs", "--hwdec=auto", f"--input-ipc-server={MPV_SOCKET}",

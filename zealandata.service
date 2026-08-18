@@ -1,6 +1,10 @@
 [Unit]
 Description=Zealandata media server
-After=network.target sound.target
+After=network.target sound.target zealandata-splash.service
+# Automatically stops the boot splash the moment this service starts —
+# systemd handles the handoff natively, no custom code needed. Harmless if
+# zealandata-splash.service isn't installed at all.
+Conflicts=zealandata-splash.service
 
 [Service]
 # Adjust User/paths to match your Pi setup.
@@ -25,6 +29,12 @@ Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=0
 # least this many frames to be recognized, converted at this frame rate.
 # Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
 # Environment=ZEALANDATA_SEQUENCE_FPS=12
+
+# Show a static loading image during the moment between one video ending
+# and the next starting (see zealandata-splash.service for the separate
+# boot-time version of this). Off unless you set an image path.
+# Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata/loading.png
+# Environment=ZEALANDATA_LOADING_FLASH_SECONDS=1.2
 
 # Show the HDMI/NDI switch in the web UI. Off by default — most
 # deployments pick one output mode via ZEALANDATA_OUTPUT_MODE and leave it.
