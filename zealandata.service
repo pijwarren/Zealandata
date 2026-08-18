@@ -1,12 +1,13 @@
 [Unit]
 Description=Zealandata media server
 After=network.target sound.target zealandata-splash.service
-# Automatically stops the boot splash the moment this service starts —
-# systemd handles the handoff natively, no custom code needed. Harmless if
-# zealandata-splash.service isn't installed at all.
-Conflicts=zealandata-splash.service
 
 [Service]
+# Explicitly stops the boot splash the moment this service starts, rather
+# than a mutual Conflicts= declaration (see zealandata-splash.service for
+# why that was actually unreliable, not just untidy). The leading "-" makes
+# this non-fatal if the splash isn't installed/running at all.
+ExecStartPre=-/usr/bin/systemctl stop zealandata-splash.service
 # Adjust User/paths to match your Pi setup.
 User=pj
 WorkingDirectory=/home/pj/zealandata

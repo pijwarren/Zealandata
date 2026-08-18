@@ -1,13 +1,17 @@
 [Unit]
 Description=Zealandata boot splash (shown until the main service takes over)
-# Starts as early as practical during boot, and is automatically stopped
-# the moment zealandata.service starts — see the matching Conflicts=/After=
-# lines added to zealandata.service. No custom code needed for the
-# handoff; systemd does it natively.
+# Starts as early as practical during boot. Stopped explicitly by
+# zealandata.service's own ExecStartPre the moment it starts (see there) --
+# NOT via a mutual Conflicts= declaration: with both units WantedBy the same
+# target, a bidirectional Conflicts= makes systemd try to queue "start A,
+# which stops B" and "start B, which stops A" in the very same boot
+# transaction, which is self-contradictory -- systemd can silently drop one
+# side rather than starting it, which is what was actually happening here
+# (zealandata.service never started at all on some boots, not a crash, not
+# even attempted -- confirmed via journalctl showing zero log entries for it).
 DefaultDependencies=no
 After=local-fs.target
 Before=zealandata.service
-Conflicts=zealandata.service
 
 [Service]
 Type=simple
