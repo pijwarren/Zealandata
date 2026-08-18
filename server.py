@@ -137,6 +137,12 @@ mpv_stop_requested = False  # set just before an intentional quit, so the
                              # watcher can tell "stopped on purpose" apart
                              # from "exited unexpectedly while looping"
 
+idle_image_process = None  # held indefinitely on the HDMI/DRM output
+                            # whenever nothing else is playing and the
+                            # screensaver is off, so the Linux console
+                            # underneath is never visible
+idle_image_lock = threading.Lock()
+
 screensaver_thread = None
 screensaver_process = None
 screensaver_lock = threading.Lock()
@@ -527,6 +533,58 @@ def _show_loading_flash(duration=None):
         print(f"[loading-flash] failed: {exc}")
 
 
+def _start_idle_image():
+    """Put up the loading image and hold it indefinitely (unlike
+    _show_loading_flash, which self-times out) — used whenever HDMI/DRM has
+    nothing else queued (server just started, screensaver is off, playback
+    was explicitly stopped) so the Linux console never shows through. No-op
+    if no loading image is configured, we're not on DRM, or one is already
+    up."""
+    global idle_image_process
+    if not USE_DRM or not LOADING_IMAGE_PATH or not os.path.exists(LOADING_IMAGE_PATH):
+        return
+    with idle_image_lock:
+        if idle_image_process is not None and idle_image_process.poll() is None:
+            return  # already showing
+        cmd = [
+            "mpv", "--fs", "--msg-level=all=error", "--osc=no", "--no-audio",
+            "--keep-open=yes", "--image-display-duration=inf",
+            "--vo=gpu", "--gpu-context=drm", LOADING_IMAGE_PATH,
+        ]
+        try:
+            idle_image_process = subprocess.Popen(cmd, env=_env_for_display())
+        except Exception as exc:
+            print(f"[idle-image] failed: {exc}")
+
+
+def _stop_idle_image():
+    """Release the idle image so whatever's about to play can take over DRM.
+    Blocks until the process has actually exited — callers rely on DRM
+    master being free the moment this returns."""
+    global idle_image_process
+    with idle_image_lock:
+        proc = idle_image_process
+        idle_image_process = None
+    if proc is None or proc.poll() is not None:
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait(timeout=5)
+
+
+def _enter_idle_state():
+    """Called whenever HDMI/DRM output has nothing queued next. Prefers the
+    screensaver when it's enabled; otherwise holds a static image so the
+    console is never what ends up on screen."""
+    if SCREENSAVER_ENABLED:
+        start_screensaver()
+    else:
+        _start_idle_image()
+
+
 # ------------------------------------------------------------- idle timer ---
 
 
@@ -792,6 +850,9 @@ def _screensaver_loop():
     global screensaver_process
     last_id = None
 
+    if OUTPUT_MODE == "hdmi":
+        _stop_idle_image()
+
     while not screensaver_stop_event.is_set():
         if OUTPUT_MODE == "hdmi":
             _show_loading_flash()
@@ -910,9 +971,9 @@ def _watch_mpv_playback(generation, media_id, title, process, loop, item, retry_
             _start_mpv_playback(item, resume_seconds=0, loop=loop, _retry_count=next_retry)
             return  # the relaunch spins up its own watcher; don't fall through
 
-    # Only restart the screensaver if nothing newer has started meanwhile.
+    # Only go idle if nothing newer has started meanwhile.
     if generation == mpv_generation:
-        start_screensaver()
+        _enter_idle_state()
 
 
 def _start_mpv_playback(match, resume_seconds, loop=None, _retry_count=0):
@@ -920,6 +981,7 @@ def _start_mpv_playback(match, resume_seconds, loop=None, _retry_count=0):
     if loop is None:
         loop = LOOP_SELECTED_VIDEO
     with mpv_lock:
+        _stop_idle_image()
         if _mpv_is_running():
             mpv_stop_requested = True
             mpv_send({"command": ["quit"]})
@@ -992,7 +1054,10 @@ def set_output_mode(new_mode):
                 mpv_process.kill()
 
         OUTPUT_MODE = new_mode
-        start_screensaver()
+        if new_mode == "hdmi":
+            _enter_idle_state()
+        else:
+            start_screensaver()
 
 
 # --------------------------------------------------------------- routes ---
@@ -1085,6 +1150,8 @@ def api_set_screensaver():
     SCREENSAVER_ENABLED = enabled
     if not enabled:
         stop_screensaver()
+        if OUTPUT_MODE == "hdmi" and not _is_foreground_playing():
+            _start_idle_image()
     elif not _is_foreground_playing():
         # turn on and nothing's currently selected -> start it right away
         # rather than waiting for the next natural idle transition
@@ -1272,6 +1339,9 @@ def api_status():
 
 
 if __name__ == "__main__":
+    if OUTPUT_MODE == "hdmi":
+        _start_idle_image()  # cover the console immediately; released by
+                              # the screensaver loop below if that's on
     start_screensaver()
     threading.Thread(target=_idle_watcher_loop, daemon=True).start()
     port = int(os.environ.get("ZEALANDATA_PORT", "8000"))

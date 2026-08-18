@@ -334,6 +334,13 @@ foreground playback and between each screensaver pick, covering the gap
 instead of leaving it empty. Off by default — nothing changes unless you
 set this. NDI mode never needs it (no shared physical console there).
 
+**While idle** — whenever there's genuinely nothing queued next on HDMI
+(the app just started, a video was explicitly stopped, or the screensaver
+is turned off) and `ZEALANDATA_LOADING_IMAGE` is set, the same image is
+held up indefinitely instead of just flashed, so the console never becomes
+what's actually on screen. It's released the moment something real starts
+playing or the screensaver kicks in.
+
 A basic default `loading.png` (dark background, "Zealandata" wordmark,
 matching the app's own color palette) is included — replace it with
 your own artwork any time, it's just a static file.
