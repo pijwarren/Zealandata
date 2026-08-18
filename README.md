@@ -29,11 +29,18 @@ into it (a projector, a TV, etc.) — not streamed into your browser tab.
   showing.
 - **Poster clicks are two-step**: clicking a poster once selects it (a
   highlighted border, a filled play glyph) rather than playing immediately —
-  clicking that same poster again is what actually starts it. Clicking
-  elsewhere, or selecting a different poster, clears the selection. This is
-  meant to guard against an accidental tap while browsing/scrolling; the
-  restart and rename buttons on a poster remain single-click, since they're
-  explicit, deliberately-placed controls rather than the poster itself.
+  clicking that same poster again, or the hero's own Play button, is what
+  actually starts it. Clicking elsewhere, or selecting a different poster,
+  clears the selection. This is meant to guard against an accidental tap
+  while browsing/scrolling; the restart and rename buttons on a poster
+  remain single-click, since they're explicit, deliberately-placed controls
+  rather than the poster itself.
+- **Selecting a poster previews it in the hero area** — a full-res banner
+  image (generated on demand and cached, same as a pinned hero) plus its
+  title/category/description, so you can click through several posters and
+  read about them before deciding what to play. Clearing the selection
+  reverts the hero back to its normal pick (the pinned hero, or the most
+  recent continue-watching item, or the first item in the library).
 
 ### About the current visual design
 
@@ -418,12 +425,14 @@ pick ends, for as long as nothing's been explicitly chosen.
 ## Per-video descriptions
 
 Drop a text file with the same name as a video (`fault_lines_overview.mp4`
-+ `fault_lines_overview.txt`) and its contents show up under the title
-whenever that video is playing — handy for giving scientific/educational
-context a filename alone can't ("2016 Kaikōura earthquake aftershock
-sequence, animated over 6 weeks"). For an image sequence folder, put a
-`description.txt` *inside* the folder alongside the frames instead. Purely
-optional — videos without a matching text file just show no description.
++ `fault_lines_overview.txt`) and its contents show up over the hero image
+when that video is selected in the browse grid — handy for giving
+scientific/educational context a filename alone can't ("2016 Kaikōura
+earthquake aftershock sequence, animated over 6 weeks"). For an image
+sequence folder, put a `description.txt` *inside* the folder alongside the
+frames instead. Purely optional — videos without a matching text file just
+show no description. It's shown only while browsing (hero preview), not in
+the "now playing" dock once something's actually playing.
 
 ## Image sequences
 

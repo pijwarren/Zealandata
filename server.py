@@ -129,6 +129,12 @@ screensaver_stop_event = threading.Event()
 meta_lock = threading.Lock()
 current_media_meta = {"id": None, "title": None, "description": None, "is_sequence": False, "frame_count": None, "thumbnail": None}
 
+# Title of whatever the screensaver is currently showing -- separate from
+# current_media_meta above, which is only for a deliberate selection, so the
+# dock can display "Screensaver mode: <title>" instead of "Nothing playing".
+screensaver_meta_lock = threading.Lock()
+current_screensaver_title = None
+
 # Last time any playback-control endpoint was hit — drives the idle timeout.
 _interaction_lock = threading.Lock()
 _last_interaction = time.monotonic()
@@ -220,7 +226,7 @@ def set_hero_id(media_id):
 
 def hero_thumbnail_url(media_id):
     """The full-res hero banner image for this item, generated on demand
-    the first time it's pinned as hero (see api_set_hero) — None if it
+    the first time it's needed (see ensure_hero_thumbnail) — None if it
     hasn't been (yet)."""
     path = os.path.join(HERO_THUMB_DIR, f"{media_id}.jpg")
     return f"/hero_thumbnails/{media_id}.jpg" if os.path.exists(path) else None
@@ -494,6 +500,18 @@ def _generate_hero_thumbnail(video_path, thumb_path):
     it's stretched across the whole width of the browse page. Capped at the
     source's own width so a small source doesn't get visibly upscaled."""
     _extract_frame(video_path, thumb_path, "'min(1920,iw)':-2")
+
+
+def ensure_hero_thumbnail(media_id, video_path):
+    """Generates the full-res hero banner image for this item the first
+    time it's needed -- either pinned as hero (api_set_hero) or previewed
+    by selecting a poster in the browse grid (api_media_preview) -- and
+    reuses the cached file every time after. Returns the URL, or None if
+    generation genuinely failed (e.g. an unreadable file)."""
+    thumb_path = os.path.join(HERO_THUMB_DIR, f"{media_id}.jpg")
+    if not os.path.exists(thumb_path):
+        _generate_hero_thumbnail(video_path, thumb_path)
+    return hero_thumbnail_url(media_id)
 
 
 # ------------------------------------------------------------- mpv IPC ---
@@ -783,6 +801,9 @@ def _screensaver_loop(gen, spinner=True):
 
         if not _still_current(gen):
             return
+        global current_screensaver_title
+        with screensaver_meta_lock:
+            current_screensaver_title = pick["title"]
         # Not held under mpv_lock -- _hdmi_load checks gen itself and bails
         # the instant something newer claims the generation (a real
         # selection, a crash-restart), instead of finishing this pick's
@@ -965,12 +986,22 @@ def api_set_hero():
         match = get_media_by_id(media_id)
         if not match:
             return jsonify({"error": "not found"}), 404
-        thumb_path = os.path.join(HERO_THUMB_DIR, f"{media_id}.jpg")
-        if not os.path.exists(thumb_path):
-            _generate_hero_thumbnail(match["path"], thumb_path)
-        hero_thumbnail = hero_thumbnail_url(media_id)
+        hero_thumbnail = ensure_hero_thumbnail(media_id, match["path"])
     set_hero_id(media_id)
     return jsonify({"id": media_id, "hero_thumbnail": hero_thumbnail})
+
+
+@app.route("/api/media/<media_id>/preview")
+def api_media_preview(media_id):
+    """Generates (or reuses the cached) full-res hero banner image for an
+    item so the browse page can show it while a poster is selected but not
+    yet playing -- title/category/description are already available
+    client-side from /api/media, so this only needs to hand back the one
+    thing that requires server-side work."""
+    match = get_media_by_id(media_id)
+    if not match:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"id": media_id, "hero_thumbnail": ensure_hero_thumbnail(media_id, match["path"])})
 
 
 def check_admin_pin(candidate):
@@ -1121,8 +1152,12 @@ def api_seek_to():
 
 @app.route("/api/status")
 def api_status():
+    if current_kind == "screensaver":
+        with screensaver_meta_lock:
+            title = current_screensaver_title
+        return jsonify({"playing": False, "screensaver": True, "screensaver_title": title})
     if current_kind != "video":
-        return jsonify({"playing": False})
+        return jsonify({"playing": False, "screensaver": False})
 
     def prop(name):
         r = mpv_send({"command": ["get_property", name]})

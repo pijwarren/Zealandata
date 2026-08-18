@@ -32,7 +32,6 @@ const playerStopBtn = document.getElementById("playerStopBtn");
 const setHeroBtn = document.getElementById("setHeroBtn");
 const loopBtn = document.getElementById("loopBtn");
 const playerTitle = document.getElementById("playerTitle");
-const playerDesc = document.getElementById("playerDesc");
 const frameCounter = document.getElementById("frameCounter");
 const playerScrubControls = document.getElementById("playerScrubControls");
 const playerPos = document.getElementById("playerPos");
@@ -104,22 +103,53 @@ function wrapScroller(scroller) {
 
 const continueScrollUpdate = wrapScroller(continueGrid);
 
-// A card must be clicked once to select it (arms the play glyph), and
+// A card must be clicked once to select it (arms the play glyph and takes
+// over the hero area with a high-res preview + its description), and
 // clicked again to actually play -- avoids accidentally launching playback
-// with a stray touch/click while browsing. Selecting a different card (or
-// clicking outside all cards) clears the previous selection rather than
-// requiring an explicit deselect step.
+// with a stray touch/click while browsing, and lets you click through
+// several posters to read about them before picking one. Selecting a
+// different card swaps the preview straight to it; clicking outside all
+// cards clears the selection and reverts the hero back to its normal pick.
 let selectedCard = null;
+let previewedItem = null;
 
-function deselectCard() {
+function paintCardUnselected(card) {
+  card.classList.remove("card--selected");
+  card.setAttribute("aria-label", card.dataset.title ? `Select ${card.dataset.title}` : "Select");
+}
+
+// Only unstyles the card -- leaves the hero preview showing (used when a
+// selection resolves into actually playing, so the hero doesn't flash back
+// to the default pick right as that item starts).
+function unselectCardOnly() {
   if (!selectedCard) return;
-  selectedCard.classList.remove("card--selected");
-  selectedCard.setAttribute("aria-label", selectedCard.dataset.title ? `Select ${selectedCard.dataset.title}` : "Select");
+  paintCardUnselected(selectedCard);
   selectedCard = null;
 }
 
+function clearSelection() {
+  unselectCardOnly();
+  if (previewedItem) {
+    previewedItem = null;
+    paintHeroFromPick(lastContinueItems, allMediaItems);
+  }
+}
+
+async function showHeroPreview(item) {
+  previewedItem = item;
+  paintHero(item, item.thumbnail); // immediate, low-res -- upgraded below once ready
+  try {
+    const res = await fetch(`/api/media/${item.id}/preview`);
+    const data = await res.json();
+    if (previewedItem !== item || !data.hero_thumbnail) return; // superseded, or none generated
+    heroImg.src = data.hero_thumbnail;
+  } catch (e) {
+    // stay on the low-res thumbnail already painted above
+  }
+}
+
 document.addEventListener("click", (e) => {
-  if (selectedCard && !selectedCard.contains(e.target)) deselectCard();
+  if (selectedCard && !selectedCard.contains(e.target)) clearSelection();
 });
 
 function buildCard(item, { badge, showRestart } = {}) {
@@ -207,14 +237,14 @@ function buildCard(item, { badge, showRestart } = {}) {
 
   const activate = () => {
     if (selectedCard === card) {
-      deselectCard();
-      playItem(item);
+      playItem(item); // clears the armed selection itself
       return;
     }
-    deselectCard();
+    if (selectedCard) paintCardUnselected(selectedCard); // switching -- no hero flash in between
     selectedCard = card;
     card.classList.add("card--selected");
     card.setAttribute("aria-label", `Play ${item.title}`);
+    showHeroPreview(item);
   };
   card.addEventListener("click", activate);
   card.addEventListener("keydown", (e) => {
@@ -227,6 +257,7 @@ let allMediaItems = [];
 
 function renderCategories(items) {
   selectedCard = null; // about to be torn down along with the old cards
+  previewedItem = null; // loadMedia() repaints the hero right after this anyway
   categoryRows.innerHTML = "";
   const byCategory = new Map();
   for (const item of items) {
@@ -583,11 +614,9 @@ let currentPlayingId = null;
 // be showing.
 const dockPlaybackBtns = [seekBackBtn, seekFwdBtn, pauseBtn, loopBtn, playerStopBtn, setHeroBtn];
 
-function paintDockIdle() {
+function paintDockIdle(screensaverTitle) {
   currentPlayingId = null;
-  playerTitle.textContent = "Nothing playing";
-  playerDesc.textContent = "";
-  playerDesc.classList.add("hidden");
+  playerTitle.textContent = screensaverTitle ? `Screensaver mode: ${screensaverTitle}` : "Nothing playing";
   paintPreview(null);
   playerScrubControls.classList.add("hidden");
   frameCounter.classList.add("hidden");
@@ -599,10 +628,9 @@ function paintDockIdle() {
 }
 
 async function playItem(item, { restart = false } = {}) {
+  unselectCardOnly(); // in case this came from the hero's own Play button
   currentPlayingId = item.id;
   playerTitle.textContent = item.title;
-  playerDesc.textContent = item.description || "";
-  playerDesc.classList.toggle("hidden", !item.description);
   paintPreview(item.thumbnail);
   setSequenceMode(!!item.is_sequence, item.frame_count, 0);
   setPauseIcon(false);
@@ -719,8 +747,6 @@ async function pollStatus() {
         paintSetHeroBtn();
       }
       playerTitle.textContent = s.title || playerTitle.textContent;
-      playerDesc.textContent = s.description || "";
-      playerDesc.classList.toggle("hidden", !s.description);
       if (s.thumbnail && dockPreview.getAttribute("src") !== s.thumbnail) {
         paintPreview(s.thumbnail);
       }
@@ -742,9 +768,11 @@ async function pollStatus() {
     } else {
       if (wasPlaying) {
         wasPlaying = false;
-        paintDockIdle();
         loadMedia();
       }
+      // Repainted every tick, not just on the playing->idle edge, since the
+      // screensaver's title itself keeps changing as it picks new videos.
+      paintDockIdle(s.screensaver ? s.screensaver_title : null);
     }
   } catch (e) {
     // Pi may be mid-restart of mpv; ignore transient errors
