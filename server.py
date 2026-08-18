@@ -48,6 +48,7 @@ MEDIA_DIR = os.environ.get("ZEALANDATA_MEDIA_DIR", "/home/pi/media")
 THUMB_DIR = os.path.join(BASE_DIR, "static", "thumbnails")
 SEQUENCE_CACHE_DIR = os.path.join(BASE_DIR, "static", "sequence_cache")
 PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
+HERO_FILE = os.path.join(BASE_DIR, "hero.json")
 
 MPV_SOCKET = "/tmp/zealandata-mpv.sock"
 SCREENSAVER_SOCKET = "/tmp/zealandata-screensaver.sock"
@@ -87,10 +88,12 @@ SHOW_OUTPUT_TOGGLE = os.environ.get("ZEALANDATA_SHOW_OUTPUT_TOGGLE", "0") == "1"
 SCREENSAVER_ENABLED = os.environ.get("ZEALANDATA_SCREENSAVER_ENABLED", "0") == "1"
 SCREENSAVER_MUTED = os.environ.get("ZEALANDATA_SCREENSAVER_MUTED", "1") == "1"
 
-# When someone picks a video, loop it indefinitely instead of falling back
-# to the random screensaver after one play-through. Screensaver picks are
-# never looped individually — this only applies to a deliberate selection.
-LOOP_SELECTED_VIDEO = os.environ.get("ZEALANDATA_LOOP_SELECTED", "1") == "1"
+# Default behavior when a selected video reaches the end: mpv pauses on the
+# last frame (see --keep-open=yes below), so it can be scrubbed back and
+# forth rather than the screensaver kicking back in automatically. Set this
+# to loop the video indefinitely instead — screensaver picks are never
+# looped individually either way, only a deliberate selection.
+LOOP_SELECTED_VIDEO = os.environ.get("ZEALANDATA_LOOP_SELECTED", "0") == "1"
 
 # If something's left PAUSED (not stopped) for this long with no further
 # interaction, automatically stop it and fall back to the screensaver.
@@ -160,6 +163,7 @@ _last_interaction = time.monotonic()
 _media_cache = {"items": None, "mtime": 0}
 
 progress_lock = threading.Lock()
+hero_lock = threading.Lock()
 
 # ------------------------------------------------------------ progress ---
 
@@ -212,6 +216,27 @@ def clear_progress(media_id):
         store = _load_progress()
         if store.pop(media_id, None) is not None:
             _save_progress_store(store)
+
+
+def get_hero_id():
+    """The explicitly-pinned hero item's ID, if one's been set — None means
+    the frontend should fall back to its own automatic pick (most recent
+    continue-watching item, else the first item of the first category)."""
+    if not os.path.exists(HERO_FILE):
+        return None
+    try:
+        with open(HERO_FILE, "r") as f:
+            return json.load(f).get("id")
+    except (json.JSONDecodeError, OSError):
+        return None
+
+
+def set_hero_id(media_id):
+    with hero_lock:
+        tmp = HERO_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"id": media_id}, f)
+        os.replace(tmp, HERO_FILE)
 
 
 # ------------------------------------------------------------- scanning ---
@@ -868,7 +893,12 @@ def _start_mpv_playback(match, resume_seconds, loop=None, _retry_count=0):
 
         cmd = [
             "mpv", "--fs", "--hwdec=auto", f"--input-ipc-server={MPV_SOCKET}",
-            "--osc=no", "--msg-level=all=error", "--keep-open=no",
+            "--osc=no", "--msg-level=all=error",
+            # Default behavior: hold on the last frame when a video ends
+            # (mpv pauses instead of exiting), rather than looping or
+            # closing — keeps it scrubbable back and forth afterward.
+            # --loop-file below overrides this when explicitly enabled.
+            "--keep-open=yes",
         ]
         if USE_DRM:
             cmd += ["--vo=gpu", "--gpu-context=drm"]
@@ -984,6 +1014,53 @@ def api_set_output_mode():
     })
 
 
+def _is_foreground_playing():
+    """True if something's been explicitly selected and is playing/paused —
+    as opposed to the screensaver's own ambient picks, which are tracked
+    completely separately and don't count here."""
+    if OUTPUT_MODE == "ndi":
+        with ndi_lock:
+            return ndi_state["media_id"] is not None
+    return _mpv_is_running()
+
+
+@app.route("/api/screensaver", methods=["GET"])
+def api_get_screensaver():
+    return jsonify({"enabled": SCREENSAVER_ENABLED})
+
+
+@app.route("/api/screensaver", methods=["POST"])
+def api_set_screensaver():
+    global SCREENSAVER_ENABLED
+    body = request.get_json(silent=True) or {}
+    enabled = bool(body.get("enabled"))
+    SCREENSAVER_ENABLED = enabled
+    if not enabled:
+        stop_screensaver()
+    elif not _is_foreground_playing():
+        # turn on and nothing's currently selected -> start it right away
+        # rather than waiting for the next natural idle transition
+        start_screensaver()
+    return jsonify({"enabled": SCREENSAVER_ENABLED})
+
+
+@app.route("/api/hero", methods=["GET"])
+def api_get_hero():
+    return jsonify({"id": get_hero_id()})
+
+
+@app.route("/api/hero", methods=["POST"])
+def api_set_hero():
+    """Pin a specific item as the browse page's featured hero. Pass
+    {"id": null} to clear it and go back to the automatic pick."""
+    body = request.get_json(silent=True) or {}
+    media_id = body.get("id")
+    if media_id is not None and not get_media_by_id(media_id):
+        return jsonify({"error": "not found"}), 404
+    set_hero_id(media_id)
+    return jsonify({"id": media_id})
+
+
 @app.route("/api/play/<media_id>", methods=["POST"])
 def api_play(media_id):
     _mark_interaction()
@@ -1093,12 +1170,14 @@ def api_status():
                 is_sequence = current_media_meta.get("is_sequence", False)
                 frame_count = current_media_meta.get("frame_count")
                 thumbnail = current_media_meta.get("thumbnail")
+                media_id = current_media_meta.get("id")
             return jsonify({
                 "playing": True,
                 "position": _ndi_get_position(),
                 "duration": ndi_state["duration"],
                 "paused": ndi_state["paused"],
                 "filename": ndi_state["title"],
+                "id": media_id,
                 "title": title,
                 "description": description,
                 "is_sequence": is_sequence,
@@ -1121,6 +1200,7 @@ def api_status():
         is_sequence = current_media_meta.get("is_sequence", False)
         frame_count = current_media_meta.get("frame_count")
         thumbnail = current_media_meta.get("thumbnail")
+        media_id = current_media_meta.get("id")
 
     return jsonify(
         {
@@ -1128,6 +1208,7 @@ def api_status():
             "position": prop("time-pos"),
             "duration": prop("duration"),
             "paused": prop("pause"),
+            "id": media_id,
             "filename": prop("filename"),
             "title": title,
             "description": description,

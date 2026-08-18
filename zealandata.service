@@ -14,9 +14,9 @@ Environment=ZEALANDATA_USE_DRM=1
 # Environment=ZEALANDATA_DISPLAY=:0
 Environment=ZEALANDATA_SCREENSAVER_ENABLED=0
 # Environment=ZEALANDATA_SCREENSAVER_MUTED=1
-# Loop a selected video indefinitely instead of falling back to the random
-# screensaver after one play-through. On by default.
-Environment=ZEALANDATA_LOOP_SELECTED=1
+# When a video ends: pause on the last frame (scrubbable) by default, or
+# loop indefinitely instead if set to 1. Off (0) by default.
+# Environment=ZEALANDATA_LOOP_SELECTED=1
 # If something's left PAUSED (not stopped) this long with no interaction,
 # auto-stop it and return to the screensaver. Off by default; 300 = 5 min.
 Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=0

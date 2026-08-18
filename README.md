@@ -19,8 +19,37 @@ into it (a projector, a TV, etc.) — not streamed into your browser tab.
   output. It talks to mpv afterwards over mpv's JSON IPC socket to
   pause/seek/stop, and to read back playback position for the progress bar.
 - The web page (`templates/index.html`, `static/app.js`, `static/style.css`)
-  is a poster grid + a "now playing" dock bar, polling `/api/status` once a
-  second to stay in sync.
+  is a hero banner + poster rows + a persistent "now playing" dock bar,
+  polling `/api/status` once a second to stay in sync.
+
+### About the current visual design
+
+The UI (colors, hero banner, settings drawer) is ported from a design built
+in Claude Design. A few deliberate deviations from
+that source design, worth knowing if you're comparing against it:
+
+- **Poster aspect ratio is square (1:1)**, not the 16:9 the design file
+  specifies — kept square on purpose to match the physical 3D-printed
+  terrain output rather than the literal import. One line in
+  `static/style.css` (`.card { aspect-ratio: ... }`) flips it back to 16/9
+  if you'd rather match the source design exactly.
+- **No external fonts.** The design pulls "Inter" from Google Fonts CDN;
+  this Pi never has internet access (ad-hoc wifi hotspot), so a system font
+  stack approximating it is used instead.
+- **"More Info" button omitted** from the hero — the design included one,
+  but there's no secondary info view to link it to yet, so it'd be a dead
+  button. Easy to add if a real use for it comes up.
+- **The "now playing" surface is the original floating dock bar, not the
+  design's full-screen takeover** — restyled with the new color system and
+  components, but kept as a persistent bottom bar rather than a modal view.
+  This was a deliberate choice after trying the full-screen version: a
+  floating dock lets you keep browsing the library while glancing at
+  what's currently playing, which matters more for a control-tablet
+  workflow than the more cinematic full-screen treatment. The design's
+  hero banner and settings drawer are otherwise unchanged from the import.
+- **Idle screensaver is now live-toggleable** from Settings, not just an
+  env var at startup — the design's settings panel included this control,
+  so the backend gained a small `/api/screensaver` GET/POST pair to back it.
 
 ## 1. Install dependencies on the Pi
 
@@ -234,16 +263,38 @@ it resumes ~3 seconds before where you left off. Once you cross that last
 Progress is tracked per file path, shared by everyone on the network (this
 is a single shared Pi + projector, not a multi-user login system).
 
-## Looping the selected video
+## Pinning a hero video
 
-By default (`ZEALANDATA_LOOP_SELECTED=1`), once someone picks a video it
-loops indefinitely rather than falling back to the random screensaver after
-one play-through — useful for something like a seismic animation meant to
-run continuously once chosen. It keeps looping until someone picks
-something else, hits stop, or the idle timeout (below) kicks in. Set it to
-`0` to go back to "play once, then screensaver" instead. This only applies
-to a deliberate selection — the screensaver's own random picks are never
-looped individually, since that's what keeps the shuffle actually shuffling.
+The banner at the top of the browse page normally picks itself — the most
+recent Continue Watching item, or the first item of the first category if
+nothing's in progress. The ★ button in the now-playing dock lets you
+override that: while something's playing, tap it to pin that item as the
+hero permanently (tap again to unpin and go back to the automatic pick).
+Persists across restarts (stored in `hero.json`, gitignored like
+`progress.json`). If the pinned file is later removed from the library, it
+just falls back to the automatic pick again rather than showing nothing.
+
+## What happens when a video ends
+
+By default (`ZEALANDATA_LOOP_SELECTED=0`), when a selected video reaches
+the end, mpv pauses on the last frame rather than looping or falling back
+to the screensaver — the scrub bar, seek buttons, and (for sequences)
+frame-stepping all keep working normally on that final frame, so you can
+scrub back into the video freely. It stays there until someone picks
+something else, hits stop, or the idle timeout (below) fires.
+
+Set `ZEALANDATA_LOOP_SELECTED=1` to loop the video indefinitely instead —
+useful for something like a seismic animation meant to run continuously
+once chosen. Either way, this only applies to a deliberate selection — the
+screensaver's own random picks are never looped or held open, since
+finishing normally is what lets the shuffle keep shuffling.
+
+**NDI mode can't truly replicate the "pause on last frame" behavior.**
+ffmpeg (the NDI backend) has no equivalent to mpv's `--keep-open` — when a
+video finishes without looping in NDI mode, the process simply ends and it
+falls back to the screensaver, the same as it always did. This mismatch is
+low-priority for this deployment specifically, since the plan is straight
+HDMI output with pre-warped exports, but worth knowing if that changes.
 
 If mpv ever exits unexpectedly while a video is supposed to be looping —
 observed occasionally with very short clips — it's automatically

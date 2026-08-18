@@ -1,30 +1,53 @@
-const grid = document.getElementById("categoryRows");
-const emptyEl = document.getElementById("empty");
-const continueRow = document.getElementById("continueRow");
-const continueGrid = document.getElementById("continueGrid");
-const dock = document.getElementById("dock");
-const dockTitle = document.getElementById("dockTitle");
-const dockNdiBadge = document.getElementById("dockNdiBadge");
-const dockDescription = document.getElementById("dockDescription");
-const dockPos = document.getElementById("dockPos");
-const dockPreviewWrap = document.getElementById("dockPreviewWrap");
-const dockPreview = document.getElementById("dockPreview");
-const dockDur = document.getElementById("dockDur");
-const dockTime = document.getElementById("dockTime");
-const dockFrameCounter = document.getElementById("dockFrameCounter");
-const dockBar = document.getElementById("dockBar");
-const dockBarFill = document.getElementById("dockBarFill");
-const dockBarHandle = document.getElementById("dockBarHandle");
-const btnPause = document.getElementById("btnPause");
-const btnSeekBack = document.getElementById("btnSeekBack");
-const btnSeekFwd = document.getElementById("btnSeekFwd");
-const btnFrameBack = document.getElementById("btnFrameBack");
-const btnFrameFwd = document.getElementById("btnFrameFwd");
-const rescanBtn = document.getElementById("rescanBtn");
+// ---------------------------------------------------------------- DOM refs
+const topbarScreensaverTag = document.getElementById("screensaverTag");
+const settingsBtn = document.getElementById("settingsBtn");
+const settingsCloseBtn = document.getElementById("settingsCloseBtn");
+const settingsScrim = document.getElementById("settingsScrim");
+const settingsDrawer = document.getElementById("settingsDrawer");
+const outputField = document.getElementById("outputField");
 const outputHdmiBtn = document.getElementById("outputHdmiBtn");
 const outputNdiBtn = document.getElementById("outputNdiBtn");
 const outputNdiWarn = document.getElementById("outputNdiWarn");
-const outputToggle = document.getElementById("outputToggle");
+const screensaverOnBtn = document.getElementById("screensaverOnBtn");
+const screensaverOffBtn = document.getElementById("screensaverOffBtn");
+const rescanBtn = document.getElementById("rescanBtn");
+
+const heroSection = document.getElementById("heroSection");
+const heroImg = document.getElementById("heroImg");
+const heroCategory = document.getElementById("heroCategory");
+const heroTitle = document.getElementById("heroTitle");
+const heroDesc = document.getElementById("heroDesc");
+const heroPlayBtn = document.getElementById("heroPlayBtn");
+
+const emptyEl = document.getElementById("empty");
+const continueRow = document.getElementById("continueRow");
+const continueGrid = document.getElementById("continueGrid");
+const categoryRows = document.getElementById("categoryRows");
+
+const dock = document.getElementById("dock");
+const dockPreviewWrap = document.getElementById("dockPreviewWrap");
+const dockPreview = document.getElementById("dockPreview");
+const playerStopBtn = document.getElementById("playerStopBtn");
+const setHeroBtn = document.getElementById("setHeroBtn");
+const playerNdiBadge = document.getElementById("playerNdiBadge");
+const playerTitle = document.getElementById("playerTitle");
+const playerDesc = document.getElementById("playerDesc");
+const frameBackBtn = document.getElementById("frameBackBtn");
+const frameFwdBtn = document.getElementById("frameFwdBtn");
+const frameCounter = document.getElementById("frameCounter");
+const playerScrubControls = document.getElementById("playerScrubControls");
+const playerPos = document.getElementById("playerPos");
+const playerDur = document.getElementById("playerDur");
+const scrubBar = document.getElementById("scrubBar");
+const scrubFill = document.getElementById("scrubFill");
+const scrubHandle = document.getElementById("scrubHandle");
+const seekBackBtn = document.getElementById("seekBackBtn");
+const seekFwdBtn = document.getElementById("seekFwdBtn");
+const pauseBtn = document.getElementById("pauseBtn");
+const iconPlay = document.getElementById("iconPlay");
+const iconPause = document.getElementById("iconPause");
+
+// ------------------------------------------------------------- utilities
 
 function fmtTime(s) {
   if (s == null || isNaN(s)) return "0:00";
@@ -34,97 +57,13 @@ function fmtTime(s) {
   return `${m}:${sec}`;
 }
 
-async function loadMedia() {
-  const [mediaRes, continueRes] = await Promise.all([
-    fetch("/api/media"),
-    fetch("/api/continue-watching"),
-  ]);
-  renderGrid(await mediaRes.json());
-  renderContinueRow(await continueRes.json());
+function setPauseIcon(paused) {
+  iconPlay.classList.toggle("hidden", !paused);
+  iconPause.classList.toggle("hidden", paused);
+  pauseBtn.setAttribute("aria-label", paused ? "Play" : "Pause");
 }
 
-function buildCard(item, { badge, showRestart } = {}) {
-  const card = document.createElement("div");
-  card.className = "card";
-  card.tabIndex = 0;
-  card.setAttribute("role", "button");
-  card.setAttribute("aria-label", `Play ${item.title}`);
-
-  const thumbWrap = document.createElement("div");
-  thumbWrap.className = "card__frame";
-  if (item.thumbnail) {
-    const img = document.createElement("img");
-    img.className = "card__thumb";
-    img.src = item.thumbnail;
-    img.alt = "";
-    img.loading = "lazy";
-    thumbWrap.appendChild(img);
-  } else {
-    const ph = document.createElement("div");
-    ph.className = "card__thumb card__thumb--placeholder";
-    ph.textContent = "🎞";
-    thumbWrap.appendChild(ph);
-  }
-
-  const glow = document.createElement("div");
-  glow.className = "card__glow";
-  thumbWrap.appendChild(glow);
-
-  const scrim = document.createElement("div");
-  scrim.className = "card__scrim";
-  thumbWrap.appendChild(scrim);
-
-  const playGlyph = document.createElement("div");
-  playGlyph.className = "card__play";
-  playGlyph.textContent = "▶";
-  thumbWrap.appendChild(playGlyph);
-
-  if (badge) {
-    const b = document.createElement("div");
-    b.className = "card__resume-badge";
-    b.textContent = badge;
-    thumbWrap.appendChild(b);
-  }
-
-  if (showRestart) {
-    const r = document.createElement("button");
-    r.className = "card__restart";
-    r.title = "Start over from the beginning";
-    r.setAttribute("aria-label", `Restart ${item.title} from the beginning`);
-    r.textContent = "↺";
-    r.addEventListener("click", (e) => {
-      e.stopPropagation();
-      playItem(item, { restart: true });
-    });
-    thumbWrap.appendChild(r);
-  }
-
-  if (item.progress && item.progress.duration) {
-    const bar = document.createElement("div");
-    bar.className = "card__progress";
-    const fill = document.createElement("div");
-    fill.className = "card__progress-fill";
-    const pct = Math.min(100, (item.progress.position / item.progress.duration) * 100);
-    fill.style.width = `${pct}%`;
-    bar.appendChild(fill);
-    thumbWrap.appendChild(bar);
-  }
-
-  const title = document.createElement("div");
-  title.className = "card__title";
-  title.textContent = item.title;
-  thumbWrap.appendChild(title);
-
-  card.appendChild(thumbWrap);
-
-  const play = () => playItem(item);
-  card.addEventListener("click", play);
-  card.addEventListener("keydown", (e) => {
-    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); play(); }
-  });
-
-  return card;
-}
+// ------------------------------------------------------------- row cards
 
 function wrapScroller(scroller) {
   const viewport = document.createElement("div");
@@ -166,27 +105,96 @@ function wrapScroller(scroller) {
 
 const continueScrollUpdate = wrapScroller(continueGrid);
 
-function renderGrid(items) {
-  grid.innerHTML = "";
-  emptyEl.classList.toggle("hidden", items.length > 0);
-  if (items.length === 0) return;
+function buildCard(item, { badge, showRestart } = {}) {
+  const card = document.createElement("div");
+  card.className = "card";
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute("aria-label", `Play ${item.title}`);
 
+  const thumbWrap = document.createElement("div");
+  thumbWrap.className = "card__frame";
+  if (item.thumbnail) {
+    const img = document.createElement("img");
+    img.className = "card__thumb";
+    img.src = item.thumbnail;
+    img.alt = "";
+    img.loading = "lazy";
+    thumbWrap.appendChild(img);
+  } else {
+    const ph = document.createElement("div");
+    ph.className = "card__thumb card__thumb--placeholder";
+    ph.textContent = "🎞";
+    thumbWrap.appendChild(ph);
+  }
+
+  const scrim = document.createElement("div");
+  scrim.className = "card__scrim";
+  thumbWrap.appendChild(scrim);
+
+  const playGlyph = document.createElement("div");
+  playGlyph.className = "card__play";
+  playGlyph.textContent = "▶";
+  thumbWrap.appendChild(playGlyph);
+
+  if (badge) {
+    const b = document.createElement("div");
+    b.className = "card__resume-badge";
+    b.textContent = badge;
+    thumbWrap.appendChild(b);
+  }
+
+  if (showRestart) {
+    const r = document.createElement("button");
+    r.className = "card__restart";
+    r.title = "Start over from the beginning";
+    r.setAttribute("aria-label", `Restart ${item.title} from the beginning`);
+    r.textContent = "↺";
+    r.addEventListener("click", (e) => {
+      e.stopPropagation();
+      playItem(item, { restart: true });
+    });
+    thumbWrap.appendChild(r);
+  }
+
+  if (item.progress && item.progress.duration) {
+    const bar = document.createElement("div");
+    bar.className = "card__progress";
+    const fill = document.createElement("div");
+    fill.className = "card__progress-fill";
+    fill.style.width = `${Math.min(100, (item.progress.position / item.progress.duration) * 100)}%`;
+    bar.appendChild(fill);
+    thumbWrap.appendChild(bar);
+  }
+
+  const title = document.createElement("div");
+  title.className = "card__title";
+  title.textContent = item.title;
+  thumbWrap.appendChild(title);
+
+  card.appendChild(thumbWrap);
+  card.addEventListener("click", () => playItem(item));
+  card.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); playItem(item); }
+  });
+  return card;
+}
+
+let allMediaItems = [];
+
+function renderCategories(items) {
+  categoryRows.innerHTML = "";
   const byCategory = new Map();
   for (const item of items) {
     const cat = item.category || "Uncategorized";
     if (!byCategory.has(cat)) byCategory.set(cat, []);
     byCategory.get(cat).push(item);
   }
-
-  // If everything lives loose at the top of the media folder (no
-  // subfolders used at all), just show one plain "Library" shelf
-  // instead of a single row oddly labeled "Uncategorized".
-  const categoryNames = [...byCategory.keys()];
-  const onlyFlat = categoryNames.length === 1 && categoryNames[0] === "Uncategorized";
-
+  const names = [...byCategory.keys()];
+  const onlyFlat = names.length === 1 && names[0] === "Uncategorized";
   const sortedNames = onlyFlat
-    ? categoryNames
-    : categoryNames.sort((a, b) => {
+    ? names
+    : names.sort((a, b) => {
         if (a === "Uncategorized") return 1;
         if (b === "Uncategorized") return -1;
         return a.localeCompare(b);
@@ -204,13 +212,11 @@ function renderGrid(items) {
 
     const scroller = document.createElement("div");
     scroller.className = "row__scroller";
-    for (const item of byCategory.get(name)) {
-      scroller.appendChild(buildCard(item));
-    }
+    for (const item of byCategory.get(name)) scroller.appendChild(buildCard(item));
     section.appendChild(scroller);
     wrapScroller(scroller);
 
-    grid.appendChild(section);
+    categoryRows.appendChild(section);
   }
 }
 
@@ -223,43 +229,187 @@ function renderContinueRow(items) {
     continueGrid.appendChild(buildCard(item, { badge, showRestart: true }));
   }
   continueScrollUpdate();
+  return items;
 }
+
+// ------------------------------------------------------------------ hero
+
+function paintHero(item) {
+  if (!item) {
+    heroSection.classList.add("hidden");
+    return;
+  }
+  heroSection.classList.remove("hidden");
+  if (item.thumbnail) heroImg.src = item.thumbnail;
+  heroCategory.textContent = item.category || "";
+  heroTitle.textContent = item.title;
+  heroDesc.textContent = item.description || "";
+  heroDesc.classList.toggle("hidden", !item.description);
+  heroPlayBtn.onclick = () => playItem(item);
+}
+
+function pickHero(continueItems, allItems, explicitHeroId) {
+  if (explicitHeroId) {
+    const pinned = allItems.find((i) => i.id === explicitHeroId);
+    if (pinned) return pinned;
+  }
+  if (continueItems.length > 0) return continueItems[0];
+  if (allItems.length > 0) return allItems[0];
+  return null;
+}
+
+// --------------------------------------------------------------- loading
+
+let pinnedHeroId = null;
+let lastContinueItems = [];
+
+async function loadMedia() {
+  const [mediaRes, continueRes] = await Promise.all([
+    fetch("/api/media"),
+    fetch("/api/continue-watching"),
+  ]);
+  const items = await mediaRes.json();
+  const continueItems = await continueRes.json();
+
+  allMediaItems = items;
+  lastContinueItems = continueItems;
+  emptyEl.classList.toggle("hidden", items.length > 0);
+  renderCategories(items);
+  renderContinueRow(continueItems);
+  paintHero(pickHero(continueItems, items, pinnedHeroId));
+  paintSetHeroBtn();
+}
+
+async function loadHeroPreference() {
+  const res = await fetch("/api/hero");
+  const data = await res.json();
+  pinnedHeroId = data.id || null;
+}
+
+function paintSetHeroBtn() {
+  const isPinned = !!currentPlayingId && currentPlayingId === pinnedHeroId;
+  setHeroBtn.classList.toggle("active", isPinned);
+  setHeroBtn.title = isPinned
+    ? "Unset as hero video (back to automatic pick)"
+    : "Set as hero video";
+}
+
+setHeroBtn.addEventListener("click", async () => {
+  if (!currentPlayingId) return;
+  const nextId = pinnedHeroId === currentPlayingId ? null : currentPlayingId;
+  const res = await fetch("/api/hero", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id: nextId }),
+  });
+  const data = await res.json();
+  pinnedHeroId = data.id || null;
+  paintSetHeroBtn();
+  // repaint the hero banner immediately using the freshest pick, without
+  // needing a full reload
+  paintHero(pickHero(lastContinueItems, allMediaItems, pinnedHeroId));
+});
+
+// -------------------------------------------------------------- settings
+
+function openSettings() {
+  settingsScrim.classList.remove("hidden");
+  settingsDrawer.classList.remove("hidden");
+}
+function closeSettings() {
+  settingsScrim.classList.add("hidden");
+  settingsDrawer.classList.add("hidden");
+}
+settingsBtn.addEventListener("click", openSettings);
+settingsCloseBtn.addEventListener("click", closeSettings);
+settingsScrim.addEventListener("click", closeSettings);
+
+function paintOutputToggle(mode, ndiBinaryFound) {
+  outputHdmiBtn.classList.toggle("active", mode === "hdmi");
+  outputNdiBtn.classList.toggle("active", mode === "ndi");
+  outputNdiWarn.classList.toggle("hidden", ndiBinaryFound !== false);
+}
+
+async function loadOutputMode() {
+  const res = await fetch("/api/output_mode");
+  const data = await res.json();
+  outputField.classList.toggle("hidden", !data.switchable);
+  paintOutputToggle(data.mode, data.ndi_binary_found);
+  return data.mode;
+}
+
+async function switchOutputMode(mode) {
+  if (outputHdmiBtn.classList.contains("active") && mode === "hdmi") return;
+  if (outputNdiBtn.classList.contains("active") && mode === "ndi") return;
+  const somethingPlaying = !dock.classList.contains("hidden");
+  if (somethingPlaying) {
+    const ok = confirm(`Switching to ${mode.toUpperCase()} output will stop what's currently playing. Continue?`);
+    if (!ok) return;
+  }
+  const res = await fetch("/api/output_mode", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ mode }),
+  });
+  const data = await res.json();
+  paintOutputToggle(data.mode, data.ndi_binary_found);
+  hideDock();
+  loadMedia();
+}
+outputHdmiBtn.addEventListener("click", () => switchOutputMode("hdmi"));
+outputNdiBtn.addEventListener("click", () => switchOutputMode("ndi"));
+
+function paintScreensaverToggle(enabled) {
+  screensaverOnBtn.classList.toggle("active", enabled);
+  screensaverOffBtn.classList.toggle("active", !enabled);
+  topbarScreensaverTag.classList.toggle("hidden", !enabled);
+}
+async function loadScreensaverState() {
+  const res = await fetch("/api/screensaver");
+  const data = await res.json();
+  paintScreensaverToggle(data.enabled);
+}
+async function setScreensaver(enabled) {
+  const res = await fetch("/api/screensaver", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+  });
+  const data = await res.json();
+  paintScreensaverToggle(data.enabled);
+}
+screensaverOnBtn.addEventListener("click", () => setScreensaver(true));
+screensaverOffBtn.addEventListener("click", () => setScreensaver(false));
+
+rescanBtn.addEventListener("click", async () => {
+  rescanBtn.textContent = "Scanning…";
+  await fetch("/api/rescan", { method: "POST" });
+  await loadMedia();
+  rescanBtn.textContent = "Rescan library";
+});
+
+// ----------------------------------------------------------------------
+// Sequence (frame-step) mode
 
 let currentFrameCount = null;
 
 function setSequenceMode(isSequence, frameCount, frameNumber) {
   currentFrameCount = isSequence ? frameCount : null;
-  dockTime.classList.toggle("hidden", isSequence);
-  dockFrameCounter.classList.toggle("hidden", !isSequence);
-  btnSeekBack.classList.toggle("hidden", isSequence);
-  btnSeekFwd.classList.toggle("hidden", isSequence);
-  btnFrameBack.classList.toggle("hidden", !isSequence);
-  btnFrameFwd.classList.toggle("hidden", !isSequence);
-  if (isSequence) {
-    paintFrameCounter(frameNumber);
-  }
+  playerScrubControls.classList.toggle("hidden", isSequence);
+  frameCounter.classList.toggle("hidden", !isSequence);
+  frameBackBtn.classList.toggle("hidden", !isSequence);
+  frameFwdBtn.classList.toggle("hidden", !isSequence);
+  if (isSequence) paintFrameCounter(frameNumber);
 }
 
 function paintFrameCounter(frameNumber) {
   const shown = frameNumber != null ? frameNumber + 1 : "—";
   const total = currentFrameCount != null ? currentFrameCount : "—";
-  dockFrameCounter.textContent = `Frame ${shown} of ${total}`;
+  frameCounter.textContent = `Frame ${shown} of ${total}`;
 }
 
-async function playItem(item, { restart = false } = {}) {
-  dockTitle.textContent = item.title;
-  dockDescription.textContent = item.description || "";
-  dockDescription.classList.toggle("hidden", !item.description);
-  setSequenceMode(!!item.is_sequence, item.frame_count, 0);
-  paintPreview(item.thumbnail);
-  dock.classList.remove("hidden");
-  setPauseIcon(false);
-  await fetch(`/api/play/${item.id}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ restart }),
-  });
-}
+// ----------------------------------------------------------------------
+// Player (full-screen "now playing")
 
 function paintPreview(thumbnail) {
   if (thumbnail) {
@@ -271,103 +421,73 @@ function paintPreview(thumbnail) {
   }
 }
 
+let currentPlayingId = null;
+
+async function playItem(item, { restart = false } = {}) {
+  currentPlayingId = item.id;
+  playerTitle.textContent = item.title;
+  playerDesc.textContent = item.description || "";
+  playerDesc.classList.toggle("hidden", !item.description);
+  paintPreview(item.thumbnail);
+  setSequenceMode(!!item.is_sequence, item.frame_count, 0);
+  setPauseIcon(false);
+  paintSetHeroBtn();
+  dock.classList.remove("hidden");
+
+  await fetch(`/api/play/${item.id}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ restart }),
+  });
+}
+
+function hideDock() {
+  dock.classList.add("hidden");
+  paintPreview(null);
+  currentPlayingId = null;
+}
+
+async function stopPlayback() {
+  await control("stop");
+  hideDock();
+  setTimeout(loadMedia, 600);
+}
+
+playerStopBtn.addEventListener("click", stopPlayback);
+
 async function control(action) {
   return fetch(`/api/control/${action}`, { method: "POST" }).then((r) => r.json());
 }
 
-function setPauseIcon(paused) {
-  btnPause.textContent = paused ? "▶" : "❚❚";
-  btnPause.title = paused ? "Play" : "Pause";
-}
-
-btnPause.addEventListener("click", async () => {
+pauseBtn.addEventListener("click", async () => {
   const res = await control("pause");
-  if (res && typeof res.paused === "boolean") {
-    setPauseIcon(res.paused);
-  }
+  if (res && typeof res.paused === "boolean") setPauseIcon(res.paused);
 });
-btnSeekBack.addEventListener("click", () => control("seek_backward"));
-btnSeekFwd.addEventListener("click", () => control("seek_forward"));
-btnFrameBack.addEventListener("click", async () => {
+seekBackBtn.addEventListener("click", () => control("seek_backward"));
+seekFwdBtn.addEventListener("click", () => control("seek_forward"));
+frameBackBtn.addEventListener("click", async () => {
   const res = await control("frame_backward");
-  setPauseIcon(true); // frame-stepping always leaves mpv paused
+  setPauseIcon(true);
   if (res && res.frame_number != null) paintFrameCounter(res.frame_number);
 });
-btnFrameFwd.addEventListener("click", async () => {
+frameFwdBtn.addEventListener("click", async () => {
   const res = await control("frame_forward");
   setPauseIcon(true);
   if (res && res.frame_number != null) paintFrameCounter(res.frame_number);
 });
-document.getElementById("btnStop").addEventListener("click", async () => {
-  await control("stop");
-  dock.classList.add("hidden");
-  setTimeout(loadMedia, 600);
-});
 
-rescanBtn.addEventListener("click", async () => {
-  rescanBtn.textContent = "Scanning…";
-  await fetch("/api/rescan", { method: "POST" });
-  await loadMedia();
-  rescanBtn.textContent = "Rescan";
-});
-
-// -------------------------------------------------------- output toggle ---
-
-function paintOutputToggle(mode, ndiBinaryFound) {
-  outputHdmiBtn.classList.toggle("active", mode === "hdmi");
-  outputNdiBtn.classList.toggle("active", mode === "ndi");
-  outputNdiWarn.classList.toggle("hidden", ndiBinaryFound !== false);
-}
-
-async function loadOutputMode() {
-  const res = await fetch("/api/output_mode");
-  const data = await res.json();
-  paintOutputToggle(data.mode, data.ndi_binary_found);
-  outputToggle.classList.toggle("hidden", !data.switchable);
-  return data.mode;
-}
-
-async function switchOutputMode(mode) {
-  if (outputHdmiBtn.classList.contains("active") && mode === "hdmi") return;
-  if (outputNdiBtn.classList.contains("active") && mode === "ndi") return;
-
-  const somethingPlaying = !dock.classList.contains("hidden");
-  if (somethingPlaying) {
-    const ok = confirm(`Switching to ${mode.toUpperCase()} output will stop what's currently playing. Continue?`);
-    if (!ok) return;
-  }
-
-  const res = await fetch("/api/output_mode", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
-  });
-  const data = await res.json();
-  paintOutputToggle(data.mode, data.ndi_binary_found);
-  dock.classList.add("hidden");
-  loadMedia(); // refresh continue-watching in case a position was just saved
-}
-
-outputHdmiBtn.addEventListener("click", () => switchOutputMode("hdmi"));
-outputNdiBtn.addEventListener("click", () => switchOutputMode("ndi"));
-
-// ------------------------------------------------------- scrub bar drag ---
-
+// scrub bar drag
 let knownDuration = 0;
 let scrubbing = false;
-
 function fracFromEvent(e) {
-  const rect = dockBar.getBoundingClientRect();
+  const rect = scrubBar.getBoundingClientRect();
   const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  const frac = (clientX - rect.left) / rect.width;
-  return Math.min(1, Math.max(0, frac));
+  return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
 }
-
-function paintBar(frac) {
-  dockBarFill.style.width = `${frac * 100}%`;
-  dockBarHandle.style.left = `${frac * 100}%`;
+function paintScrub(frac) {
+  scrubFill.style.width = `${frac * 100}%`;
+  scrubHandle.style.left = `${frac * 100}%`;
 }
-
 async function seekToFraction(frac) {
   if (!knownDuration) return;
   await fetch("/api/seek_to", {
@@ -376,35 +496,34 @@ async function seekToFraction(frac) {
     body: JSON.stringify({ seconds: knownDuration * frac }),
   });
 }
-
 function startScrub(e) {
   if (!knownDuration) return;
   scrubbing = true;
   const frac = fracFromEvent(e);
-  paintBar(frac);
-  dockPos.textContent = fmtTime(knownDuration * frac);
+  paintScrub(frac);
+  playerPos.textContent = fmtTime(knownDuration * frac);
 }
 function moveScrub(e) {
   if (!scrubbing) return;
   const frac = fracFromEvent(e);
-  paintBar(frac);
-  dockPos.textContent = fmtTime(knownDuration * frac);
+  paintScrub(frac);
+  playerPos.textContent = fmtTime(knownDuration * frac);
 }
 async function endScrub(e) {
   if (!scrubbing) return;
   scrubbing = false;
-  const frac = fracFromEvent(e);
-  await seekToFraction(frac);
+  await seekToFraction(fracFromEvent(e));
 }
-
-dockBar.addEventListener("mousedown", startScrub);
+scrubBar.addEventListener("mousedown", startScrub);
 window.addEventListener("mousemove", moveScrub);
 window.addEventListener("mouseup", endScrub);
-dockBar.addEventListener("touchstart", startScrub, { passive: true });
+scrubBar.addEventListener("touchstart", startScrub, { passive: true });
 window.addEventListener("touchmove", moveScrub, { passive: true });
 window.addEventListener("touchend", endScrub);
 
-// ----------------------------------------------------------- status poll ---
+// ----------------------------------------------------------------------
+// Status polling — keeps the player in sync (including a fresh pageload
+// or a second browser tab catching mid-playback), and detects natural end.
 
 let wasPlaying = false;
 
@@ -414,37 +533,40 @@ async function pollStatus() {
     const s = await res.json();
     if (s.playing) {
       wasPlaying = true;
-      dock.classList.remove("hidden");
-      knownDuration = s.duration || 0;
-      setPauseIcon(!!s.paused);
-      if (!scrubbing) {
-        dockPos.textContent = fmtTime(s.position);
-        const pct = s.duration ? Math.min(1, s.position / s.duration) : 0;
-        paintBar(pct);
+      if (dock.classList.contains("hidden")) {
+        // something's playing that this client didn't initiate (fresh
+        // pageload, or another tab pressed play) — show the dock to match
+        dock.classList.remove("hidden");
       }
-      dockDur.textContent = fmtTime(s.duration);
-      dockNdiBadge.classList.toggle("hidden", s.output !== "ndi");
-      dockTitle.textContent = s.title || dockTitle.textContent;
-      dockDescription.textContent = s.description || "";
-      dockDescription.classList.toggle("hidden", !s.description);
+      if (s.id && s.id !== currentPlayingId) {
+        currentPlayingId = s.id;
+        paintSetHeroBtn();
+      }
+      playerTitle.textContent = s.title || playerTitle.textContent;
+      playerDesc.textContent = s.description || "";
+      playerDesc.classList.toggle("hidden", !s.description);
       if (s.thumbnail && dockPreview.getAttribute("src") !== s.thumbnail) {
-        // only worth repainting when it actually changes (e.g. a second
-        // client just loaded the page mid-playback) — it's a static image,
-        // not something that needs refreshing every poll tick
         paintPreview(s.thumbnail);
       }
+      playerNdiBadge.classList.toggle("hidden", s.output !== "ndi");
+      setPauseIcon(!!s.paused);
+
       if (s.is_sequence !== (currentFrameCount != null)) {
-        // mode changed since our last paint (e.g. a second client just
-        // loaded the page mid-playback) — bring the controls into sync
         setSequenceMode(!!s.is_sequence, s.frame_count, s.frame_number);
       } else if (s.is_sequence) {
         paintFrameCounter(s.frame_number);
+      } else {
+        knownDuration = s.duration || 0;
+        if (!scrubbing) {
+          playerPos.textContent = fmtTime(s.position);
+          paintScrub(s.duration ? Math.min(1, s.position / s.duration) : 0);
+        }
+        playerDur.textContent = fmtTime(s.duration);
       }
     } else {
-      dock.classList.add("hidden");
-      paintPreview(null);
       if (wasPlaying) {
         wasPlaying = false;
+        hideDock();
         loadMedia();
       }
     }
@@ -453,6 +575,10 @@ async function pollStatus() {
   }
 }
 
-loadMedia();
-loadOutputMode();
-setInterval(pollStatus, 1000);
+(async () => {
+  await loadHeroPreference();
+  await loadMedia();
+  loadOutputMode();
+  loadScreensaverState();
+  setInterval(pollStatus, 1000);
+})();

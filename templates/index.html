@@ -9,23 +9,33 @@
 <body>
 
 <header class="topbar">
-  <div class="topbar__title">Zealandata</div>
+  <div class="topbar__title"><span class="topbar__dot"></span>Zealandata</div>
   <div class="topbar__controls">
-    <div class="output-toggle" id="outputToggle" role="group" aria-label="Video output">
-      <button class="output-toggle__btn" data-mode="hdmi" id="outputHdmiBtn">HDMI</button>
-      <button class="output-toggle__btn" data-mode="ndi" id="outputNdiBtn">
-        NDI
-        <span class="output-toggle__warn hidden" id="outputNdiWarn" title="NDI-enabled ffmpeg build not found on the Pi — check ZEALANDATA_NDI_FFMPEG"></span>
-      </button>
-    </div>
-    <button class="rescan-btn" id="rescanBtn" title="Rescan media folder">Rescan</button>
+    <span class="tag tag-outline hidden" id="screensaverTag">Screensaver on</span>
+    <button type="button" class="btn-icon" id="settingsBtn" aria-label="Settings" title="Settings">
+      <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M128,80a48,48,0,1,0,48,48A48.05,48.05,0,0,0,128,80Zm0,80a32,32,0,1,1,32-32A32,32,0,0,1,128,160Zm88-29.84c0-1.44,0-2.88-.09-4.32l14.92-18.64a8,8,0,0,0,1.48-7.06,107.21,107.21,0,0,0-10.88-26.19,8,8,0,0,0-6-3.93l-23.72-2.64c-1-1-2-2-3-3L186,40.54a8,8,0,0,0-3.94-6,107.71,107.71,0,0,0-26.19-10.87,8,8,0,0,0-7.06,1.49L130.16,40q-2.16-.09-4.32,0L107.2,25.16a8,8,0,0,0-7.06-1.48A107.6,107.6,0,0,0,73.95,34.55a8,8,0,0,0-3.93,6L67.38,64.27c-1,1-2,2-3,3L40.54,70a8,8,0,0,0-6,3.94,107.71,107.71,0,0,0-10.87,26.19,8,8,0,0,0,1.49,7.06L40,125.84c0,1.44,0,2.88,0,4.32L25.16,148.8a8,8,0,0,0-1.48,7.06,107.21,107.21,0,0,0,10.88,26.19,8,8,0,0,0,6,3.93l23.72,2.64c1,1,2,2,3,3L70,215.46a8,8,0,0,0,3.94,6,107.71,107.71,0,0,0,26.19,10.87,8,8,0,0,0,7.06-1.49L125.84,216c1.44.06,2.88.06,4.32,0l18.64,14.92a8,8,0,0,0,7.06,1.48,107.21,107.21,0,0,0,26.19-10.88,8,8,0,0,0,3.93-6l2.64-23.72c1-1,2-2,3-3L215.46,186a8,8,0,0,0,6-3.94,107.71,107.71,0,0,0,10.87-26.19,8,8,0,0,0-1.49-7.06Z"></path></svg>
+    </button>
   </div>
 </header>
 
-<main>
+<div class="hero hidden" id="heroSection">
+  <img class="hero__bg" id="heroImg" alt="" />
+  <div class="hero__scrim"></div>
+  <div class="hero__content">
+    <span class="tag tag-outline" id="heroCategory"></span>
+    <h1 id="heroTitle"></h1>
+    <p id="heroDesc"></p>
+    <button type="button" class="btn btn-primary" id="heroPlayBtn">
+      <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"></path></svg>
+      Play
+    </button>
+  </div>
+</div>
+
+<main id="browseMain">
   <div id="empty" class="empty hidden">
     <p>No films on the reel.</p>
-    <p class="empty__sub">Drop video files into the media folder, then hit Rescan.</p>
+    <p class="empty__sub">Drop video files into the media folder, then Rescan from Settings.</p>
   </div>
 
   <section class="row hidden" id="continueRow" aria-label="Continue watching">
@@ -36,35 +46,79 @@
   <div id="categoryRows"></div>
 </main>
 
+<div class="scrim hidden" id="settingsScrim"></div>
+<div class="drawer hidden" id="settingsDrawer" aria-label="Settings">
+  <div class="drawer__header">
+    <h2>Settings</h2>
+    <button type="button" class="btn-icon" id="settingsCloseBtn" aria-label="Close settings">
+      <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+    </button>
+  </div>
+
+  <div class="field hidden" id="outputField">
+    <label id="outputLabel">Video output</label>
+    <div class="seg" role="radiogroup" aria-labelledby="outputLabel">
+      <button type="button" class="seg-opt" data-mode="hdmi" id="outputHdmiBtn">HDMI</button>
+      <button type="button" class="seg-opt" data-mode="ndi" id="outputNdiBtn">NDI<span class="warn-dot hidden" id="outputNdiWarn"></span></button>
+    </div>
+  </div>
+
+  <div class="field">
+    <label id="screensaverLabel">Idle screensaver</label>
+    <div class="seg" role="radiogroup" aria-labelledby="screensaverLabel">
+      <button type="button" class="seg-opt" id="screensaverOnBtn">On</button>
+      <button type="button" class="seg-opt" id="screensaverOffBtn">Off</button>
+    </div>
+    <p class="field__hint">Shuffles muted videos from the library when nothing's playing.</p>
+  </div>
+
+  <div class="field">
+    <label>Library</label>
+    <button type="button" class="btn btn-secondary btn-block" id="rescanBtn">Rescan library</button>
+  </div>
+</div>
+
 <div class="dock hidden" id="dock">
   <div class="dock__preview" id="dockPreviewWrap">
     <img id="dockPreview" alt="" />
   </div>
   <div class="dock__info">
     <div class="dock__title-row">
-      <div class="dock__title" id="dockTitle">—</div>
-      <span class="dock__ndi hidden" id="dockNdiBadge">● NDI</span>
+      <div class="dock__title" id="playerTitle">—</div>
+      <span class="tag tag-accent hidden" id="playerNdiBadge">● NDI OUT</span>
     </div>
-    <div class="dock__time" id="dockTime">
-      <span id="dockPos">0:00</span>
-      <div class="dock__bar" id="dockBar">
+    <div class="dock__time" id="playerScrubControls">
+      <span id="playerPos">0:00</span>
+      <div class="dock__bar" id="scrubBar">
         <div class="dock__bar-track">
-          <div class="dock__bar-fill" id="dockBarFill"></div>
-          <div class="dock__bar-handle" id="dockBarHandle"></div>
+          <div class="dock__bar-fill" id="scrubFill"></div>
+          <div class="dock__bar-handle" id="scrubHandle"></div>
         </div>
       </div>
-      <span id="dockDur">0:00</span>
+      <span id="playerDur">0:00</span>
     </div>
-    <div class="dock__frame-counter hidden" id="dockFrameCounter">Frame — of —</div>
-    <p class="dock__description hidden" id="dockDescription"></p>
+    <div class="dock__frame-counter hidden" id="frameCounter">Frame — of —</div>
+    <p class="dock__description hidden" id="playerDesc"></p>
   </div>
   <div class="dock__controls">
-    <button id="btnSeekBack" title="Back 10s">«</button>
-    <button id="btnFrameBack" class="hidden" title="Previous frame">❮</button>
-    <button id="btnPause" title="Play / Pause">❚❚</button>
-    <button id="btnFrameFwd" class="hidden" title="Next frame">❯</button>
-    <button id="btnSeekFwd" title="Forward 10s">»</button>
-    <button id="btnStop" class="btnStop" title="Stop">■</button>
+    <button type="button" class="btn-icon" id="seekBackBtn" aria-label="Back 10 seconds">
+      <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M76,144a12,12,0,0,1-12,12H36.42l6.75,6.11A103.8,103.8,0,0,0,128,192a12,12,0,0,1,0,24A127.75,127.75,0,0,1,26.9,163.86L20,157.62V184a12,12,0,0,1-24,0V144a12,12,0,0,1,12-12H52A12,12,0,0,1,76,144ZM128,40A127.75,127.75,0,0,0,26.9,92.14L20,98.38V72a12,12,0,0,0-24,0v40a12,12,0,0,0,12,12H48a12,12,0,0,0,0-24H36.42l6.75-6.11A103.8,103.8,0,0,1,128,64a12,12,0,0,0,0-24Z"></path></svg>
+    </button>
+    <button type="button" class="btn-icon hidden" id="frameBackBtn" aria-label="Previous frame">
+      <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor" style="transform:scaleX(-1)"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z"></path></svg>
+    </button>
+    <button type="button" class="btn btn-primary btn-icon" id="pauseBtn" aria-label="Play or pause">
+      <svg id="iconPlay" class="hidden" width="17" height="17" viewBox="0 0 256 256" fill="currentColor"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"></path></svg>
+      <svg id="iconPause" width="17" height="17" viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H160a16,16,0,0,0-16,16V192a16,16,0,0,0,16,16h56a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48ZM96,48H40A16,16,0,0,0,24,64V192a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V64A16,16,0,0,0,96,48Z"></path></svg>
+    </button>
+    <button type="button" class="btn-icon hidden" id="frameFwdBtn" aria-label="Next frame">
+      <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor"><path d="M221.66,133.66l-72,72a8,8,0,0,1-11.32-11.32L196.69,136H40a8,8,0,0,1,0-16H196.69L138.34,61.66a8,8,0,0,1,11.32-11.32l72,72A8,8,0,0,1,221.66,133.66Z"></path></svg>
+    </button>
+    <button type="button" class="btn-icon" id="seekFwdBtn" aria-label="Forward 10 seconds">
+      <svg width="16" height="16" viewBox="0 0 256 256" fill="currentColor" style="transform:scaleX(-1)"><path d="M76,144a12,12,0,0,1-12,12H36.42l6.75,6.11A103.8,103.8,0,0,0,128,192a12,12,0,0,1,0,24A127.75,127.75,0,0,1,26.9,163.86L20,157.62V184a12,12,0,0,1-24,0V144a12,12,0,0,1,12-12H52A12,12,0,0,1,76,144ZM128,40A127.75,127.75,0,0,0,26.9,92.14L20,98.38V72a12,12,0,0,0-24,0v40a12,12,0,0,0,12,12H48a12,12,0,0,0,0-24H36.42l6.75-6.11A103.8,103.8,0,0,1,128,64a12,12,0,0,0,0-24Z"></path></svg>
+    </button>
+    <button type="button" class="btn-icon dock__stop" id="playerStopBtn" aria-label="Stop">■</button>
+    <button type="button" class="btn-icon" id="setHeroBtn" aria-label="Set as hero video" title="Set as hero video">★</button>
   </div>
 </div>
 
