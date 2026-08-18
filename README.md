@@ -201,6 +201,29 @@ Persists across restarts (stored in `hero.json`, gitignored like
 `progress.json`). If the pinned file is later removed from the library, it
 just falls back to the automatic pick again rather than showing nothing.
 
+## Admin mode (renaming videos)
+
+Set `ZEALANDATA_ADMIN_PIN` to a 4-digit PIN to unlock a small admin mode
+in the web UI — off entirely (no admin-mode UI, no endpoints active)
+until you set one:
+```
+Environment=ZEALANDATA_ADMIN_PIN=1234
+```
+"Unlock admin mode" in Settings prompts for the PIN; once entered
+correctly, every poster in the browse grid grows a small ✎ button (on
+hover) that lets you rename it. The PIN itself is only held in that
+browser tab's memory — never stored — and is re-checked by the server on
+every rename request, so it isn't enough to just flip something in
+devtools.
+
+Renaming only changes the **display title** — it never touches the
+actual file on disk. Overrides are stored in `titles.json` (gitignored,
+same pattern as `hero.json`/`progress.json`), keyed by the item's ID,
+which is itself derived from the file's original path. That's a
+deliberate choice: renaming the real file would change that ID and orphan
+its thumbnail, watch progress, and hero pin, none of which is worth the
+trade-off just to fix a badly-named source file.
+
 ## What happens when a video ends
 
 By default (`ZEALANDATA_LOOP_SELECTED=0`), when a selected video reaches
@@ -298,7 +321,9 @@ have that failure mode.)
 When nothing's been chosen, the Pi can shuffle through random videos from
 your own library — muted by default — instead of sitting on a blank
 screen. It's not a separate file you need to prepare; it just picks
-randomly from whatever's already in your media folder. Off by default:
+randomly from whatever's already in your media folder. On by default —
+toggle it live from the "Screensaver on/off" pill in the top bar, or set
+its startup default here:
 ```
 Environment=ZEALANDATA_SCREENSAVER_ENABLED=1
 # Environment=ZEALANDATA_SCREENSAVER_MUTED=1

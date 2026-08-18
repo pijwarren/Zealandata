@@ -16,7 +16,7 @@ Environment=ZEALANDATA_MEDIA_DIR=/home/pj/media
 # Leave at 0 and set ZEALANDATA_DISPLAY if you're running a desktop session.
 Environment=ZEALANDATA_USE_DRM=1
 # Environment=ZEALANDATA_DISPLAY=:0
-Environment=ZEALANDATA_SCREENSAVER_ENABLED=0
+Environment=ZEALANDATA_SCREENSAVER_ENABLED=1
 # Environment=ZEALANDATA_SCREENSAVER_MUTED=1
 # When a video ends: pause on the last frame (scrubbable) by default, or
 # loop indefinitely instead if set to 1. Off (0) by default.
@@ -29,6 +29,9 @@ Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=0
 # least this many frames to be recognized, converted at this frame rate.
 # Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
 # Environment=ZEALANDATA_SEQUENCE_FPS=12
+# Unlocks admin mode (renaming videos) in the web UI, gated by this
+# 4-digit PIN. Unset by default -- admin mode is unavailable until set.
+# Environment=ZEALANDATA_ADMIN_PIN=1234
 
 # Held up (via mpv's loadfile, not a separate process) any time nothing
 # else is queued -- server startup, an explicit stop, screensaver off --

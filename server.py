@@ -44,6 +44,7 @@ HERO_THUMB_DIR = os.path.join(BASE_DIR, "static", "hero_thumbnails")
 SEQUENCE_CACHE_DIR = os.path.join(BASE_DIR, "static", "sequence_cache")
 PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
 HERO_FILE = os.path.join(BASE_DIR, "hero.json")
+TITLES_FILE = os.path.join(BASE_DIR, "titles.json")
 
 MPV_SOCKET = "/tmp/zealandata-mpv.sock"
 
@@ -62,7 +63,7 @@ SEQUENCE_FPS = float(os.environ.get("ZEALANDATA_SEQUENCE_FPS", "12"))
 
 # Screensaver: when nothing's been chosen, shuffle through random videos
 # from the library itself.
-SCREENSAVER_ENABLED = os.environ.get("ZEALANDATA_SCREENSAVER_ENABLED", "0") == "1"
+SCREENSAVER_ENABLED = os.environ.get("ZEALANDATA_SCREENSAVER_ENABLED", "1") == "1"
 SCREENSAVER_MUTED = os.environ.get("ZEALANDATA_SCREENSAVER_MUTED", "1") == "1"
 
 # Default behavior when a selected video reaches the end: mpv pauses on the
@@ -83,6 +84,11 @@ IDLE_TIMEOUT_SECONDS = float(os.environ.get("ZEALANDATA_IDLE_TIMEOUT_SECONDS", "
 # screensaver is off) — held indefinitely rather than leaving the Linux
 # console underneath as the last thing on screen. No-op if unset.
 LOADING_IMAGE_PATH = os.environ.get("ZEALANDATA_LOADING_IMAGE", "").strip() or None
+
+# Optional: a 4-digit PIN that gates "admin mode" in the web UI (currently
+# just renaming videos). Unset by default -- the admin-mode UI and its
+# endpoints are simply unavailable until you set one.
+ADMIN_PIN = os.environ.get("ZEALANDATA_ADMIN_PIN", "").strip() or None
 
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
@@ -122,6 +128,7 @@ _media_cache = {"items": None, "mtime": 0}
 
 progress_lock = threading.Lock()
 hero_lock = threading.Lock()
+titles_lock = threading.Lock()
 
 # ------------------------------------------------------------ progress ---
 
@@ -203,6 +210,35 @@ def hero_thumbnail_url(media_id):
     hasn't been (yet)."""
     path = os.path.join(HERO_THUMB_DIR, f"{media_id}.jpg")
     return f"/hero_thumbnails/{media_id}.jpg" if os.path.exists(path) else None
+
+
+def _load_titles():
+    if not os.path.exists(TITLES_FILE):
+        return {}
+    try:
+        with open(TITLES_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def get_title_override(media_id):
+    """A custom display title set via admin-mode renaming, if any — the
+    underlying file itself is never touched, so this survives rescans and
+    doesn't disturb thumbnail/progress/hero caches, which are all keyed off
+    the original file path."""
+    with titles_lock:
+        return _load_titles().get(media_id)
+
+
+def set_title_override(media_id, title):
+    with titles_lock:
+        store = _load_titles()
+        store[media_id] = title
+        tmp = TITLES_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(store, f)
+        os.replace(tmp, TITLES_FILE)
 
 
 # ------------------------------------------------------------- scanning ---
@@ -324,9 +360,11 @@ def _build_media_item(playback_path, metadata_path, description=None, frame_coun
     else:
         category = "Uncategorized"
 
+    title = get_title_override(media_id) or Path(metadata_path).stem.replace(".", " ").replace("_", " ")
+
     return {
         "id": media_id,
-        "title": Path(metadata_path).stem.replace(".", " ").replace("_", " "),
+        "title": title,
         "path": playback_path,
         "category": category,
         "duration": _probe_duration(playback_path),
@@ -827,6 +865,35 @@ def api_set_hero():
         hero_thumbnail = hero_thumbnail_url(media_id)
     set_hero_id(media_id)
     return jsonify({"id": media_id, "hero_thumbnail": hero_thumbnail})
+
+
+@app.route("/api/admin/unlock", methods=["POST"])
+def api_admin_unlock():
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    return jsonify({"ok": str(body.get("pin", "")) == ADMIN_PIN})
+
+
+@app.route("/api/media/<media_id>/rename", methods=["POST"])
+def api_rename_media(media_id):
+    """Renaming here only overrides the display title (see
+    set_title_override) — it never touches the underlying file, so
+    thumbnails, progress, and hero pinning (all keyed off the original file
+    path) stay intact."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    if str(body.get("pin", "")) != ADMIN_PIN:
+        return jsonify({"error": "incorrect PIN"}), 403
+    if not get_media_by_id(media_id):
+        return jsonify({"error": "not found"}), 404
+    title = (body.get("title") or "").strip()
+    if not title:
+        return jsonify({"error": "title required"}), 400
+    set_title_override(media_id, title)
+    get_media(force=True)
+    return jsonify({"id": media_id, "title": title})
 
 
 @app.route("/api/play/<media_id>", methods=["POST"])

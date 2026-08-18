@@ -5,6 +5,7 @@ const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const settingsScrim = document.getElementById("settingsScrim");
 const settingsDrawer = document.getElementById("settingsDrawer");
 const rescanBtn = document.getElementById("rescanBtn");
+const adminModeBtn = document.getElementById("adminModeBtn");
 
 const heroSection = document.getElementById("heroSection");
 const heroImg = document.getElementById("heroImg");
@@ -129,12 +130,25 @@ function buildCard(item, { badge, showRestart } = {}) {
   playGlyph.textContent = "▶";
   thumbWrap.appendChild(playGlyph);
 
+  const topRight = document.createElement("div");
+  topRight.className = "card__top-right";
   if (badge) {
     const b = document.createElement("div");
     b.className = "card__resume-badge";
     b.textContent = badge;
-    thumbWrap.appendChild(b);
+    topRight.appendChild(b);
   }
+  const rename = document.createElement("button");
+  rename.className = "card__rename";
+  rename.title = "Rename";
+  rename.setAttribute("aria-label", `Rename ${item.title}`);
+  rename.textContent = "✎";
+  rename.addEventListener("click", (e) => {
+    e.stopPropagation();
+    renameMedia(item);
+  });
+  topRight.appendChild(rename);
+  thumbWrap.appendChild(topRight);
 
   if (showRestart) {
     const r = document.createElement("button");
@@ -360,6 +374,57 @@ rescanBtn.addEventListener("click", async () => {
   await loadMedia();
   rescanBtn.textContent = "Rescan library";
 });
+
+// ----------------------------------------------------------------------
+// Admin mode (PIN-gated renaming)
+
+// Held in memory only for this tab -- never persisted -- and sent with
+// each rename request so the server independently re-checks it rather
+// than trusting a client-side "unlocked" flag alone.
+let adminPin = null;
+
+function paintAdminMode() {
+  document.body.classList.toggle("admin-mode", !!adminPin);
+  adminModeBtn.textContent = adminPin ? "Lock admin mode" : "Unlock admin mode";
+}
+
+adminModeBtn.addEventListener("click", async () => {
+  if (adminPin) {
+    adminPin = null;
+    paintAdminMode();
+    return;
+  }
+  const pin = prompt("Enter the 4-digit admin PIN:");
+  if (!pin) return;
+  const res = await fetch("/api/admin/unlock", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.ok) {
+    adminPin = pin;
+    paintAdminMode();
+  } else {
+    alert(data.error || "Incorrect PIN.");
+  }
+});
+
+async function renameMedia(item) {
+  const newTitle = prompt("Rename video:", item.title);
+  if (!newTitle || !newTitle.trim() || newTitle.trim() === item.title) return;
+  const res = await fetch(`/api/media/${item.id}/rename`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, title: newTitle.trim() }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.error) {
+    alert(data.error);
+    return;
+  }
+  loadMedia();
+}
 
 // ----------------------------------------------------------------------
 // Sequence (frame-step) mode

@@ -233,11 +233,24 @@ button:focus-visible, .card:focus-visible{
 }
 .card:hover .card__play, .card:focus-visible .card__play{ opacity:1; transform:translate(-50%,-50%) scale(1); }
 .card__title{ position:absolute; left:13px; right:13px; bottom:13px; font-size:13px; font-weight:500; color:var(--color-text); }
-.card__resume-badge{
+.card__top-right{
   position:absolute; top:9px; right:9px;
+  display:flex; align-items:center; gap:6px;
+}
+.card__resume-badge{
   background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
   color:var(--color-text); font-size:10px; font-weight:500; padding:4px 9px; border-radius:980px;
 }
+.card__rename{
+  display:none; width:28px; height:28px; border-radius:50%; flex-shrink:0;
+  border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
+  color:var(--color-text); font-size:12px; line-height:1; cursor:pointer;
+  align-items:center; justify-content:center;
+  opacity:0; transition:opacity .15s, border-color .15s, background .15s;
+}
+body.admin-mode .card__rename{ display:flex; }
+body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .card__rename{ opacity:1; }
+.card__rename:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
 .card__restart{
   position:absolute; top:9px; left:9px; width:28px; height:28px; border-radius:50%;
   border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);

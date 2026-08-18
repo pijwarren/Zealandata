@@ -8,6 +8,7 @@ preview.jpg
 preview_raw.jpg
 progress.json
 hero.json
+titles.json
 
 # Python
 __pycache__/
