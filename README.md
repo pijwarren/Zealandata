@@ -22,7 +22,11 @@ into it (a projector, a TV, etc.) — not streamed into your browser tab.
   progress bar.
 - The web page (`templates/index.html`, `static/app.js`, `static/style.css`)
   is a hero banner + poster rows + a persistent "now playing" dock bar,
-  polling `/api/status` once a second to stay in sync.
+  polling `/api/status` once a second to stay in sync. The dock itself is
+  always on screen, even with nothing selected ("Nothing playing," controls
+  dimmed) — it doesn't pop in and out, and its controls only ever act on a
+  deliberate selection, never on whatever the screensaver happens to be
+  showing.
 
 ### About the current visual design
 

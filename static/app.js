@@ -26,7 +26,6 @@ const continueRow = document.getElementById("continueRow");
 const continueGrid = document.getElementById("continueGrid");
 const categoryRows = document.getElementById("categoryRows");
 
-const dock = document.getElementById("dock");
 const dockPreviewWrap = document.getElementById("dockPreviewWrap");
 const dockPreview = document.getElementById("dockPreview");
 const playerStopBtn = document.getElementById("playerStopBtn");
@@ -546,6 +545,27 @@ function paintPreview(thumbnail) {
 
 let currentPlayingId = null;
 
+// Buttons that only make sense once something's actually playing -- kept
+// visible at all times (the dock itself is never hidden) but disabled
+// while idle, rather than acting on whatever the screensaver happens to
+// be showing.
+const dockPlaybackBtns = [seekBackBtn, seekFwdBtn, pauseBtn, loopBtn, playerStopBtn, setHeroBtn];
+
+function paintDockIdle() {
+  currentPlayingId = null;
+  playerTitle.textContent = "Nothing playing";
+  playerDesc.textContent = "";
+  playerDesc.classList.add("hidden");
+  paintPreview(null);
+  playerScrubControls.classList.add("hidden");
+  frameCounter.classList.add("hidden");
+  currentFrameCount = null;
+  setPauseIcon(false);
+  paintLoopBtn(false);
+  paintSetHeroBtn();
+  dockPlaybackBtns.forEach((btn) => { btn.disabled = true; });
+}
+
 async function playItem(item, { restart = false } = {}) {
   currentPlayingId = item.id;
   playerTitle.textContent = item.title;
@@ -555,7 +575,7 @@ async function playItem(item, { restart = false } = {}) {
   setSequenceMode(!!item.is_sequence, item.frame_count, 0);
   setPauseIcon(false);
   paintSetHeroBtn();
-  dock.classList.remove("hidden");
+  dockPlaybackBtns.forEach((btn) => { btn.disabled = false; });
 
   await fetch(`/api/play/${item.id}`, {
     method: "POST",
@@ -564,15 +584,9 @@ async function playItem(item, { restart = false } = {}) {
   });
 }
 
-function hideDock() {
-  dock.classList.add("hidden");
-  paintPreview(null);
-  currentPlayingId = null;
-}
-
 async function stopPlayback() {
   await control("stop");
-  hideDock();
+  paintDockIdle();
   setTimeout(loadMedia, 600);
 }
 
@@ -661,12 +675,13 @@ async function pollStatus() {
     const res = await fetch("/api/status");
     const s = await res.json();
     if (s.playing) {
-      wasPlaying = true;
-      if (dock.classList.contains("hidden")) {
+      if (!wasPlaying) {
         // something's playing that this client didn't initiate (fresh
-        // pageload, or another tab pressed play) — show the dock to match
-        dock.classList.remove("hidden");
+        // pageload, or another tab pressed play) — enable the controls to
+        // match, rather than leaving them dimmed from the idle state
+        dockPlaybackBtns.forEach((btn) => { btn.disabled = false; });
       }
+      wasPlaying = true;
       if (s.id && s.id !== currentPlayingId) {
         currentPlayingId = s.id;
         paintSetHeroBtn();
@@ -695,7 +710,7 @@ async function pollStatus() {
     } else {
       if (wasPlaying) {
         wasPlaying = false;
-        hideDock();
+        paintDockIdle();
         loadMedia();
       }
     }
@@ -705,8 +720,10 @@ async function pollStatus() {
 }
 
 (async () => {
+  paintDockIdle();
   await loadHeroPreference();
   await loadMedia();
   loadScreensaverState();
+  pollStatus();
   setInterval(pollStatus, 1000);
 })();
