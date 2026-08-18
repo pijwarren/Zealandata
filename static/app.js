@@ -25,10 +25,9 @@ const dockPreviewWrap = document.getElementById("dockPreviewWrap");
 const dockPreview = document.getElementById("dockPreview");
 const playerStopBtn = document.getElementById("playerStopBtn");
 const setHeroBtn = document.getElementById("setHeroBtn");
+const loopBtn = document.getElementById("loopBtn");
 const playerTitle = document.getElementById("playerTitle");
 const playerDesc = document.getElementById("playerDesc");
-const frameBackBtn = document.getElementById("frameBackBtn");
-const frameFwdBtn = document.getElementById("frameFwdBtn");
 const frameCounter = document.getElementById("frameCounter");
 const playerScrubControls = document.getElementById("playerScrubControls");
 const playerPos = document.getElementById("playerPos");
@@ -229,13 +228,14 @@ function renderContinueRow(items) {
 
 // ------------------------------------------------------------------ hero
 
-function paintHero(item) {
+function paintHero(item, heroThumbnail) {
   if (!item) {
     heroSection.classList.add("hidden");
     return;
   }
   heroSection.classList.remove("hidden");
-  if (item.thumbnail) heroImg.src = item.thumbnail;
+  const src = heroThumbnail || item.thumbnail;
+  if (src) heroImg.src = src;
   heroCategory.textContent = item.category || "";
   heroTitle.textContent = item.title;
   heroDesc.textContent = item.description || "";
@@ -256,7 +256,14 @@ function pickHero(continueItems, allItems, explicitHeroId) {
 // --------------------------------------------------------------- loading
 
 let pinnedHeroId = null;
+let pinnedHeroThumbnail = null;
 let lastContinueItems = [];
+
+function paintHeroFromPick(continueItems, items) {
+  const picked = pickHero(continueItems, items, pinnedHeroId);
+  const heroThumb = picked && picked.id === pinnedHeroId ? pinnedHeroThumbnail : null;
+  paintHero(picked, heroThumb);
+}
 
 async function loadMedia() {
   const [mediaRes, continueRes] = await Promise.all([
@@ -271,7 +278,7 @@ async function loadMedia() {
   emptyEl.classList.toggle("hidden", items.length > 0);
   renderCategories(items);
   renderContinueRow(continueItems);
-  paintHero(pickHero(continueItems, items, pinnedHeroId));
+  paintHeroFromPick(continueItems, items);
   paintSetHeroBtn();
 }
 
@@ -279,6 +286,7 @@ async function loadHeroPreference() {
   const res = await fetch("/api/hero");
   const data = await res.json();
   pinnedHeroId = data.id || null;
+  pinnedHeroThumbnail = data.hero_thumbnail || null;
 }
 
 function paintSetHeroBtn() {
@@ -292,6 +300,10 @@ function paintSetHeroBtn() {
 setHeroBtn.addEventListener("click", async () => {
   if (!currentPlayingId) return;
   const nextId = pinnedHeroId === currentPlayingId ? null : currentPlayingId;
+  if (nextId !== null) {
+    const ok = confirm(`Set "${playerTitle.textContent}" as the featured hero video?`);
+    if (!ok) return;
+  }
   const res = await fetch("/api/hero", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -299,10 +311,11 @@ setHeroBtn.addEventListener("click", async () => {
   });
   const data = await res.json();
   pinnedHeroId = data.id || null;
+  pinnedHeroThumbnail = data.hero_thumbnail || null;
   paintSetHeroBtn();
   // repaint the hero banner immediately using the freshest pick, without
   // needing a full reload
-  paintHero(pickHero(lastContinueItems, allMediaItems, pinnedHeroId));
+  paintHeroFromPick(lastContinueItems, allMediaItems);
 });
 
 // -------------------------------------------------------------- settings
@@ -357,8 +370,6 @@ function setSequenceMode(isSequence, frameCount, frameNumber) {
   currentFrameCount = isSequence ? frameCount : null;
   playerScrubControls.classList.toggle("hidden", isSequence);
   frameCounter.classList.toggle("hidden", !isSequence);
-  frameBackBtn.classList.toggle("hidden", !isSequence);
-  frameFwdBtn.classList.toggle("hidden", !isSequence);
   if (isSequence) paintFrameCounter(frameNumber);
 }
 
@@ -423,17 +434,23 @@ pauseBtn.addEventListener("click", async () => {
   const res = await control("pause");
   if (res && typeof res.paused === "boolean") setPauseIcon(res.paused);
 });
-seekBackBtn.addEventListener("click", () => control("seek_backward"));
-seekFwdBtn.addEventListener("click", () => control("seek_forward"));
-frameBackBtn.addEventListener("click", async () => {
-  const res = await control("frame_backward");
+seekBackBtn.addEventListener("click", async () => {
+  const res = await control("seek_backward");
   setPauseIcon(true);
   if (res && res.frame_number != null) paintFrameCounter(res.frame_number);
 });
-frameFwdBtn.addEventListener("click", async () => {
-  const res = await control("frame_forward");
+seekFwdBtn.addEventListener("click", async () => {
+  const res = await control("seek_forward");
   setPauseIcon(true);
   if (res && res.frame_number != null) paintFrameCounter(res.frame_number);
+});
+
+function paintLoopBtn(looping) {
+  loopBtn.classList.toggle("active", !!looping);
+}
+loopBtn.addEventListener("click", async () => {
+  const res = await control("loop");
+  if (res && typeof res.looping === "boolean") paintLoopBtn(res.looping);
 });
 
 // scrub bar drag
@@ -509,6 +526,7 @@ async function pollStatus() {
         paintPreview(s.thumbnail);
       }
       setPauseIcon(!!s.paused);
+      paintLoopBtn(!!s.looping);
 
       if (s.is_sequence !== (currentFrameCount != null)) {
         setSequenceMode(!!s.is_sequence, s.frame_count, s.frame_number);

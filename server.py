@@ -40,6 +40,7 @@ from flask import Flask, jsonify, request, send_from_directory, render_template
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.environ.get("ZEALANDATA_MEDIA_DIR", "/home/pi/media")
 THUMB_DIR = os.path.join(BASE_DIR, "static", "thumbnails")
+HERO_THUMB_DIR = os.path.join(BASE_DIR, "static", "hero_thumbnails")
 SEQUENCE_CACHE_DIR = os.path.join(BASE_DIR, "static", "sequence_cache")
 PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
 HERO_FILE = os.path.join(BASE_DIR, "hero.json")
@@ -90,6 +91,7 @@ RESUME_MIN_SECONDS = 10
 RESUME_MAX_FRACTION = 0.95
 
 os.makedirs(THUMB_DIR, exist_ok=True)
+os.makedirs(HERO_THUMB_DIR, exist_ok=True)
 os.makedirs(SEQUENCE_CACHE_DIR, exist_ok=True)
 
 app = Flask(__name__)
@@ -193,6 +195,14 @@ def set_hero_id(media_id):
         with open(tmp, "w") as f:
             json.dump({"id": media_id}, f)
         os.replace(tmp, HERO_FILE)
+
+
+def hero_thumbnail_url(media_id):
+    """The full-res hero banner image for this item, generated on demand
+    the first time it's pinned as hero (see api_set_hero) — None if it
+    hasn't been (yet)."""
+    path = os.path.join(HERO_THUMB_DIR, f"{media_id}.jpg")
+    return f"/hero_thumbnails/{media_id}.jpg" if os.path.exists(path) else None
 
 
 # ------------------------------------------------------------- scanning ---
@@ -382,13 +392,13 @@ def get_media_by_id(media_id):
     return next((i for i in get_media() if i["id"] == media_id), None)
 
 
-def _generate_thumbnail(video_path, thumb_path):
-    """Grab a frame partway into the file for the poster thumbnail. Uses the
-    actual duration to pick a sensible timestamp rather than hardcoded
-    absolute times — a fixed "1 minute in, then 2 seconds in" fallback (the
-    previous approach) silently produces no thumbnail at all for anything
-    shorter than 2 seconds, which is common for short test clips and some
-    very brief image-sequence exports."""
+def _extract_frame(video_path, out_path, scale_expr):
+    """Grab a frame partway into the file. Uses the actual duration to pick
+    a sensible timestamp rather than hardcoded absolute times — a fixed "1
+    minute in, then 2 seconds in" fallback (the previous approach) silently
+    produces no thumbnail at all for anything shorter than 2 seconds, which
+    is common for short test clips and some very brief image-sequence
+    exports."""
     duration = _probe_duration(video_path)
     if duration and duration > 0.2:
         # ~10% in feels representative without needing to decode too far;
@@ -407,18 +417,31 @@ def _generate_thumbnail(video_path, thumb_path):
             subprocess.run(
                 [
                     "ffmpeg", "-y", "-ss", f"{ts:.3f}", "-i", video_path,
-                    "-frames:v", "1", "-vf", "scale=440:-1", thumb_path,
+                    "-frames:v", "1", "-vf", f"scale={scale_expr}", out_path,
                 ],
                 capture_output=True, timeout=30,
             )
         except Exception as exc:
             print(f"[thumbnail] failed for {video_path}: {exc}")
-            return
-        if os.path.exists(thumb_path):
-            return
+            return False
+        if os.path.exists(out_path):
+            return True
 
     print(f"[thumbnail] no frame could be extracted for {video_path} "
           f"(duration={duration}) — is it a valid, playable video file?")
+    return False
+
+
+def _generate_thumbnail(video_path, thumb_path):
+    """Poster-grid size — small, since dozens of these are visible at once."""
+    _extract_frame(video_path, thumb_path, "440:-1")
+
+
+def _generate_hero_thumbnail(video_path, thumb_path):
+    """Full-bleed banner size — much larger than the poster thumbnail, since
+    it's stretched across the whole width of the browse page. Capped at the
+    source's own width so a small source doesn't get visibly upscaled."""
+    _extract_frame(video_path, thumb_path, "'min(1920,iw)':-2")
 
 
 # ------------------------------------------------------------- mpv IPC ---
@@ -746,6 +769,11 @@ def thumbnails(filename):
     return send_from_directory(THUMB_DIR, filename)
 
 
+@app.route("/hero_thumbnails/<path:filename>")
+def hero_thumbnails(filename):
+    return send_from_directory(HERO_THUMB_DIR, filename)
+
+
 @app.route("/api/screensaver", methods=["GET"])
 def api_get_screensaver():
     return jsonify({"enabled": SCREENSAVER_ENABLED})
@@ -770,19 +798,30 @@ def api_set_screensaver():
 
 @app.route("/api/hero", methods=["GET"])
 def api_get_hero():
-    return jsonify({"id": get_hero_id()})
+    media_id = get_hero_id()
+    return jsonify({"id": media_id, "hero_thumbnail": hero_thumbnail_url(media_id) if media_id else None})
 
 
 @app.route("/api/hero", methods=["POST"])
 def api_set_hero():
     """Pin a specific item as the browse page's featured hero. Pass
-    {"id": null} to clear it and go back to the automatic pick."""
+    {"id": null} to clear it and go back to the automatic pick. The poster
+    thumbnail used elsewhere is too low-res for a full-width banner, so a
+    larger one is generated (and cached) here the first time an item is
+    pinned, rather than for every item up front at scan time."""
     body = request.get_json(silent=True) or {}
     media_id = body.get("id")
-    if media_id is not None and not get_media_by_id(media_id):
-        return jsonify({"error": "not found"}), 404
+    hero_thumbnail = None
+    if media_id is not None:
+        match = get_media_by_id(media_id)
+        if not match:
+            return jsonify({"error": "not found"}), 404
+        thumb_path = os.path.join(HERO_THUMB_DIR, f"{media_id}.jpg")
+        if not os.path.exists(thumb_path):
+            _generate_hero_thumbnail(match["path"], thumb_path)
+        hero_thumbnail = hero_thumbnail_url(media_id)
     set_hero_id(media_id)
-    return jsonify({"id": media_id})
+    return jsonify({"id": media_id, "hero_thumbnail": hero_thumbnail})
 
 
 @app.route("/api/play/<media_id>", methods=["POST"])
@@ -824,14 +863,13 @@ def api_control(action):
     mapping = {
         "pause": {"command": ["cycle", "pause"]},
         "stop": {"command": ["stop"]},
-        "seek_forward": {"command": ["seek", 10]},
-        "seek_backward": {"command": ["seek", -10]},
+        # mpv pauses automatically after stepping, which is exactly what you
+        # want for frame-accurate scrubbing.
+        "seek_forward": {"command": ["frame-step"]},
+        "seek_backward": {"command": ["frame-back-step"]},
         "volume_up": {"command": ["add", "volume", 5]},
         "volume_down": {"command": ["add", "volume", -5]},
-        # mpv pauses automatically after stepping, which is exactly what you
-        # want when inspecting a short sequence frame by frame.
-        "frame_forward": {"command": ["frame-step"]},
-        "frame_backward": {"command": ["frame-back-step"]},
+        "loop": {"command": ["cycle-values", "loop-file", "inf", "no"]},
     }
     if action not in mapping:
         return jsonify({"error": "unknown action"}), 400
@@ -840,11 +878,16 @@ def api_control(action):
         # "cycle pause" doesn't report the resulting state, so read it back
         paused = mpv_send({"command": ["get_property", "pause"]})
         return jsonify({"result": result, "paused": paused.get("data") if paused else None})
-    if action in ("frame_forward", "frame_backward"):
+    if action in ("seek_forward", "seek_backward"):
         # both leave mpv paused; report the resulting frame number so the
-        # dock can show "Frame 3 of 5" immediately, without waiting a poll
+        # dock can show "Frame 3 of 5" immediately for sequences, without
+        # waiting on a poll
         frame_r = mpv_send({"command": ["get_property", "estimated-frame-number"]})
         return jsonify({"result": result, "frame_number": frame_r.get("data") if frame_r else None})
+    if action == "loop":
+        loop_r = mpv_send({"command": ["get_property", "loop-file"]})
+        data = loop_r.get("data") if loop_r else None
+        return jsonify({"result": result, "looping": data not in (None, False, "no")})
     return jsonify({"result": result})
 
 
@@ -880,6 +923,7 @@ def api_status():
             "position": prop("time-pos"),
             "duration": prop("duration"),
             "paused": prop("pause"),
+            "looping": prop("loop-file") not in (None, False, "no"),
             "id": media_id,
             "filename": prop("filename"),
             "title": title,

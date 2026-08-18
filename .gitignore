@@ -2,10 +2,12 @@
 # don't belong in version control (and thumbnails/sequence_cache can get
 # large fast).
 static/thumbnails/
+static/hero_thumbnails/
 static/sequence_cache/
 preview.jpg
 preview_raw.jpg
 progress.json
+hero.json
 
 # Python
 __pycache__/

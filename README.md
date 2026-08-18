@@ -212,7 +212,9 @@ something else, hits stop, or the idle timeout (below) fires.
 
 Set `ZEALANDATA_LOOP_SELECTED=1` to loop the video indefinitely instead —
 useful for something like a seismic animation meant to run continuously
-once chosen. Either way, this only applies to a deliberate selection — the
+once chosen. The loop button in the dock also lets you flip this on or off
+per-video at any point during playback, regardless of the env var default.
+Either way, this only applies to a deliberate selection — the
 screensaver's own random picks are never looped or held open, since
 finishing normally is what lets the shuffle keep shuffling.
 
@@ -359,14 +361,14 @@ approximate.
 
 ### Stepping through frames one at a time
 
-For a short sequence, seconds aren't a meaningful unit — ±10s or a scrub
-bar is useless on a clip that's under a second long. When you play a
-sequence item, the dock automatically swaps the usual seek buttons and
-time bar for **‹ frame-back / frame-forward ›** buttons and a "Frame 3 of
-5" counter instead, so you can step through and hold on exactly the frame
-you want (handy when walking someone through what changed between two
-specific frames). Stepping always leaves it paused on the frame you land
-on.
+The **‹ −1 / +1 ›** buttons in the dock step exactly one frame backward or
+forward (not a time-based seek), for any video, not just sequences —
+useful for lining up on an exact frame generally, and essential for a
+short sequence where seconds aren't a meaningful unit at all. When you
+play a sequence item specifically, the dock also swaps the usual scrub
+bar for a "Frame 3 of 5" counter, so you always know exactly where you
+are in a short clip. Stepping always leaves it paused on the frame you
+land on.
 
 ## Categories from folders
 
