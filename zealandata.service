@@ -30,21 +30,13 @@ Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=0
 # Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
 # Environment=ZEALANDATA_SEQUENCE_FPS=12
 
-# Show a static loading image during the moment between one video ending
-# and the next starting (see zealandata-splash.service for the separate
-# boot-time version of this). Off unless you set an image path.
+# Held up (via mpv's loadfile, not a separate process) any time nothing
+# else is queued -- server startup, an explicit stop, screensaver off --
+# so the Linux console is never what's actually on screen. Off unless you
+# set an image path (see zealandata-splash.service for the separate
+# boot-time version of this, covering the moment before this service
+# itself has even started).
 Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata/loading.png
-# Environment=ZEALANDATA_LOADING_FLASH_SECONDS=1.2
-
-# Show the HDMI/NDI switch in the web UI. Off by default — most
-# deployments pick one output mode via ZEALANDATA_OUTPUT_MODE and leave it.
-Environment=ZEALANDATA_SHOW_OUTPUT_TOGGLE=0
-# Output mode: "hdmi" (default, mpv/local display) or "ndi" (ffmpeg,
-# network only — nothing plays out the Pi's HDMI in this mode). Pick one.
-Environment=ZEALANDATA_OUTPUT_MODE=hdmi
-# Environment=ZEALANDATA_NDI_FFMPEG=/opt/ffmpeg-ndi/bin/ffmpeg
-# Environment=ZEALANDATA_NDI_NAME=Zealandata
-# Environment=ZEALANDATA_NDI_SCALE=1280x720
 ExecStart=/usr/bin/python3 /home/pj/zealandata/server.py
 Restart=on-failure
 RestartSec=3

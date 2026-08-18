@@ -3,21 +3,17 @@ Zealandata server
 =============
 Serves a Netflix/Apple-TV style browsing UI over the local network.
 Video playback does NOT happen in the browser — it happens on the Pi
-itself, in one of two mutually exclusive output modes:
-
-  "hdmi" (default) — mpv plays full-screen out of the Pi's HDMI port,
-                      onto whatever's plugged in (e.g. a projector).
-  "ndi"            — ffmpeg pushes the video out as a network NDI
-                      source instead; nothing goes out the Pi's HDMI.
-
-Only one is active at a time — this isn't a mirror of both. The starting
-mode comes from ZEALANDATA_OUTPUT_MODE, but it can also be switched live from
-the web UI if ZEALANDATA_SHOW_OUTPUT_TOGGLE=1 (a toggle stops whatever's
-currently playing and switches over).
+itself, via a single long-lived mpv process that owns the HDMI output for
+the entire life of the service. Everything it shows — the idle/loading
+image, a selected video, a screensaver pick — is switched by sending it
+`loadfile` over its IPC socket rather than starting and stopping separate
+mpv processes. On headless DRM/KMS output (no window manager), a process
+handoff is the only thing that can let the Linux console underneath flash
+into view, so avoiding that handoff entirely is what keeps it hidden.
 
 When nothing's been chosen, an optional screensaver mode cycles through
-random videos from the library on whichever output mode is active,
-muted by default, until someone picks something from the web UI.
+random videos from the library, muted by default, until someone picks
+something from the web UI.
 
 Media can also come from image sequences: any leaf folder containing a run
 of numbered images (frame_0001.png, frame_0002.png, ...) is automatically
@@ -30,8 +26,6 @@ Config via environment variables (see README.md).
 import os
 import json
 import socket
-import signal
-import shutil
 import subprocess
 import threading
 import time
@@ -51,7 +45,6 @@ PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
 HERO_FILE = os.path.join(BASE_DIR, "hero.json")
 
 MPV_SOCKET = "/tmp/zealandata-mpv.sock"
-SCREENSAVER_SOCKET = "/tmp/zealandata-screensaver.sock"
 
 # DISPLAY only matters if the Pi is running a desktop (X11) session.
 # Ignored entirely when using headless DRM output (see README).
@@ -66,30 +59,13 @@ SEQUENCE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 SEQUENCE_MIN_FRAMES = int(os.environ.get("ZEALANDATA_SEQUENCE_MIN_FRAMES", "3"))
 SEQUENCE_FPS = float(os.environ.get("ZEALANDATA_SEQUENCE_FPS", "12"))
 
-# Output mode: "hdmi" (mpv, local display) or "ndi" (ffmpeg, network only).
-# Mutually exclusive — set one, not both.
-_mode_raw = os.environ.get("ZEALANDATA_OUTPUT_MODE", "").strip().lower()
-if _mode_raw in ("hdmi", "ndi"):
-    OUTPUT_MODE = _mode_raw
-elif os.environ.get("ZEALANDATA_NDI_ENABLED", "0") == "1":
-    OUTPUT_MODE = "ndi"  # back-compat with an earlier mirror-mode env var
-else:
-    OUTPUT_MODE = "hdmi"
-
-output_mode_lock = threading.Lock()
-
-# Whether the HDMI/NDI switch shows up in the web UI at all. Off by default
-# — most deployments pick one mode and stick with it; the API endpoints
-# still work either way if you want to script a switch.
-SHOW_OUTPUT_TOGGLE = os.environ.get("ZEALANDATA_SHOW_OUTPUT_TOGGLE", "0") == "1"
-
 # Screensaver: when nothing's been chosen, shuffle through random videos
-# from the library itself on whichever output mode is active.
+# from the library itself.
 SCREENSAVER_ENABLED = os.environ.get("ZEALANDATA_SCREENSAVER_ENABLED", "0") == "1"
 SCREENSAVER_MUTED = os.environ.get("ZEALANDATA_SCREENSAVER_MUTED", "1") == "1"
 
 # Default behavior when a selected video reaches the end: mpv pauses on the
-# last frame (see --keep-open=yes below), so it can be scrubbed back and
+# last frame (see keep-open=yes below), so it can be scrubbed back and
 # forth rather than the screensaver kicking back in automatically. Set this
 # to loop the video indefinitely instead — screensaver picks are never
 # looped individually either way, only a deliberate selection.
@@ -101,23 +77,11 @@ LOOP_SELECTED_VIDEO = os.environ.get("ZEALANDATA_LOOP_SELECTED", "0") == "1"
 IDLE_TIMEOUT_ENABLED = os.environ.get("ZEALANDATA_IDLE_TIMEOUT_ENABLED", "0") == "1"
 IDLE_TIMEOUT_SECONDS = float(os.environ.get("ZEALANDATA_IDLE_TIMEOUT_SECONDS", "300"))
 
-# NDI settings — only used when OUTPUT_MODE == "ndi". Requires a separately
-# -built ffmpeg with NDI support (see README) — NOT the same ffmpeg used for
-# thumbnails, since stock ffmpeg builds don't include the license-gated NDI
-# muxer.
-NDI_FFMPEG_BIN = os.environ.get("ZEALANDATA_NDI_FFMPEG", "ffmpeg-ndi")
-NDI_SOURCE_NAME = os.environ.get("ZEALANDATA_NDI_NAME", "Zealandata")
-# Optional "WxH" to downscale the NDI feed (e.g. "1280x720") to keep encoder
-# CPU load reasonable on a Pi. Leave unset to send at source resolution.
-NDI_SCALE = os.environ.get("ZEALANDATA_NDI_SCALE", "").strip() or None
-
-# Optional: briefly show a static loading image (via mpv, same as
-# everything else) during the moment between one HDMI/DRM mpv process
-# ending and the next one starting. Without this, that gap can let the
-# Linux console underneath flash into view for an instant. No-op if unset
-# — this is opt-in since it needs an actual image file to show.
+# Optional: a static image shown whenever there's genuinely nothing else
+# queued (server just started, playback was explicitly stopped, or the
+# screensaver is off) — held indefinitely rather than leaving the Linux
+# console underneath as the last thing on screen. No-op if unset.
 LOADING_IMAGE_PATH = os.environ.get("ZEALANDATA_LOADING_IMAGE", "").strip() or None
-LOADING_FLASH_SECONDS = float(os.environ.get("ZEALANDATA_LOADING_FLASH_SECONDS", "1.2"))
 
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
@@ -132,41 +96,19 @@ app = Flask(__name__)
 
 mpv_process = None
 mpv_lock = threading.Lock()
-mpv_generation = 0  # bumped every time we start a new mpv playback
-mpv_stop_requested = False  # set just before an intentional quit, so the
-                             # watcher can tell "stopped on purpose" apart
-                             # from "exited unexpectedly while looping"
+mpv_generation = 0  # bumped every time ownership of the persistent mpv
+                     # process changes hands (idle / a selected video /
+                     # a screensaver session) — lets a stale watcher or
+                     # screensaver loop recognize it's been superseded
 
-idle_image_process = None  # held indefinitely on the HDMI/DRM output
-                            # whenever nothing else is playing and the
-                            # screensaver is off, so the Linux console
-                            # underneath is never visible
-idle_image_lock = threading.Lock()
+current_kind = "idle"  # "idle" | "video" | "screensaver" — whatever the
+                        # persistent mpv process is currently showing
 
 screensaver_thread = None
-screensaver_process = None
-screensaver_lock = threading.Lock()
 screensaver_stop_event = threading.Event()
 
-# NDI playback state (used only when OUTPUT_MODE == "ndi"). Position is
-# tracked with a wall-clock formula rather than an IPC query, since ffmpeg
-# has no equivalent of mpv's property protocol.
-ndi_lock = threading.RLock()
-ndi_generation = 0
-ndi_state = {
-    "process": None,
-    "media_id": None,
-    "title": None,
-    "path": None,
-    "duration": None,
-    "position_at_change": 0.0,
-    "changed_at": 0.0,
-    "paused": False,
-}
-
-# Metadata for whatever's currently playing (either backend) — mainly so
-# /api/status can report a description without either backend needing to
-# know what a "description" is.
+# Metadata for whatever's currently playing — mainly so /api/status can
+# report a description without mpv needing to know what one is.
 meta_lock = threading.Lock()
 current_media_meta = {"id": None, "title": None, "description": None, "is_sequence": False, "frame_count": None, "thumbnail": None}
 
@@ -257,8 +199,7 @@ def set_hero_id(media_id):
 
 
 def _probe_duration(path):
-    """Read a file's duration via ffprobe. Needed for NDI mode, since there's
-    no mpv IPC to ask; also used to enrich items generally."""
+    """Read a file's duration via ffprobe, to enrich items generally."""
     try:
         result = subprocess.run(
             [
@@ -354,13 +295,13 @@ def _convert_sequence_to_video(dir_path, ext, output_path):
 
 
 def _build_media_item(playback_path, metadata_path, description=None, frame_count=None):
-    """playback_path is what mpv/ffmpeg actually opens; metadata_path is
-    what the id/title/category get derived from (same as playback_path for
-    a plain video file; the original frames folder for a converted image
-    sequence, so its identity survives a cache rebuild). frame_count is set
-    only for converted image sequences — it's what lets the UI show
-    frame-by-frame stepping controls instead of (or alongside) the normal
-    ±10s seek buttons for short sequences where seconds aren't meaningful."""
+    """playback_path is what mpv actually opens; metadata_path is what the
+    id/title/category get derived from (same as playback_path for a plain
+    video file; the original frames folder for a converted image sequence,
+    so its identity survives a cache rebuild). frame_count is set only for
+    converted image sequences — it's what lets the UI show frame-by-frame
+    stepping controls instead of (or alongside) the normal ±10s seek
+    buttons for short sequences where seconds aren't meaningful."""
     media_id = hashlib.md5(metadata_path.encode()).hexdigest()[:12]
     thumb_path = os.path.join(THUMB_DIR, f"{media_id}.jpg")
     if not os.path.exists(thumb_path):
@@ -483,20 +424,16 @@ def _generate_thumbnail(video_path, thumb_path):
 # ------------------------------------------------------------- mpv IPC ---
 
 
-def _mpv_send(command, sock_path):
+def mpv_send(command):
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(2)
-            s.connect(sock_path)
+            s.connect(MPV_SOCKET)
             s.sendall((json.dumps(command) + "\n").encode())
             resp = s.recv(4096)
             return json.loads(resp.decode()) if resp else None
     except (FileNotFoundError, ConnectionRefusedError, OSError, socket.timeout):
         return None
-
-
-def mpv_send(command):
-    return _mpv_send(command, MPV_SOCKET)
 
 
 def _mpv_is_running():
@@ -510,79 +447,88 @@ def _env_for_display():
     return env
 
 
-def _show_loading_flash(duration=None):
-    """Briefly show a static loading image (blocking — the caller waits for
-    it) to cover the gap between one HDMI mpv process ending and the next
-    beginning. A no-op if ZEALANDATA_LOADING_IMAGE isn't configured or
-    doesn't exist, so this is entirely opt-in. NDI mode never needs this —
-    it doesn't share the Pi's physical console the way DRM output does."""
-    if not LOADING_IMAGE_PATH or not os.path.exists(LOADING_IMAGE_PATH):
-        return
-    if duration is None:
-        duration = LOADING_FLASH_SECONDS
+def _wait_for_socket(path, timeout=5):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if os.path.exists(path):
+            return True
+        time.sleep(0.05)
+    return False
+
+
+def _spawn_hdmi_process():
+    """(Re)start the single mpv instance that owns HDMI output for the life
+    of the service. Everything after this — the idle image, a selected
+    video, a screensaver pick — is switched by loadfile-ing over its IPC
+    socket rather than starting/stopping separate processes, so DRM master
+    is acquired once here and never released. That's what actually stops
+    the Linux console from ever flashing through: a real process handoff
+    always risks it for a frame or two, no matter how tightly it's
+    sequenced. If a loading image is configured, it's passed as the
+    startup file directly (the normal, best-tested mpv codepath) rather
+    than relying on an idle black window."""
+    global mpv_process
+    if os.path.exists(MPV_SOCKET):
+        os.remove(MPV_SOCKET)
     cmd = [
-        "mpv", "--fs", "--msg-level=all=error", "--osc=no", "--no-audio",
-        "--keep-open=no", f"--image-display-duration={duration}",
+        "mpv", "--fs", "--force-window=yes", "--idle=yes", "--hwdec=auto",
+        f"--input-ipc-server={MPV_SOCKET}", "--osc=no", "--msg-level=all=error",
+        "--keep-open=yes",
     ]
     if USE_DRM:
         cmd += ["--vo=gpu", "--gpu-context=drm"]
-    cmd.append(LOADING_IMAGE_PATH)
+    if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
+        cmd += ["--image-display-duration=inf", "--no-audio", LOADING_IMAGE_PATH]
     try:
-        subprocess.run(cmd, env=_env_for_display(), timeout=duration + 5)
-    except Exception as exc:
-        print(f"[loading-flash] failed: {exc}")
-
-
-def _start_idle_image():
-    """Put up the loading image and hold it indefinitely (unlike
-    _show_loading_flash, which self-times out) — used whenever HDMI/DRM has
-    nothing else queued (server just started, screensaver is off, playback
-    was explicitly stopped) so the Linux console never shows through. No-op
-    if no loading image is configured, we're not on DRM, or one is already
-    up."""
-    global idle_image_process
-    if not USE_DRM or not LOADING_IMAGE_PATH or not os.path.exists(LOADING_IMAGE_PATH):
+        mpv_process = subprocess.Popen(cmd, env=_env_for_display())
+    except FileNotFoundError:
+        print("[mpv] 'mpv' not found on PATH — HDMI playback won't work")
+        mpv_process = None
         return
-    with idle_image_lock:
-        if idle_image_process is not None and idle_image_process.poll() is None:
-            return  # already showing
-        cmd = [
-            "mpv", "--fs", "--msg-level=all=error", "--osc=no", "--no-audio",
-            "--keep-open=yes", "--image-display-duration=inf",
-            "--vo=gpu", "--gpu-context=drm", LOADING_IMAGE_PATH,
-        ]
-        try:
-            idle_image_process = subprocess.Popen(cmd, env=_env_for_display())
-        except Exception as exc:
-            print(f"[idle-image] failed: {exc}")
+    _wait_for_socket(MPV_SOCKET)
 
 
-def _stop_idle_image():
-    """Release the idle image so whatever's about to play can take over DRM.
-    Blocks until the process has actually exited — callers rely on DRM
-    master being free the moment this returns."""
-    global idle_image_process
-    with idle_image_lock:
-        proc = idle_image_process
-        idle_image_process = None
-    if proc is None or proc.poll() is not None:
-        return
-    proc.terminate()
-    try:
-        proc.wait(timeout=5)
-    except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait(timeout=5)
+def _hdmi_supervisor_loop():
+    """Runs for the life of the process. Normal transitions never touch the
+    persistent mpv process itself, only its IPC socket, so this only fires
+    if mpv genuinely crashes — rare, but worth recovering from rather than
+    leaving the console exposed indefinitely."""
+    global mpv_generation
+    while True:
+        time.sleep(2)
+        with mpv_lock:
+            if _mpv_is_running():
+                continue
+            print("[mpv] persistent HDMI process died — restarting")
+            _spawn_hdmi_process()
+            mpv_generation += 1
+        _enter_idle_state()
+
+
+def _go_idle():
+    """Show the loading image, held indefinitely, if one's configured;
+    otherwise just unload whatever was playing and sit on mpv's own idle
+    black frame."""
+    global current_kind
+    current_kind = "idle"
+    if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
+        mpv_send({"command": ["loadfile", LOADING_IMAGE_PATH, "replace",
+                               "image-display-duration=inf,keep-open=yes,loop-file=no,mute=yes"]})
+    else:
+        mpv_send({"command": ["stop"]})
 
 
 def _enter_idle_state():
-    """Called whenever HDMI/DRM output has nothing queued next. Prefers the
-    screensaver when it's enabled; otherwise holds a static image so the
+    """Called whenever HDMI has nothing queued next. Prefers the
+    screensaver when it's enabled; otherwise holds the idle image so the
     console is never what ends up on screen."""
     if SCREENSAVER_ENABLED:
         start_screensaver()
     else:
-        _start_idle_image()
+        global mpv_generation
+        with mpv_lock:
+            mpv_generation += 1
+        _go_idle()
 
 
 # ------------------------------------------------------------- idle timer ---
@@ -607,210 +553,11 @@ def _idle_watcher_loop():
         time.sleep(10)
         if not IDLE_TIMEOUT_ENABLED or _idle_seconds() < IDLE_TIMEOUT_SECONDS:
             continue
-
-        if OUTPUT_MODE == "ndi":
-            with ndi_lock:
-                is_paused = ndi_state["paused"] and ndi_state["media_id"] is not None
-            if is_paused:
-                stop_ndi_playback()
+        if current_kind == "video":
+            r = mpv_send({"command": ["get_property", "pause"]})
+            if r and r.get("data"):
+                mpv_send({"command": ["stop"]})
                 _mark_interaction()
-        else:
-            if _mpv_is_running():
-                r = mpv_send({"command": ["get_property", "pause"]})
-                if r and r.get("data"):
-                    global mpv_stop_requested
-                    mpv_stop_requested = True
-                    mpv_send({"command": ["quit"]})
-                    _mark_interaction()
-
-
-# --------------------------------------------------------------- NDI ---
-
-
-def _launch_ndi_process(path, start_seconds, label_suffix="", loop=False):
-    cmd = [NDI_FFMPEG_BIN]
-    if loop:
-        cmd += ["-stream_loop", "-1"]
-    if start_seconds and start_seconds > 0:
-        cmd += ["-ss", str(start_seconds)]
-    cmd += ["-re", "-i", path]
-    if NDI_SCALE:
-        w, h = NDI_SCALE.lower().split("x")
-        cmd += ["-vf", f"scale={w}:{h}"]
-    cmd += ["-pix_fmt", "uyvy422", "-f", "libndi_newtek", f"{NDI_SOURCE_NAME}{label_suffix}"]
-    return subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-
-
-def _ndi_is_running():
-    with ndi_lock:
-        p = ndi_state["process"]
-        return p is not None and p.poll() is None
-
-
-def _ndi_get_position():
-    with ndi_lock:
-        if ndi_state["process"] is None:
-            return None
-        if ndi_state["paused"]:
-            return ndi_state["position_at_change"]
-        return ndi_state["position_at_change"] + (time.monotonic() - ndi_state["changed_at"])
-
-
-def _stop_ndi_process_only():
-    """Kill whatever ffmpeg process is running, without touching progress or
-    the rest of ndi_state — used internally before starting a new one."""
-    p = ndi_state["process"]
-    if p is not None and p.poll() is None:
-        try:
-            p.terminate()
-            p.wait(timeout=5)
-        except (subprocess.TimeoutExpired, ProcessLookupError):
-            try:
-                p.kill()
-            except ProcessLookupError:
-                pass
-    ndi_state["process"] = None
-
-
-def start_ndi_playback(item, resume_seconds=0.0, loop=None):
-    """Start (or restart, e.g. for a seek) NDI output for this item."""
-    global ndi_generation
-    if loop is None:
-        loop = LOOP_SELECTED_VIDEO
-    with ndi_lock:
-        _stop_ndi_process_only()
-        try:
-            proc = _launch_ndi_process(item["path"], resume_seconds, f" ({item['title']})", loop=loop)
-        except FileNotFoundError:
-            print(
-                f"[ndi] '{NDI_FFMPEG_BIN}' not found — is ZEALANDATA_NDI_FFMPEG set to "
-                "an NDI-enabled ffmpeg build? See README.md."
-            )
-            proc = None
-        ndi_state.update({
-            "process": proc,
-            "media_id": item["id"],
-            "title": item["title"],
-            "path": item["path"],
-            "duration": item.get("duration"),
-            "position_at_change": resume_seconds,
-            "changed_at": time.monotonic(),
-            "paused": False,
-        })
-        ndi_generation += 1
-        gen = ndi_generation
-
-    if proc is not None:
-        threading.Thread(
-            target=_watch_ndi_playback,
-            args=(gen, item["id"], item["title"], proc),
-            daemon=True,
-        ).start()
-
-
-def stop_ndi_playback():
-    """User-initiated stop: save final progress, tear down, and (since this
-    is a deliberate stop, not the watcher noticing a natural end) restart
-    the screensaver ourselves."""
-    _teardown_ndi_playback(restart_screensaver=True)
-
-
-def _teardown_ndi_playback(restart_screensaver):
-    with ndi_lock:
-        media_id, title, duration = ndi_state["media_id"], ndi_state["title"], ndi_state["duration"]
-        pos = _ndi_get_position()
-        _stop_ndi_process_only()
-        ndi_state.update({
-            "media_id": None, "title": None, "path": None,
-            "duration": None, "paused": False,
-        })
-    if media_id and pos is not None:
-        update_progress(media_id, title, pos, duration)
-    if restart_screensaver:
-        start_screensaver()
-
-
-def ndi_control_pause():
-    with ndi_lock:
-        p = ndi_state["process"]
-        if p is None or p.poll() is not None:
-            return None
-        if ndi_state["paused"]:
-            p.send_signal(signal.SIGCONT)
-            ndi_state["changed_at"] = time.monotonic()
-            ndi_state["paused"] = False
-        else:
-            ndi_state["position_at_change"] = _ndi_get_position()
-            p.send_signal(signal.SIGSTOP)
-            ndi_state["changed_at"] = time.monotonic()
-            ndi_state["paused"] = True
-        return ndi_state["paused"]
-
-
-def _ndi_current_item():
-    with ndi_lock:
-        if ndi_state["media_id"] is None:
-            return None, None
-        item = {
-            "id": ndi_state["media_id"], "title": ndi_state["title"],
-            "path": ndi_state["path"], "duration": ndi_state["duration"],
-        }
-        return item, _ndi_get_position()
-
-
-def ndi_control_seek(delta):
-    """Seeking restarts the ffmpeg process at the new offset (input seek) —
-    there's a brief reconnect on the NDI feed, unlike mpv's instant seek."""
-    item, pos = _ndi_current_item()
-    if item is None:
-        return
-    new_pos = max(0, (pos or 0) + delta)
-    if item["duration"]:
-        new_pos = min(new_pos, item["duration"])
-    start_ndi_playback(item, resume_seconds=new_pos)
-
-
-def ndi_control_seek_to(seconds):
-    item, _pos = _ndi_current_item()
-    if item is None:
-        return
-    new_pos = max(0, seconds)
-    if item["duration"]:
-        new_pos = min(new_pos, item["duration"])
-    start_ndi_playback(item, resume_seconds=new_pos)
-
-
-def _watch_ndi_playback(generation, media_id, title, process):
-    """Periodically records progress. If this specific process is still the
-    one referenced in ndi_state when it exits, that means it ended on its
-    own (not superseded by a seek-restart, and not an explicit stop, both of
-    which already replace/clear ndi_state) — so finalize progress and bring
-    the screensaver back."""
-    while process.poll() is None:
-        time.sleep(5)
-        with ndi_lock:
-            still_this_one = ndi_state["process"] is process
-            paused = ndi_state["paused"]
-        if still_this_one and not paused:
-            pos = _ndi_get_position()
-            if pos is not None:
-                update_progress(media_id, title, pos, ndi_state["duration"])
-
-    with ndi_lock:
-        natural_end = ndi_state["process"] is process
-        final_pos = _ndi_get_position() if natural_end else None
-        final_dur = ndi_state["duration"]
-        if natural_end:
-            ndi_state.update({
-                "process": None, "media_id": None, "title": None,
-                "path": None, "duration": None, "paused": False,
-            })
-
-    if natural_end:
-        if final_pos is not None:
-            update_progress(media_id, title, final_pos, final_dur)
-        if generation == ndi_generation:
-            start_screensaver()
 
 
 # --------------------------------------------------------- screensaver ---
@@ -818,46 +565,41 @@ def _watch_ndi_playback(generation, media_id, title, process):
 
 def start_screensaver():
     """Kick off a background thread that shuffles through random library
-    videos on whichever output mode is active, one after another, until
-    stop_screensaver() is called (i.e. someone picks something to watch)."""
-    global screensaver_thread
+    videos, one after another, until stop_screensaver() is called (i.e.
+    someone picks something to watch)."""
+    global screensaver_thread, current_kind, mpv_generation
     if not SCREENSAVER_ENABLED:
         return
-    with screensaver_lock:
+    with mpv_lock:
         if screensaver_thread is not None and screensaver_thread.is_alive():
             return  # already running
         screensaver_stop_event.clear()
-        screensaver_thread = threading.Thread(target=_screensaver_loop, daemon=True)
-        screensaver_thread.start()
+        current_kind = "screensaver"
+        mpv_generation += 1
+        gen = mpv_generation
+    screensaver_thread = threading.Thread(target=_screensaver_loop, args=(gen,), daemon=True)
+    screensaver_thread.start()
 
 
 def stop_screensaver():
-    global screensaver_process
     screensaver_stop_event.set()
     thread = screensaver_thread
     if thread is not None:
         thread.join(timeout=8)
-    with screensaver_lock:
-        screensaver_process = None
 
 
-def _screensaver_loop():
+def _screensaver_loop(gen):
     """Runs in its own thread: repeatedly picks a random library video and
     plays it (muted by default) until it ends naturally, then picks another
-    — until screensaver_stop_event is set. Uses mpv/HDMI or ffmpeg/NDI
-    depending on OUTPUT_MODE. Individual screensaver picks are never looped
-    — that's what keeps the shuffle actually shuffling."""
-    global screensaver_process
+    — until screensaver_stop_event is set, or something newer (a real
+    selection, or a crash-restart of the persistent mpv process) takes
+    over. Individual picks are never looped — that's what keeps the
+    shuffle actually shuffling."""
     last_id = None
-
-    if OUTPUT_MODE == "hdmi":
-        _stop_idle_image()
-
     while not screensaver_stop_event.is_set():
-        if OUTPUT_MODE == "hdmi":
-            _show_loading_flash()
-            if screensaver_stop_event.is_set():
-                break
+        with mpv_lock:
+            if gen != mpv_generation:
+                return
 
         items = get_media()
         if not items:
@@ -868,196 +610,83 @@ def _screensaver_loop():
         pick = random.choice(candidates)
         last_id = pick["id"]
 
-        if OUTPUT_MODE == "ndi":
-            try:
-                proc = _launch_ndi_process(pick["path"], 0, f" (Screensaver: {pick['title']})")
-            except FileNotFoundError:
-                print(f"[screensaver] '{NDI_FFMPEG_BIN}' not found on PATH")
+        opts = "keep-open=no,loop-file=no,mute=" + ("yes" if SCREENSAVER_MUTED else "no")
+        with mpv_lock:
+            if gen != mpv_generation:
                 return
-        else:
-            if os.path.exists(SCREENSAVER_SOCKET):
-                os.remove(SCREENSAVER_SOCKET)
-            cmd = [
-                "mpv", "--fs", "--msg-level=all=error", "--osc=no", "--keep-open=no",
-                f"--input-ipc-server={SCREENSAVER_SOCKET}",
-            ]
-            cmd.append("--mute=yes" if SCREENSAVER_MUTED else "--mute=no")
-            if USE_DRM:
-                cmd += ["--vo=gpu", "--gpu-context=drm"]
-            cmd.append(pick["path"])
-            try:
-                proc = subprocess.Popen(cmd, env=_env_for_display())
-            except FileNotFoundError:
-                print("[screensaver] mpv not found on PATH")
-                return
+            mpv_send({"command": ["loadfile", pick["path"], "replace", opts]})
 
-        with screensaver_lock:
-            screensaver_process = proc
-
-        while proc.poll() is None and not screensaver_stop_event.is_set():
+        while not screensaver_stop_event.is_set():
+            with mpv_lock:
+                if gen != mpv_generation:
+                    return
+            r = mpv_send({"command": ["get_property", "idle-active"]})
+            if r and r.get("data"):
+                break  # this pick finished naturally -> loop around to a new one
             time.sleep(1)
-
-        if screensaver_stop_event.is_set():
-            if OUTPUT_MODE == "ndi":
-                proc.terminate()
-            else:
-                _mpv_send({"command": ["quit"]}, SCREENSAVER_SOCKET)
-            try:
-                proc.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                proc.kill()
-            break
-        # else: that pick finished naturally -> loop around to a new one
-
-    with screensaver_lock:
-        screensaver_process = None
 
 
 # ------------------------------------------------------- mpv playback ---
 
 
-def _watch_mpv_playback(generation, media_id, title, process, loop, item, retry_count=0):
-    """Runs in a background thread for the lifetime of one mpv playback.
-    Periodically records progress. On exit: if this was a deliberate stop
-    (or a newer playback has already taken over), behaves as before. If it
-    was supposed to be looping and just exited on its own — which shouldn't
-    normally happen with --loop-file=inf, but has been observed with some
-    very short clips — relaunch it automatically instead of silently
-    leaving the UI stuck, with a small retry cap so a genuinely broken file
-    doesn't spin the Pi in a fast crash loop.
-
-    Polls quickly (every 0.5s) for the first few seconds specifically so a
-    fast crash loop is detected and capped promptly, then settles into the
-    coarser 5s cadence used for normal progress tracking once it's clearly
-    running stably."""
-    global mpv_stop_requested
-    started_at = time.monotonic()
+def _watch_mpv_playback(generation, media_id, title):
+    """Runs in a background thread for as long as this generation is the
+    active one. Periodically records progress; when mpv goes idle while
+    this is still current — an explicit stop, or the persistent process
+    having been restarted after a crash — hands off to whatever should
+    show next."""
     last_pos, last_dur = None, None
-    while process.poll() is None:
-        elapsed = time.monotonic() - started_at
-        if elapsed < 5:
-            time.sleep(0.5)
-            continue  # too early for position tracking to matter; just
-                       # watching closely for a fast exit
-        time.sleep(5)
-        pos_r = _mpv_send({"command": ["get_property", "time-pos"]}, MPV_SOCKET)
-        dur_r = _mpv_send({"command": ["get_property", "duration"]}, MPV_SOCKET)
+    while True:
+        time.sleep(2)
+        with mpv_lock:
+            if generation != mpv_generation:
+                return  # superseded by something newer
+        r = mpv_send({"command": ["get_property", "idle-active"]})
+        if r is None:
+            continue  # socket hiccup — don't mistake it for "went idle"
+        if r.get("data"):
+            break
+        pos_r = mpv_send({"command": ["get_property", "time-pos"]})
+        dur_r = mpv_send({"command": ["get_property", "duration"]})
         pos = pos_r.get("data") if pos_r else None
         dur = dur_r.get("data") if dur_r else None
         if pos is not None:
             last_pos, last_dur = pos, dur
             update_progress(media_id, title, pos, dur)
 
-    ran_for = time.monotonic() - started_at
-    was_intentional_stop = mpv_stop_requested
-    mpv_stop_requested = False  # consume it — only applies to this exit
-
     if last_pos is not None:
         update_progress(media_id, title, last_pos, last_dur)
 
-    if loop and not was_intentional_stop and generation == mpv_generation:
-        if ran_for < 4 and retry_count >= 3:
-            print(
-                f"[mpv] '{title}' kept exiting within seconds of starting even "
-                f"though it's set to loop (tried {retry_count} times) — giving "
-                "up and falling back to the screensaver instead of retrying "
-                "forever. Check `journalctl -u zealandata` for mpv's own error "
-                "output around this point."
-            )
-        else:
-            next_retry = retry_count + 1 if ran_for < 4 else 0
-            print(f"[mpv] '{title}' exited unexpectedly while it should have "
-                  f"been looping — relaunching (attempt {next_retry}).")
-            _start_mpv_playback(item, resume_seconds=0, loop=loop, _retry_count=next_retry)
-            return  # the relaunch spins up its own watcher; don't fall through
-
-    # Only go idle if nothing newer has started meanwhile.
-    if generation == mpv_generation:
+    with mpv_lock:
+        still_current = generation == mpv_generation
+    if still_current:
         _enter_idle_state()
 
 
-def _start_mpv_playback(match, resume_seconds, loop=None, _retry_count=0):
-    global mpv_process, mpv_generation, mpv_stop_requested
+def _start_mpv_playback(match, resume_seconds, loop=None):
+    global mpv_generation, current_kind
     if loop is None:
         loop = LOOP_SELECTED_VIDEO
     with mpv_lock:
-        _stop_idle_image()
-        if _mpv_is_running():
-            mpv_stop_requested = True
-            mpv_send({"command": ["quit"]})
-            mpv_process.wait(timeout=5)
-        if os.path.exists(MPV_SOCKET):
-            os.remove(MPV_SOCKET)
-
-        # Covers the gap between whatever was showing before (a previous
-        # selection just quit above, or the screensaver already stopped by
-        # the caller) and this one actually starting. Any previous mpv
-        # instance is guaranteed to have released the display by this
-        # point — showing this any earlier would conflict with it for DRM
-        # ownership. Skipped for the self-healing relaunch path
-        # (_retry_count > 0) — a rarer error-recovery case where an extra
-        # second of delay isn't worth adding on top of the crash-loop-cap
-        # timing.
-        if _retry_count == 0:
-            _show_loading_flash()
-
-        cmd = [
-            "mpv", "--fs", "--hwdec=auto", f"--input-ipc-server={MPV_SOCKET}",
-            "--osc=no", "--msg-level=all=error",
-            # Default behavior: hold on the last frame when a video ends
-            # (mpv pauses instead of exiting), rather than looping or
-            # closing — keeps it scrubbable back and forth afterward.
-            # --loop-file below overrides this when explicitly enabled.
-            "--keep-open=yes",
-        ]
-        if USE_DRM:
-            cmd += ["--vo=gpu", "--gpu-context=drm"]
-        if loop:
-            cmd.append("--loop-file=inf")
-        if resume_seconds > 0:
-            cmd.append(f"--start={resume_seconds}")
-        cmd.append(match["path"])
-
-        mpv_process = subprocess.Popen(cmd, env=_env_for_display())
+        current_kind = "video"
         mpv_generation += 1
         gen = mpv_generation
-        threading.Thread(
-            target=_watch_mpv_playback,
-            args=(gen, match["id"], match["title"], mpv_process, loop, match, _retry_count),
-            daemon=True,
-        ).start()
+        opts = "keep-open=yes,mute=no,loop-file=" + ("inf" if loop else "no")
+        if resume_seconds > 0:
+            opts += f",start={resume_seconds}"
+        mpv_send({"command": ["loadfile", match["path"], "replace", opts]})
+    threading.Thread(
+        target=_watch_mpv_playback,
+        args=(gen, match["id"], match["title"]),
+        daemon=True,
+    ).start()
 
 
-def set_output_mode(new_mode):
-    """Live-switch between "hdmi" and "ndi". Stops whatever's currently
-    playing (foreground video or screensaver) under the old mode, then
-    starts the screensaver fresh under the new one, if enabled."""
-    global OUTPUT_MODE, mpv_stop_requested
-    if new_mode not in ("hdmi", "ndi"):
-        raise ValueError("mode must be 'hdmi' or 'ndi'")
-    with output_mode_lock:
-        if new_mode == OUTPUT_MODE:
-            return
-
-        stop_screensaver()  # stop whichever-mode screensaver is running now
-
-        if OUTPUT_MODE == "ndi":
-            # Tear down without letting it restart the screensaver under the
-            # OLD mode — we'll do that ourselves once the mode is flipped.
-            _teardown_ndi_playback(restart_screensaver=False)
-        elif _mpv_is_running():
-            mpv_stop_requested = True
-            mpv_send({"command": ["quit"]})
-            try:
-                mpv_process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                mpv_process.kill()
-
-        OUTPUT_MODE = new_mode
-        if new_mode == "hdmi":
-            _enter_idle_state()
-        else:
-            start_screensaver()
+def _is_foreground_playing():
+    """True if something's been explicitly selected and is playing/paused —
+    as opposed to the screensaver's own ambient picks, which don't count
+    here."""
+    return current_kind == "video"
 
 
 # --------------------------------------------------------------- routes ---
@@ -1103,40 +732,6 @@ def thumbnails(filename):
     return send_from_directory(THUMB_DIR, filename)
 
 
-
-@app.route("/api/output_mode", methods=["GET"])
-def api_get_output_mode():
-    return jsonify({
-        "mode": OUTPUT_MODE,
-        "switchable": SHOW_OUTPUT_TOGGLE,
-        "ndi_binary_found": shutil.which(NDI_FFMPEG_BIN) is not None,
-    })
-
-
-@app.route("/api/output_mode", methods=["POST"])
-def api_set_output_mode():
-    body = request.get_json(silent=True) or {}
-    mode = body.get("mode")
-    if mode not in ("hdmi", "ndi"):
-        return jsonify({"error": "mode must be 'hdmi' or 'ndi'"}), 400
-    set_output_mode(mode)
-    return jsonify({
-        "mode": OUTPUT_MODE,
-        "switchable": SHOW_OUTPUT_TOGGLE,
-        "ndi_binary_found": shutil.which(NDI_FFMPEG_BIN) is not None,
-    })
-
-
-def _is_foreground_playing():
-    """True if something's been explicitly selected and is playing/paused —
-    as opposed to the screensaver's own ambient picks, which are tracked
-    completely separately and don't count here."""
-    if OUTPUT_MODE == "ndi":
-        with ndi_lock:
-            return ndi_state["media_id"] is not None
-    return _mpv_is_running()
-
-
 @app.route("/api/screensaver", methods=["GET"])
 def api_get_screensaver():
     return jsonify({"enabled": SCREENSAVER_ENABLED})
@@ -1150,8 +745,8 @@ def api_set_screensaver():
     SCREENSAVER_ENABLED = enabled
     if not enabled:
         stop_screensaver()
-        if OUTPUT_MODE == "hdmi" and not _is_foreground_playing():
-            _start_idle_image()
+        if not _is_foreground_playing():
+            _enter_idle_state()
     elif not _is_foreground_playing():
         # turn on and nothing's currently selected -> start it right away
         # rather than waiting for the next natural idle transition
@@ -1203,37 +798,18 @@ def api_play(media_id):
         })
 
     stop_screensaver()
-    if OUTPUT_MODE == "ndi":
-        start_ndi_playback(match, resume_seconds=resume_seconds)
-    else:
-        _start_mpv_playback(match, resume_seconds=resume_seconds)
+    _start_mpv_playback(match, resume_seconds=resume_seconds)
 
-    return jsonify({"status": "playing", "title": match["title"], "id": media_id, "output": OUTPUT_MODE})
+    return jsonify({"status": "playing", "title": match["title"], "id": media_id})
 
 
 @app.route("/api/control/<action>", methods=["POST"])
 def api_control(action):
     _mark_interaction()
 
-    if OUTPUT_MODE == "ndi":
-        if action == "pause":
-            return jsonify({"paused": ndi_control_pause()})
-        if action == "stop":
-            stop_ndi_playback()
-            return jsonify({"result": "stopped"})
-        if action == "seek_forward":
-            ndi_control_seek(10)
-            return jsonify({"result": "ok"})
-        if action == "seek_backward":
-            ndi_control_seek(-10)
-            return jsonify({"result": "ok"})
-        if action in ("volume_up", "volume_down", "frame_forward", "frame_backward"):
-            return jsonify({"error": f"{action.replace('_', ' ')} isn't available in NDI output mode"}), 400
-        return jsonify({"error": "unknown action"}), 400
-
     mapping = {
         "pause": {"command": ["cycle", "pause"]},
-        "stop": {"command": ["quit"]},
+        "stop": {"command": ["stop"]},
         "seek_forward": {"command": ["seek", 10]},
         "seek_backward": {"command": ["seek", -10]},
         "volume_up": {"command": ["add", "volume", 5]},
@@ -1245,9 +821,6 @@ def api_control(action):
     }
     if action not in mapping:
         return jsonify({"error": "unknown action"}), 400
-    if action == "stop":
-        global mpv_stop_requested
-        mpv_stop_requested = True
     result = mpv_send(mapping[action])
     if action == "pause":
         # "cycle pause" doesn't report the resulting state, so read it back
@@ -1267,43 +840,13 @@ def api_seek_to():
     seconds = request.get_json(force=True).get("seconds")
     if seconds is None:
         return jsonify({"error": "seconds required"}), 400
-    if OUTPUT_MODE == "ndi":
-        ndi_control_seek_to(seconds)
-        return jsonify({"result": "ok"})
     return jsonify({"result": mpv_send({"command": ["seek", seconds, "absolute"]})})
 
 
 @app.route("/api/status")
 def api_status():
-    if OUTPUT_MODE == "ndi":
-        with ndi_lock:
-            if ndi_state["media_id"] is None:
-                return jsonify({"playing": False, "output": "ndi"})
-            with meta_lock:
-                description = current_media_meta.get("description")
-                title = current_media_meta.get("title") or ndi_state["title"]
-                is_sequence = current_media_meta.get("is_sequence", False)
-                frame_count = current_media_meta.get("frame_count")
-                thumbnail = current_media_meta.get("thumbnail")
-                media_id = current_media_meta.get("id")
-            return jsonify({
-                "playing": True,
-                "position": _ndi_get_position(),
-                "duration": ndi_state["duration"],
-                "paused": ndi_state["paused"],
-                "filename": ndi_state["title"],
-                "id": media_id,
-                "title": title,
-                "description": description,
-                "is_sequence": is_sequence,
-                "frame_count": frame_count,
-                "frame_number": None,  # frame stepping isn't available in NDI mode
-                "thumbnail": thumbnail,
-                "output": "ndi",
-            })
-
-    if not _mpv_is_running():
-        return jsonify({"playing": False, "output": "hdmi"})
+    if current_kind != "video":
+        return jsonify({"playing": False})
 
     def prop(name):
         r = mpv_send({"command": ["get_property", name]})
@@ -1329,19 +872,17 @@ def api_status():
             "description": description,
             "is_sequence": is_sequence,
             "frame_count": frame_count,
-            "thumbnail": thumbnail,
             # only worth the extra IPC round-trip for sequences, where the
             # dock actually shows a frame counter
             "frame_number": prop("estimated-frame-number") if is_sequence else None,
-            "output": "hdmi",
         }
     )
 
 
 if __name__ == "__main__":
-    if OUTPUT_MODE == "hdmi":
-        _start_idle_image()  # cover the console immediately; released by
-                              # the screensaver loop below if that's on
+    _spawn_hdmi_process()
+    _go_idle()
+    threading.Thread(target=_hdmi_supervisor_loop, daemon=True).start()
     start_screensaver()
     threading.Thread(target=_idle_watcher_loop, daemon=True).start()
     port = int(os.environ.get("ZEALANDATA_PORT", "8000"))

@@ -14,10 +14,12 @@ into it (a projector, a TV, etc.) — not streamed into your browser tab.
 
 - **`server.py`** — a small Flask app. It scans a media folder, generates
   poster thumbnails with `ffmpeg`, and serves a JSON API + the web UI.
-- When you press Play, the server launches **`mpv`** (a lightweight, very
-  capable video player) full-screen, pointed at the Pi's real display
-  output. It talks to mpv afterwards over mpv's JSON IPC socket to
-  pause/seek/stop, and to read back playback position for the progress bar.
+- The server starts a single **`mpv`** (a lightweight, very capable video
+  player) full-screen for the whole life of the service, pointed at the
+  Pi's real display output. When you press Play, it tells that same mpv
+  process to load your video over mpv's JSON IPC socket — the same socket
+  is used to pause/seek/stop, and to read back playback position for the
+  progress bar.
 - The web page (`templates/index.html`, `static/app.js`, `static/style.css`)
   is a hero banner + poster rows + a persistent "now playing" dock bar,
   polling `/api/status` once a second to stay in sync.
@@ -175,81 +177,6 @@ the wifi hotspot fine). That's not a problem for Zealandata — everything
 it needs is local — but matters if you SSH in for maintenance while it's
 running this way.
 
-## NDI (sending the video feed over the network instead of HDMI)
-
-`ZEALANDATA_OUTPUT_MODE` picks exactly one output — it's one or the other, not
-both. A segmented HDMI/NDI switch in the top bar also lets you flip
-between them live from the web UI, without touching the Pi — it stops
-whatever's currently playing (with a confirmation if something's actively
-running) and switches over. `ZEALANDATA_OUTPUT_MODE` just sets the mode Zealandata
-starts up in; the switch overrides it at runtime, and reverts to the
-env var's setting on the next restart of the service.
-
-- `hdmi` (default): mpv plays full-screen out of the Pi's HDMI port, same
-  as everything described above.
-- `ndi`: nothing goes out the Pi's HDMI at all. Instead, ffmpeg pushes
-  whatever's selected out as a live NDI network source, so other software
-  on your network (vMix, OBS with the NDI plugin, NDI Studio Monitor, video
-  walls, etc.) can pick it up.
-
-**NDI mode is more involved to set up**, because NDI is a proprietary
-protocol from Vizrt/NewTek — there's no `apt install ndi`. Here's what's
-actually required:
-
-1. **Download the NDI SDK for Linux** from [ndi.video](https://ndi.video/for-developers/ndi-sdk/)
-   (free, but requires creating an account and accepting their license —
-   this step can't be scripted). Get NDI SDK **v5 or later**, the first
-   version with proper ARM64 builds for a Pi 4. Run their installer; note
-   where it puts `libndi.so`.
-
-2. **Build ffmpeg from source with NDI support.** The code for this
-   (`libavdevice`'s NDI muxer) is already in mainline ffmpeg, just disabled
-   by default — you opt in at build time once the SDK is present:
-   ```bash
-   sudo apt install -y build-essential pkg-config git
-   git clone https://github.com/FFmpeg/FFmpeg.git ffmpeg-ndi
-   cd ffmpeg-ndi
-   ./configure --enable-libndi_newtek --enable-shared --prefix=/opt/ffmpeg-ndi
-   make -j4
-   sudo make install
-   ```
-   (You may need `PKG_CONFIG_PATH` pointed at wherever the NDI SDK installed
-   its `.pc` file, and `LD_LIBRARY_PATH` set so this ffmpeg can find
-   `libndi.so` at runtime — the SDK installer prints the exact paths.)
-   This keeps your NDI-capable ffmpeg completely separate from the system
-   `ffmpeg` Zealandata uses for thumbnails, so nothing else breaks.
-
-3. **Switch Zealandata into NDI mode.** In `zealandata.service`:
-   ```
-   Environment=ZEALANDATA_OUTPUT_MODE=ndi
-   Environment=ZEALANDATA_NDI_FFMPEG=/opt/ffmpeg-ndi/bin/ffmpeg
-   Environment=ZEALANDATA_NDI_NAME=Zealandata
-   ```
-   Then `sudo systemctl daemon-reload && sudo systemctl restart zealandata`.
-   You can leave `ZEALANDATA_USE_DRM`/`ZEALANDATA_DISPLAY` set to whatever they
-   were — they're simply unused while `ZEALANDATA_OUTPUT_MODE=ndi`.
-
-4. **Verify it** by running NDI Studio Monitor (or any NDI receiver) on
-   another machine on the same network and confirming the source shows up
-   (named `ZEALANDATA_NDI_NAME (video title)`) when you play something.
-
-**How playback controls work in this mode:** there's no mpv running at
-all, so pause/seek/stop are implemented directly against the ffmpeg
-process:
-- **Pause/resume** sends the process `SIGSTOP`/`SIGCONT` — the feed
-  freezes on its last frame and picks back up on resume.
-- **Seek** (±10s buttons, or dragging the scrub bar) restarts the ffmpeg
-  process at the new position — there's a brief reconnect blip on the NDI
-  feed each time you seek, unlike mpv's instant seeking on HDMI.
-- **Position/duration** are tracked by Zealandata itself (via a one-time
-  `ffprobe` per file at scan time, plus a wall-clock timer while playing),
-  since ffmpeg has no live property-query protocol the way mpv does.
-- A Pi 4 encoding NDI at full source resolution can get CPU-heavy. Set
-  `ZEALANDATA_NDI_SCALE=1280x720` (or lower) to downscale the feed and keep
-  things smooth.
-- The screensaver's random-cycling videos also go out via NDI in this
-  mode (same muted-by-default behavior, just no local picture).
-
 ## Continue Watching
 
 While a video plays, the server checks in with mpv every 5 seconds and
@@ -289,35 +216,24 @@ once chosen. Either way, this only applies to a deliberate selection — the
 screensaver's own random picks are never looped or held open, since
 finishing normally is what lets the shuffle keep shuffling.
 
-**NDI mode can't truly replicate the "pause on last frame" behavior.**
-ffmpeg (the NDI backend) has no equivalent to mpv's `--keep-open` — when a
-video finishes without looping in NDI mode, the process simply ends and it
-falls back to the screensaver, the same as it always did. This mismatch is
-low-priority for this deployment specifically, since the plan is straight
-HDMI output with pre-warped exports, but worth knowing if that changes.
-
-If mpv ever exits unexpectedly while a video is supposed to be looping —
-observed occasionally with very short clips — it's automatically
-relaunched rather than silently leaving the dock stuck. If that happens
-repeatedly for the same file (3 fast failures in a row), it gives up and
-falls back to the screensaver instead of crash-looping forever, and logs
-why via `journalctl -u zealandata`. mpv's own error messages are no longer
-fully suppressed (previously `--really-quiet`, now `--msg-level=all=error`),
-specifically so that log has something useful in it if this happens.
-
 ## Loading screen instead of the console flashing through
 
-On headless HDMI/DRM output, mpv only owns the physical display while it's
-actually running — the instant one mpv process exits and before the next
-one starts, whatever's normally on the Linux console underneath (by
-default, a login prompt) can flash into view for that gap. There are two
-separate versions of this, with two separate fixes:
+`server.py` starts exactly one `mpv` process, for the life of the service,
+and never restarts it during normal operation — the idle image, a selected
+video, and each screensaver pick are all switched by sending that same
+process `loadfile` over its IPC socket rather than spawning/killing
+separate `mpv` instances. On headless HDMI/DRM output (no window manager),
+starting and stopping *separate* processes is the only thing that can let
+the Linux console underneath (by default, a login prompt) flash into view
+for a frame or two during the handoff — so avoiding that handoff
+altogether, rather than trying to time it tightly, is what actually keeps
+the console hidden. There are still two distinct gaps this covers:
 
-**At boot** (and if the service ever crash-loops) — `zealandata-splash.service`
-shows a static image via mpv from very early in boot, and is automatically
-stopped by systemd the instant `zealandata.service` starts — no custom code
-involved, just systemd's native `Conflicts=`/`Before=`/`After=` unit
-ordering. Install it once:
+**At boot** (before `zealandata.service` itself has even started) —
+`zealandata-splash.service` shows a static image via its own `mpv` from
+very early in boot, and is automatically stopped by systemd the instant
+`zealandata.service` starts — no custom code involved, just systemd's
+native `Conflicts=`/`Before=`/`After=` unit ordering. Install it once:
 ```bash
 cp loading.png zealandata-splash.service # adjust paths/User inside first
 sudo cp zealandata-splash.service /etc/systemd/system/
@@ -327,32 +243,24 @@ sudo systemctl enable zealandata-splash
 (`zealandata.service` already references it via `Conflicts=`/`After=` — that
 line is harmless even if you never install the splash service at all.)
 
-**Between videos during normal operation** — set `ZEALANDATA_LOADING_IMAGE`
-to a real image path and the same loading image briefly appears (default
-1.2s, `ZEALANDATA_LOADING_FLASH_SECONDS`) at every transition into
-foreground playback and between each screensaver pick, covering the gap
-instead of leaving it empty. Off by default — nothing changes unless you
-set this. NDI mode never needs it (no shared physical console there).
-
-**While idle** — whenever there's genuinely nothing queued next on HDMI
-(the app just started, a video was explicitly stopped, or the screensaver
-is turned off) and `ZEALANDATA_LOADING_IMAGE` is set, the same image is
-held up indefinitely instead of just flashed, so the console never becomes
-what's actually on screen. It's released the moment something real starts
-playing or the screensaver kicks in.
+**From then on** — set `ZEALANDATA_LOADING_IMAGE` to a real image path and
+it's passed straight to the persistent `mpv` process as its startup file,
+then held up (via `loadfile`) any time there's genuinely nothing else
+queued: right after startup, whenever a video is explicitly stopped, and
+whenever the screensaver is off. It's swapped out for the real thing the
+instant something needs to play. Off by default — nothing changes unless
+you set this.
 
 A basic default `loading.png` (dark background, "Zealandata" wordmark,
-matching the app's own color palette) is included — replace it with
-your own artwork any time, it's just a static file.
+matching the app's own color palette) is included — replace it with your
+own artwork any time, it's just a static file.
 
-One honest caveat: the between-videos version adds an actual process
-transition into the mix (old content ends → loading image → new content
-starts), which I can't fully verify the real-world timing of without
-testing on your actual Pi hardware. If it ends up feeling like it makes
-transitions choppier rather than smoother, lower
-`ZEALANDATA_LOADING_FLASH_SECONDS` first, or unset `ZEALANDATA_LOADING_IMAGE`
-entirely to go back to a plain gap (much improved already by disabling the
-console getty, per the note above).
+If the persistent `mpv` process itself ever genuinely crashes (rare — normal
+transitions never touch the process, only its IPC socket), a supervisor
+thread notices and restarts it automatically, going back to the idle image
+rather than leaving the console exposed. Check `journalctl -u zealandata`
+if that ever happens repeatedly — it means something's wrong with `mpv`
+itself, not with a particular video file.
 
 ## Idle timeout
 
@@ -372,9 +280,9 @@ since anyone touched a button; that's normal viewing, not idleness.
 
 The now-playing dock shows a small thumbnail of whatever's selected — the
 same auto-generated poster image used in the browsing grid, not a live
-video feed. Works identically in both HDMI and NDI output mode, since it's
-just a static image the server already had on hand rather than anything
-that depends on mpv or ffmpeg being interactively controllable.
+video feed. It's just a static image the server already had on hand
+rather than anything that depends on mpv being interactively
+controllable.
 
 (An earlier version of this tried to pull a live screenshot from mpv once
 a second. That turned out to be unreliable — mpv's screenshot mechanism
@@ -458,8 +366,7 @@ time bar for **‹ frame-back / frame-forward ›** buttons and a "Frame 3 of
 5" counter instead, so you can step through and hold on exactly the frame
 you want (handy when walking someone through what changed between two
 specific frames). Stepping always leaves it paused on the frame you land
-on. This only works in HDMI output mode — there's no equivalent in NDI
-mode, since ffmpeg has no interactive step protocol the way mpv does.
+on.
 
 ## Categories from folders
 
@@ -496,10 +403,6 @@ shelf. Hit Rescan after adding or moving folders around.
 - **Remote control**: the dock bar's pause/seek/stop buttons call mpv over
   its local IPC socket, so multiple people on the network see the same
   live status (whoever presses pause, pauses it for everyone).
-- **HDMI/NDI switch**: hidden from the web UI by default
-  (`ZEALANDATA_SHOW_OUTPUT_TOGGLE=0`) since most deployments pick one
-  output mode via `ZEALANDATA_OUTPUT_MODE` and never need to change it
-  live. Set it to `1` to show the switch if you do want it available.
 - **Security**: this has no authentication and is meant for a trusted
   office/home LAN only. Don't expose it to the internet (port-forwarding it
   through your router, for instance).

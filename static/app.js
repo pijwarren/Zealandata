@@ -4,10 +4,6 @@ const settingsBtn = document.getElementById("settingsBtn");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const settingsScrim = document.getElementById("settingsScrim");
 const settingsDrawer = document.getElementById("settingsDrawer");
-const outputField = document.getElementById("outputField");
-const outputHdmiBtn = document.getElementById("outputHdmiBtn");
-const outputNdiBtn = document.getElementById("outputNdiBtn");
-const outputNdiWarn = document.getElementById("outputNdiWarn");
 const screensaverOnBtn = document.getElementById("screensaverOnBtn");
 const screensaverOffBtn = document.getElementById("screensaverOffBtn");
 const rescanBtn = document.getElementById("rescanBtn");
@@ -29,7 +25,6 @@ const dockPreviewWrap = document.getElementById("dockPreviewWrap");
 const dockPreview = document.getElementById("dockPreview");
 const playerStopBtn = document.getElementById("playerStopBtn");
 const setHeroBtn = document.getElementById("setHeroBtn");
-const playerNdiBadge = document.getElementById("playerNdiBadge");
 const playerTitle = document.getElementById("playerTitle");
 const playerDesc = document.getElementById("playerDesc");
 const frameBackBtn = document.getElementById("frameBackBtn");
@@ -324,41 +319,6 @@ settingsBtn.addEventListener("click", openSettings);
 settingsCloseBtn.addEventListener("click", closeSettings);
 settingsScrim.addEventListener("click", closeSettings);
 
-function paintOutputToggle(mode, ndiBinaryFound) {
-  outputHdmiBtn.classList.toggle("active", mode === "hdmi");
-  outputNdiBtn.classList.toggle("active", mode === "ndi");
-  outputNdiWarn.classList.toggle("hidden", ndiBinaryFound !== false);
-}
-
-async function loadOutputMode() {
-  const res = await fetch("/api/output_mode");
-  const data = await res.json();
-  outputField.classList.toggle("hidden", !data.switchable);
-  paintOutputToggle(data.mode, data.ndi_binary_found);
-  return data.mode;
-}
-
-async function switchOutputMode(mode) {
-  if (outputHdmiBtn.classList.contains("active") && mode === "hdmi") return;
-  if (outputNdiBtn.classList.contains("active") && mode === "ndi") return;
-  const somethingPlaying = !dock.classList.contains("hidden");
-  if (somethingPlaying) {
-    const ok = confirm(`Switching to ${mode.toUpperCase()} output will stop what's currently playing. Continue?`);
-    if (!ok) return;
-  }
-  const res = await fetch("/api/output_mode", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ mode }),
-  });
-  const data = await res.json();
-  paintOutputToggle(data.mode, data.ndi_binary_found);
-  hideDock();
-  loadMedia();
-}
-outputHdmiBtn.addEventListener("click", () => switchOutputMode("hdmi"));
-outputNdiBtn.addEventListener("click", () => switchOutputMode("ndi"));
-
 function paintScreensaverToggle(enabled) {
   screensaverOnBtn.classList.toggle("active", enabled);
   screensaverOffBtn.classList.toggle("active", !enabled);
@@ -548,7 +508,6 @@ async function pollStatus() {
       if (s.thumbnail && dockPreview.getAttribute("src") !== s.thumbnail) {
         paintPreview(s.thumbnail);
       }
-      playerNdiBadge.classList.toggle("hidden", s.output !== "ndi");
       setPauseIcon(!!s.paused);
 
       if (s.is_sequence !== (currentFrameCount != null)) {
@@ -578,7 +537,6 @@ async function pollStatus() {
 (async () => {
   await loadHeroPreference();
   await loadMedia();
-  loadOutputMode();
   loadScreensaverState();
   setInterval(pollStatus, 1000);
 })();
