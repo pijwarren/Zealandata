@@ -512,7 +512,7 @@ def _go_idle():
     global current_kind
     current_kind = "idle"
     if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
-        mpv_send({"command": ["loadfile", LOADING_IMAGE_PATH, "replace",
+        mpv_send({"command": ["loadfile", LOADING_IMAGE_PATH, "replace", -1,
                                "image-display-duration=inf,keep-open=yes,loop-file=no,mute=yes"]})
     else:
         mpv_send({"command": ["stop"]})
@@ -614,7 +614,7 @@ def _screensaver_loop(gen):
         with mpv_lock:
             if gen != mpv_generation:
                 return
-            mpv_send({"command": ["loadfile", pick["path"], "replace", opts]})
+            mpv_send({"command": ["loadfile", pick["path"], "replace", -1, opts]})
 
         while not screensaver_stop_event.is_set():
             with mpv_lock:
@@ -674,7 +674,7 @@ def _start_mpv_playback(match, resume_seconds, loop=None):
         opts = "keep-open=yes,mute=no,loop-file=" + ("inf" if loop else "no")
         if resume_seconds > 0:
             opts += f",start={resume_seconds}"
-        mpv_send({"command": ["loadfile", match["path"], "replace", opts]})
+        mpv_send({"command": ["loadfile", match["path"], "replace", -1, opts]})
     threading.Thread(
         target=_watch_mpv_playback,
         args=(gen, match["id"], match["title"]),
