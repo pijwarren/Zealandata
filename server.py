@@ -532,13 +532,18 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     """Set the playback properties that should apply to the next file, then
     load it. Done as separate set_property calls (rather than loadfile's
     own trailing "options" argument) since that argument's exact position
-    varies across mpv versions and isn't worth chasing down per-build."""
+    varies across mpv versions and isn't worth chasing down per-build.
+    "pause" is reset explicitly too -- unlike the others, it's not a
+    per-file property, so pausing one video and then stopping it would
+    otherwise leave the *next* thing loaded (a screensaver pick, another
+    video) starting paused as well."""
     if image_duration is not None:
         mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
     mpv_send({"command": ["set_property", "keep-open", keep_open]})
     mpv_send({"command": ["set_property", "loop-file", loop_file]})
     mpv_send({"command": ["set_property", "mute", mute]})
     mpv_send({"command": ["set_property", "start", start]})
+    mpv_send({"command": ["set_property", "pause", "no"]})
     mpv_send({"command": ["loadfile", path, "replace"]})
 
 
