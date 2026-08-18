@@ -99,7 +99,7 @@ ADMIN_LOCKOUT_SECONDS = 120
 # than retrying into a crash loop if the mpv build/GPU driver on this Pi
 # doesn't like it.
 FADE_SECONDS = 1.0
-FADE_STEPS = 6
+FADE_STEPS = 12
 
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
@@ -597,7 +597,30 @@ def _hdmi_supervisor_loop():
         _enter_idle_state(fade=False)
 
 
-def _fade(from_value, to_value, duration):
+def _still_current(gen):
+    """True if gen (an mpv_generation snapshot) is still the active one, or
+    None was passed (meaning "not tracking a generation, always proceed").
+    Read without mpv_lock -- same as the other generation checks in this
+    file; it's a bare int comparison, and the whole point is for a stale
+    fade/load to notice it's been superseded and bail immediately rather
+    than running to completion first (see _fade/_hdmi_load)."""
+    return gen is None or gen == mpv_generation
+
+
+def _claim_generation(kind):
+    """Bump mpv_generation and set current_kind, atomically, and hand back
+    the new generation number -- the one thing that actually needs the
+    lock. Everything after this (the fade, the loadfile) runs lock-free, so
+    a competing claim can supersede it immediately instead of having to
+    wait for it to finish first."""
+    global mpv_generation, current_kind
+    with mpv_lock:
+        current_kind = kind
+        mpv_generation += 1
+        return mpv_generation
+
+
+def _fade(from_value, to_value, duration, gen=None):
     """Ramps mpv's "brightness" equalizer property between two values over
     duration seconds -- the standard workaround for fading to/from black
     between separate loadfile calls, since mpv has no built-in cross-fade.
@@ -605,30 +628,37 @@ def _fade(from_value, to_value, duration):
     either rejects the property or stops responding at all, rather than
     hammering the same call into a crash loop -- better to silently lose the
     cosmetic fade than risk destabilizing the one persistent process this
-    whole app depends on."""
+    whole app depends on. Also bails out immediately, mid-ramp, the moment
+    gen is no longer current -- e.g. someone picked a video while this was
+    still fading in a screensaver pick -- rather than finishing a fade
+    that's about to be immediately overwritten anyway."""
     global _fade_broken
     if _fade_broken or duration <= 0:
         # Always still attempt the single reset call, even once "broken" --
         # a one-off set_property is low-risk (it's the ramping loop that
         # gets disabled), and it's what lets brightness self-correct on the
         # next transition if it was ever left stuck at a non-zero value.
-        mpv_send({"command": ["set_property", "brightness", to_value]})
+        if _still_current(gen):
+            mpv_send({"command": ["set_property", "brightness", to_value]})
         return
     steps = max(1, FADE_STEPS)
     interval = duration / steps
     for i in range(1, steps + 1):
+        if not _still_current(gen):
+            return
         value = round(from_value + (to_value - from_value) * i / steps)
         result = mpv_send({"command": ["set_property", "brightness", value]})
         if result is None or result.get("error") != "success":
             print("[fade] brightness property unsupported or mpv unresponsive "
                   "-- disabling fade for the rest of this run")
             _fade_broken = True
-            mpv_send({"command": ["set_property", "brightness", 0]})
+            if _still_current(gen):
+                mpv_send({"command": ["set_property", "brightness", 0]})
             return
         time.sleep(interval)
 
 
-def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, fade=True):
+def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, fade=True, gen=None):
     """Set the playback properties that should apply to the next file, then
     load it. Done as separate set_property calls (rather than loadfile's
     own trailing "options" argument) since that argument's exact position
@@ -642,12 +672,22 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     first idle-image load right after mpv is spawned, since fading that
     early risks touching mpv before its DRM context has actually settled.
 
-    The fade-in half runs in a finally block so brightness always gets
-    restored even if something between the two halves errors -- otherwise
-    an exception there would leave the picture stuck dark indefinitely."""
+    gen, if given, is checked before and after the fade-out -- if something
+    newer has already claimed the generation by then, this bails out
+    without touching the file at all, letting whatever superseded it
+    proceed immediately instead of queuing up behind a stale transition.
+
+    The fade-in half runs in a finally block (when this wasn't already
+    superseded) so brightness always gets restored even if something
+    between the two halves errors -- otherwise an exception there would
+    leave the picture stuck dark indefinitely."""
+    if not _still_current(gen):
+        return
     half = FADE_SECONDS / 2
     if fade:
-        _fade(0, -100, half)
+        _fade(0, -100, half, gen=gen)
+    if not _still_current(gen):
+        return
     try:
         if image_duration is not None:
             mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
@@ -659,10 +699,10 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
         mpv_send({"command": ["loadfile", path, "replace"]})
     finally:
         if fade:
-            _fade(-100, 0, half)
+            _fade(-100, 0, half, gen=gen)
 
 
-def _go_idle(fade=True):
+def _go_idle(fade=True, gen=None):
     """Show the loading image, held indefinitely, if one's configured;
     otherwise just unload whatever was playing and sit on mpv's own idle
     black frame."""
@@ -670,7 +710,7 @@ def _go_idle(fade=True):
     current_kind = "idle"
     if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
         _hdmi_load(LOADING_IMAGE_PATH, keep_open="yes", loop_file="no",
-                   mute="yes", image_duration="inf", fade=fade)
+                   mute="yes", image_duration="inf", fade=fade, gen=gen)
     else:
         mpv_send({"command": ["stop"]})
 
@@ -684,10 +724,8 @@ def _enter_idle_state(fade=True):
     if SCREENSAVER_ENABLED:
         start_screensaver(fade=fade)
     else:
-        global mpv_generation
-        with mpv_lock:
-            mpv_generation += 1
-        _go_idle(fade=fade)
+        gen = _claim_generation("idle")
+        _go_idle(fade=fade, gen=gen)
 
 
 # ------------------------------------------------------------- idle timer ---
@@ -785,11 +823,14 @@ def _screensaver_loop(gen, fade=True):
         pick = random.choice(candidates)
         last_id = pick["id"]
 
-        with mpv_lock:
-            if gen != mpv_generation:
-                return
-            _hdmi_load(pick["path"], keep_open="no", loop_file="no",
-                       mute="yes" if SCREENSAVER_MUTED else "no", fade=fade)
+        if not _still_current(gen):
+            return
+        # Not held under mpv_lock -- _hdmi_load checks gen itself at each
+        # step and bails the instant something newer claims the generation
+        # (a real selection, a crash-restart), instead of finishing this
+        # pick's fade first and making the newer thing wait behind it.
+        _hdmi_load(pick["path"], keep_open="no", loop_file="no",
+                   mute="yes" if SCREENSAVER_MUTED else "no", fade=fade, gen=gen)
         fade = True
 
         while not screensaver_stop_event.is_set():
@@ -845,18 +886,16 @@ def _watch_mpv_playback(generation, media_id, title):
         _enter_idle_state()
 
 
-def _start_mpv_playback(match, resume_seconds, loop=None):
-    global mpv_generation, current_kind
+def _start_mpv_playback(match, resume_seconds, loop=None, gen=None):
     if loop is None:
         loop = LOOP_SELECTED_VIDEO
-    with mpv_lock:
-        current_kind = "video"
-        mpv_generation += 1
-        gen = mpv_generation
-        _hdmi_load(
-            match["path"], keep_open="yes", loop_file="inf" if loop else "no",
-            mute="no", start=str(resume_seconds) if resume_seconds > 0 else "none",
-        )
+    if gen is None:
+        gen = _claim_generation("video")
+    _hdmi_load(
+        match["path"], keep_open="yes", loop_file="inf" if loop else "no",
+        mute="no", start=str(resume_seconds) if resume_seconds > 0 else "none",
+        gen=gen,
+    )
     threading.Thread(
         target=_watch_mpv_playback,
         args=(gen, match["id"], match["title"]),
@@ -931,9 +970,15 @@ def api_set_screensaver():
     enabled = bool(body.get("enabled"))
     SCREENSAVER_ENABLED = enabled
     if not enabled:
-        stop_screensaver()
         if not _is_foreground_playing():
-            _enter_idle_state()
+            # Same reasoning as api_play: claim the generation before
+            # stopping the screensaver, so a mid-fade pick notices right
+            # away instead of finishing first and queuing this behind it.
+            gen = _claim_generation("idle")
+            stop_screensaver()
+            _go_idle(gen=gen)
+        else:
+            stop_screensaver()
     elif not _is_foreground_playing():
         # turn on and nothing's currently selected -> start it right away
         # rather than waiting for the next natural idle transition
@@ -1059,8 +1104,14 @@ def api_play(media_id):
             "thumbnail": match.get("thumbnail"),
         })
 
+    # Claim the generation *before* stopping the screensaver, not after --
+    # if a screensaver pick is mid-fade right now, this makes it notice
+    # immediately (its gen is now stale) and bail out of its own fade
+    # instead of finishing it first and making this selection's fade wait
+    # behind it, which is what produced a visible double fade back-to-back.
+    gen = _claim_generation("video")
     stop_screensaver()
-    _start_mpv_playback(match, resume_seconds=resume_seconds)
+    _start_mpv_playback(match, resume_seconds=resume_seconds, gen=gen)
 
     return jsonify({"status": "playing", "title": match["title"], "id": media_id})
 
