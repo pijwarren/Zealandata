@@ -214,6 +214,10 @@ Set the real value directly on the Pi's deployed
 `/etc/systemd/system/zealandata.service`, not in this repo — a PIN
 committed to git stays in its history even after you change it.
 
+Five wrong guesses in a row from the same device locks out further
+attempts for two minutes — enforced server-side per client IP, so it
+can't be bypassed by just reloading the page.
+
 "Unlock admin mode" in Settings brings up an on-screen number pad rather
 than a plain text prompt (shakes and clears on a wrong entry, no need to
 close and reopen to retry). Once unlocked, two things become available

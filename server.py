@@ -89,6 +89,8 @@ LOADING_IMAGE_PATH = os.environ.get("ZEALANDATA_LOADING_IMAGE", "").strip() or N
 # just renaming videos). Unset by default -- the admin-mode UI and its
 # endpoints are simply unavailable until you set one.
 ADMIN_PIN = os.environ.get("ZEALANDATA_ADMIN_PIN", "").strip() or None
+ADMIN_MAX_ATTEMPTS = 5
+ADMIN_LOCKOUT_SECONDS = 120
 
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
@@ -129,6 +131,11 @@ _media_cache = {"items": None, "mtime": 0}
 progress_lock = threading.Lock()
 hero_lock = threading.Lock()
 titles_lock = threading.Lock()
+
+# PIN brute-force lockout: per-client-IP wrong-attempt counts and lockout
+# expiry, checked by every admin-gated endpoint (see check_admin_pin).
+admin_lock = threading.Lock()
+admin_attempts = {}  # ip -> {"count": int, "locked_until": monotonic() or None}
 
 # ------------------------------------------------------------ progress ---
 
@@ -867,12 +874,44 @@ def api_set_hero():
     return jsonify({"id": media_id, "hero_thumbnail": hero_thumbnail})
 
 
+def check_admin_pin(candidate):
+    """Verifies candidate against ADMIN_PIN, enforcing a per-client-IP
+    lockout after ADMIN_MAX_ATTEMPTS wrong guesses in a row -- checked here
+    rather than only in api_admin_unlock so the rename endpoint (which
+    re-verifies the PIN independently) can't be used to route around it.
+    Returns (ok, locked_seconds); when locked_seconds is truthy the PIN
+    wasn't even compared this time, ok is always False."""
+    ip = request.remote_addr
+    with admin_lock:
+        entry = admin_attempts.get(ip)
+        if entry and entry["locked_until"] is not None:
+            remaining = entry["locked_until"] - time.monotonic()
+            if remaining > 0:
+                return False, round(remaining)
+            admin_attempts.pop(ip, None)  # lockout expired
+
+        correct = candidate == ADMIN_PIN
+        if correct:
+            admin_attempts.pop(ip, None)
+            return True, 0
+
+        entry = admin_attempts.setdefault(ip, {"count": 0, "locked_until": None})
+        entry["count"] += 1
+        if entry["count"] >= ADMIN_MAX_ATTEMPTS:
+            entry["locked_until"] = time.monotonic() + ADMIN_LOCKOUT_SECONDS
+            entry["count"] = 0
+        return False, 0
+
+
 @app.route("/api/admin/unlock", methods=["POST"])
 def api_admin_unlock():
     if not ADMIN_PIN:
         return jsonify({"error": "admin mode isn't configured on this server"}), 404
     body = request.get_json(silent=True) or {}
-    return jsonify({"ok": str(body.get("pin", "")) == ADMIN_PIN})
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"ok": False, "locked_seconds": locked_seconds}), 429
+    return jsonify({"ok": ok})
 
 
 @app.route("/api/media/<media_id>/rename", methods=["POST"])
@@ -884,7 +923,10 @@ def api_rename_media(media_id):
     if not ADMIN_PIN:
         return jsonify({"error": "admin mode isn't configured on this server"}), 404
     body = request.get_json(silent=True) or {}
-    if str(body.get("pin", "")) != ADMIN_PIN:
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
         return jsonify({"error": "incorrect PIN"}), 403
     if not get_media_by_id(media_id):
         return jsonify({"error": "not found"}), 404

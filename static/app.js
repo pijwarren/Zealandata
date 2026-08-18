@@ -423,7 +423,8 @@ function closePinPad(result) {
   if (resolve) resolve(result);
 }
 
-function pinPadFail() {
+function pinPadFail(message) {
+  pinError.textContent = message || "Incorrect PIN";
   pinError.classList.remove("hidden");
   pinModal.classList.add("pinpad--shake");
   setTimeout(() => pinModal.classList.remove("pinpad--shake"), 400);
@@ -438,10 +439,12 @@ async function pinDigit(d) {
   if (pinEntry.length < 4) return;
   pinChecking = true;
   const candidate = pinEntry;
-  const ok = pinVerify ? await pinVerify(candidate) : true;
+  // verifyFn returns { ok, message? } -- a plain "true" is treated as a
+  // no-verification success (unused today, but keeps openPinPad generic).
+  const result = pinVerify ? await pinVerify(candidate) : { ok: true };
   pinChecking = false;
-  if (ok) closePinPad(candidate);
-  else pinPadFail();
+  if (result.ok) closePinPad(candidate);
+  else pinPadFail(result.message);
 }
 
 pinModal.querySelectorAll(".pinpad__key[data-digit]").forEach((btn) => {
@@ -475,7 +478,10 @@ async function verifyAdminPin(candidate) {
     body: JSON.stringify({ pin: candidate }),
   });
   const data = await res.json().catch(() => ({}));
-  return !!data.ok;
+  if (res.status === 429) {
+    return { ok: false, message: `Too many attempts — try again in ${fmtTime(data.locked_seconds)}` };
+  }
+  return { ok: !!data.ok };
 }
 
 adminModeBtn.addEventListener("click", async () => {
