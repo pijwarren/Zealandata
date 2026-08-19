@@ -311,6 +311,7 @@ for (const name of CATEGORY_NAV_NAMES) {
   btn.type = "button";
   btn.className = "category-nav__item";
   btn.textContent = name.replace(/\band\b/gi, "&");
+  btn.dataset.categoryName = name;
   btn.addEventListener("click", () => {
     const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
     if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -359,7 +360,7 @@ function renderCategories(items) {
   }
 
   for (const btn of categoryNav.children) {
-    btn.classList.toggle("category-nav__item--empty", !sortedNames.includes(btn.textContent));
+    btn.classList.toggle("category-nav__item--empty", !sortedNames.includes(btn.dataset.categoryName));
   }
 }
 
