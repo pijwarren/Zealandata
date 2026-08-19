@@ -173,7 +173,7 @@ button:focus-visible, .card:focus-visible{
 
 .hero{
   position:sticky; top:0; z-index:2;
-  height:64vh; min-height:472px; max-height:732px;
+  height:64vh; min-height:380px; max-height:640px;
 }
 .hero__bg{ width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
 .hero__scrim{
@@ -182,7 +182,7 @@ button:focus-visible, .card:focus-visible{
              linear-gradient(0deg, rgba(22,24,38,0.95) 0%, rgba(22,24,38,0) 30%);
 }
 .hero__content{
-  position:absolute; left:var(--space-6); right:var(--space-6); bottom:148px;
+  position:absolute; left:var(--space-6); right:var(--space-6); bottom:56px;
   max-width:620px;
 }
 .hero__content .tag{ margin-bottom:14px; }
@@ -213,15 +213,10 @@ button:focus-visible, .card:focus-visible{
 }
 .row{ margin-bottom:var(--space-8); scroll-margin-top:90px; }
 
-/* Lives inside .hero (bottom:40px, clear of #browseMain's -40px overlap
-   below) rather than being its own sticky element -- riding along with
-   the hero, which is already sticky, sidesteps position:sticky behaving
-   inconsistently across browsers for a second independently-stuck
-   element on the same page. */
 .category-nav{
-  position:absolute; left:0; right:0; bottom:40px; z-index:3;
   display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
   padding:16px var(--space-6) 20px;
+  margin-bottom:var(--space-8);
 }
 .category-nav__item{
   flex:1 1 0; min-width:0; width:auto;
@@ -565,12 +560,11 @@ body.admin-mode #setHeroBtn{ display:flex; }
 
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
-  .hero{ height:38vh; min-height:348px; }
-  /* bottom must clear both #browseMain's -40px overlap below and the
-     category-nav strip sitting above that -- otherwise the hero's own
-     content (particularly the Play button, last in the stack) ends up
-     covered by one or the other */
-  .hero__content{ left:16px; right:16px; bottom:142px; }
+  .hero{ height:38vh; min-height:250px; }
+  /* bottom must clear #browseMain's -40px overlap (below) or the hero's
+     own content -- particularly the Play button, last in the stack --
+     gets visually covered by #browseMain painting on top of it */
+  .hero__content{ left:16px; right:16px; bottom:44px; }
   /* the content stack is anchored from the bottom with nothing above it,
      so a long description can push the tag/title off the top of a short
      mobile hero entirely (behind the sticky top bar) -- capping the
