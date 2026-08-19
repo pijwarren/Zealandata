@@ -9,6 +9,7 @@ preview_raw.jpg
 progress.json
 hero.json
 titles.json
+play_counts.json
 
 # Python
 __pycache__/

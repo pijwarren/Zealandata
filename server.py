@@ -47,6 +47,7 @@ SEQUENCE_CACHE_DIR = os.path.join(BASE_DIR, "static", "sequence_cache")
 PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
 HERO_FILE = os.path.join(BASE_DIR, "hero.json")
 TITLES_FILE = os.path.join(BASE_DIR, "titles.json")
+PLAY_COUNTS_FILE = os.path.join(BASE_DIR, "play_counts.json")
 
 MPV_SOCKET = "/tmp/zealandata-mpv.sock"
 
@@ -78,6 +79,13 @@ ATTACHMENTS_DIR_SUFFIX = ".attachments"
 # from the library itself.
 SCREENSAVER_ENABLED = os.environ.get("ZEALANDATA_SCREENSAVER_ENABLED", "1") == "1"
 SCREENSAVER_MUTED = os.environ.get("ZEALANDATA_SCREENSAVER_MUTED", "1") == "1"
+
+# Play-count tracking (drives the "Most Popular" row): off by default and
+# deliberately not env-configurable at startup -- always starts off after a
+# restart, only ever turned on at runtime via the admin-gated
+# /api/play-tracking endpoint, so idle testing/browsing doesn't pollute the
+# counts unless someone in admin mode explicitly opts in for that session.
+PLAY_TRACKING_ENABLED = False
 
 # Default behavior when a selected video reaches the end: mpv pauses on the
 # last frame (see keep-open=yes below), so it can be scrubbed back and
@@ -175,6 +183,7 @@ _media_attachments = {}  # media_id -> {filename: absolute path}, rebuilt on eve
 progress_lock = threading.Lock()
 hero_lock = threading.Lock()
 titles_lock = threading.Lock()
+play_counts_lock = threading.Lock()
 
 # PIN brute-force lockout: per-client-IP wrong-attempt counts and lockout
 # expiry, checked by every admin-gated endpoint (see check_admin_pin).
@@ -232,6 +241,38 @@ def clear_progress(media_id):
         store = _load_progress()
         if store.pop(media_id, None) is not None:
             _save_progress_store(store)
+
+
+# --------------------------------------------------------- play counts ---
+
+
+def _load_play_counts():
+    if not os.path.exists(PLAY_COUNTS_FILE):
+        return {}
+    try:
+        with open(PLAY_COUNTS_FILE, "r") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def _save_play_counts_store(store):
+    tmp = PLAY_COUNTS_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(store, f)
+    os.replace(tmp, PLAY_COUNTS_FILE)
+
+
+def get_all_play_counts():
+    with play_counts_lock:
+        return _load_play_counts()
+
+
+def increment_play_count(media_id):
+    with play_counts_lock:
+        store = _load_play_counts()
+        store[media_id] = store.get(media_id, 0) + 1
+        _save_play_counts_store(store)
 
 
 def get_hero_id():
@@ -1064,6 +1105,22 @@ def api_continue_watching():
     return jsonify(out)
 
 
+@app.route("/api/most-popular")
+def api_most_popular():
+    items_by_id = {i["id"]: i for i in get_media()}
+    counts = get_all_play_counts()
+    out = []
+    for media_id, count in counts.items():
+        if count <= 0:
+            continue
+        item = items_by_id.get(media_id)
+        if not item:
+            continue  # file was removed/renamed
+        out.append({**item, "play_count": count})
+    out.sort(key=lambda i: i["play_count"], reverse=True)
+    return jsonify(out[:12])
+
+
 @app.route("/api/rescan", methods=["POST"])
 def api_rescan():
     get_media(force=True)
@@ -1221,6 +1278,29 @@ def api_admin_unlock():
     return jsonify({"ok": ok})
 
 
+@app.route("/api/play-tracking", methods=["GET"])
+def api_get_play_tracking():
+    return jsonify({"enabled": PLAY_TRACKING_ENABLED})
+
+
+@app.route("/api/play-tracking", methods=["POST"])
+def api_set_play_tracking():
+    """Admin-gated, unlike /api/screensaver's toggle -- deliberately playing
+    with the UI while testing shouldn't silently inflate "Most Popular", so
+    turning tracking on requires the same PIN as renaming/uploading."""
+    global PLAY_TRACKING_ENABLED
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+    PLAY_TRACKING_ENABLED = bool(body.get("enabled"))
+    return jsonify({"enabled": PLAY_TRACKING_ENABLED})
+
+
 @app.route("/api/media/<media_id>/rename", methods=["POST"])
 def api_rename_media(media_id):
     """Renaming here only overrides the display title (see
@@ -1320,6 +1400,9 @@ def api_play(media_id):
     match = get_media_by_id(media_id)
     if not match:
         return jsonify({"error": "not found"}), 404
+
+    if PLAY_TRACKING_ENABLED:
+        increment_play_count(media_id)
 
     body = request.get_json(silent=True) or {}
     # resume=True is only sent for a normal click in the Continue Watching

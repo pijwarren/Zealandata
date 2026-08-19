@@ -17,6 +17,8 @@ const uploadAttachmentsInput = document.getElementById("uploadAttachmentsInput")
 const uploadAttachmentsChooseBtn = document.getElementById("uploadAttachmentsChooseBtn");
 const uploadBtn = document.getElementById("uploadBtn");
 const uploadStatus = document.getElementById("uploadStatus");
+const playTrackingField = document.getElementById("playTrackingField");
+const playTrackingBtn = document.getElementById("playTrackingBtn");
 const pinScrim = document.getElementById("pinScrim");
 const pinModal = document.getElementById("pinModal");
 const pinTitle = document.getElementById("pinTitle");
@@ -35,6 +37,8 @@ const heroPlayBtn = document.getElementById("heroPlayBtn");
 const emptyEl = document.getElementById("empty");
 const continueRow = document.getElementById("continueRow");
 const continueGrid = document.getElementById("continueGrid");
+const popularRow = document.getElementById("popularRow");
+const popularGrid = document.getElementById("popularGrid");
 const categoryRows = document.getElementById("categoryRows");
 const categoryNav = document.getElementById("categoryNav");
 
@@ -122,6 +126,7 @@ function wrapScroller(scroller) {
 }
 
 const continueScrollUpdate = wrapScroller(continueGrid);
+const popularScrollUpdate = wrapScroller(popularGrid);
 
 // A card must be clicked once to select it (arms the play glyph and takes
 // over the hero area with a high-res preview + its description), and
@@ -376,6 +381,17 @@ function renderContinueRow(items) {
   return items;
 }
 
+function renderPopularRow(items) {
+  popularGrid.innerHTML = "";
+  popularRow.classList.toggle("hidden", items.length === 0);
+  for (const item of items) {
+    const badge = `${item.play_count} play${item.play_count === 1 ? "" : "s"}`;
+    popularGrid.appendChild(buildCard(item, { badge }));
+  }
+  popularScrollUpdate();
+  return items;
+}
+
 // ------------------------------------------------------------------ hero
 
 function paintHero(item, heroThumbnail) {
@@ -421,18 +437,21 @@ function paintHeroFromPick(continueItems, items) {
 }
 
 async function loadMedia() {
-  const [mediaRes, continueRes] = await Promise.all([
+  const [mediaRes, continueRes, popularRes] = await Promise.all([
     fetch("/api/media"),
     fetch("/api/continue-watching"),
+    fetch("/api/most-popular"),
   ]);
   const items = await mediaRes.json();
   const continueItems = await continueRes.json();
+  const popularItems = await popularRes.json();
 
   allMediaItems = items;
   lastContinueItems = continueItems;
   emptyEl.classList.toggle("hidden", items.length > 0);
   renderCategories(items);
   renderContinueRow(continueItems);
+  renderPopularRow(popularItems);
   paintHeroFromPick(continueItems, items);
   paintSetHeroBtn();
   paintUploadCategories();
@@ -636,6 +655,7 @@ function paintAdminMode() {
   document.body.classList.toggle("admin-mode", !!adminPin);
   adminModeBtn.textContent = adminPin ? "Lock admin mode" : "Unlock admin mode";
   uploadField.classList.toggle("hidden", !adminPin);
+  playTrackingField.classList.toggle("hidden", !adminPin);
   if (adminPin) paintUploadCategories();
   paintSetHeroBtn();
 }
@@ -664,6 +684,33 @@ adminModeBtn.addEventListener("click", async () => {
     adminPin = pin;
     paintAdminMode();
   }
+});
+
+// Off by default and left running server-side (not tied to any one
+// client's admin session) once switched on -- see server.py's
+// PLAY_TRACKING_ENABLED comment. playTrackingField only shows while
+// adminPin is set (paintAdminMode above), so this button is only ever
+// clickable with a live admin PIN already in hand.
+let playTrackingEnabled = false;
+
+function paintPlayTrackingToggle(enabled) {
+  playTrackingEnabled = enabled;
+  playTrackingBtn.textContent = enabled ? "Disable play tracking" : "Enable play tracking";
+}
+async function loadPlayTrackingState() {
+  const res = await fetch("/api/play-tracking");
+  const data = await res.json();
+  paintPlayTrackingToggle(data.enabled);
+}
+playTrackingBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  const res = await fetch("/api/play-tracking", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, enabled: !playTrackingEnabled }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (typeof data.enabled === "boolean") paintPlayTrackingToggle(data.enabled);
 });
 
 async function renameMedia(item) {
@@ -1097,6 +1144,7 @@ async function pollStatus() {
   await loadHeroPreference();
   await loadMedia();
   loadScreensaverState();
+  loadPlayTrackingState();
   pollStatus();
   setInterval(pollStatus, 1000);
 })();
