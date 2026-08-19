@@ -24,8 +24,12 @@ const popularVisibilityBtn = document.getElementById("popularVisibilityBtn");
 const mappingField = document.getElementById("mappingField");
 const mappingScale = document.getElementById("mappingScale");
 const mappingScaleValue = document.getElementById("mappingScaleValue");
-const mappingRotation = document.getElementById("mappingRotation");
-const mappingRotationValue = document.getElementById("mappingRotationValue");
+const mappingRotationX = document.getElementById("mappingRotationX");
+const mappingRotationXValue = document.getElementById("mappingRotationXValue");
+const mappingRotationY = document.getElementById("mappingRotationY");
+const mappingRotationYValue = document.getElementById("mappingRotationYValue");
+const mappingRotationZ = document.getElementById("mappingRotationZ");
+const mappingRotationZValue = document.getElementById("mappingRotationZValue");
 const mappingOffsetX = document.getElementById("mappingOffsetX");
 const mappingOffsetXValue = document.getElementById("mappingOffsetXValue");
 const mappingOffsetY = document.getElementById("mappingOffsetY");
@@ -785,8 +789,12 @@ popularVisibilityBtn.addEventListener("click", async () => {
 function paintMappingControls(mapping) {
   mappingScale.value = mapping.scale;
   mappingScaleValue.textContent = `${Number(mapping.scale).toFixed(2)}×`;
-  mappingRotation.value = mapping.rotation;
-  mappingRotationValue.textContent = `${Number(mapping.rotation).toFixed(0)}°`;
+  mappingRotationX.value = mapping.rotation_x;
+  mappingRotationXValue.textContent = `${Number(mapping.rotation_x).toFixed(0)}°`;
+  mappingRotationY.value = mapping.rotation_y;
+  mappingRotationYValue.textContent = `${Number(mapping.rotation_y).toFixed(0)}°`;
+  mappingRotationZ.value = mapping.rotation_z;
+  mappingRotationZValue.textContent = `${Number(mapping.rotation_z).toFixed(0)}°`;
   mappingOffsetX.value = mapping.offset_x;
   mappingOffsetXValue.textContent = Number(mapping.offset_x).toFixed(2);
   mappingOffsetY.value = mapping.offset_y;
@@ -798,17 +806,24 @@ async function loadMappingState() {
   paintMappingControls(await res.json());
 }
 
+let mappingPending = {};
 let mappingSendTimer = null;
 function sendMappingUpdate(partial) {
   if (!adminPin) return;
   // Sliders fire continuously while dragging -- debounce so each drag only
-  // sends a burst of requests, not one per pixel of movement.
+  // sends a burst of requests, not one per pixel of movement. Pending
+  // fields are merged (not replaced) across calls so nudging one slider
+  // right after another, both within the debounce window, doesn't drop
+  // the first one's update.
+  Object.assign(mappingPending, partial);
   if (mappingSendTimer) clearTimeout(mappingSendTimer);
   mappingSendTimer = setTimeout(async () => {
+    const body = { pin: adminPin, ...mappingPending };
+    mappingPending = {};
     await fetch("/api/mapping", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ pin: adminPin, ...partial }),
+      body: JSON.stringify(body),
     });
   }, 80);
 }
@@ -817,9 +832,17 @@ mappingScale.addEventListener("input", () => {
   mappingScaleValue.textContent = `${Number(mappingScale.value).toFixed(2)}×`;
   sendMappingUpdate({ scale: Number(mappingScale.value) });
 });
-mappingRotation.addEventListener("input", () => {
-  mappingRotationValue.textContent = `${Number(mappingRotation.value).toFixed(0)}°`;
-  sendMappingUpdate({ rotation: Number(mappingRotation.value) });
+mappingRotationX.addEventListener("input", () => {
+  mappingRotationXValue.textContent = `${Number(mappingRotationX.value).toFixed(0)}°`;
+  sendMappingUpdate({ rotation_x: Number(mappingRotationX.value) });
+});
+mappingRotationY.addEventListener("input", () => {
+  mappingRotationYValue.textContent = `${Number(mappingRotationY.value).toFixed(0)}°`;
+  sendMappingUpdate({ rotation_y: Number(mappingRotationY.value) });
+});
+mappingRotationZ.addEventListener("input", () => {
+  mappingRotationZValue.textContent = `${Number(mappingRotationZ.value).toFixed(0)}°`;
+  sendMappingUpdate({ rotation_z: Number(mappingRotationZ.value) });
 });
 mappingOffsetX.addEventListener("input", () => {
   mappingOffsetXValue.textContent = Number(mappingOffsetX.value).toFixed(2);
@@ -831,7 +854,7 @@ mappingOffsetY.addEventListener("input", () => {
 });
 mappingResetBtn.addEventListener("click", async () => {
   if (!adminPin) return;
-  const defaults = { scale: 1, rotation: 0, offset_x: 0, offset_y: 0 };
+  const defaults = { scale: 1, rotation_x: 0, rotation_y: 0, rotation_z: 0, offset_x: 0, offset_y: 0 };
   const res = await fetch("/api/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -153,15 +153,25 @@ async function loadModel() {
 function applyMapping(mapping) {
   if (!mapping) return;
   const scale = Number(mapping.scale) || 1;
-  const rotationDeg = Number(mapping.rotation) || 0;
+  const rotX = Number(mapping.rotation_x) || 0;
+  const rotY = Number(mapping.rotation_y) || 0;
+  const rotZ = Number(mapping.rotation_z) || 0;
   const offsetX = Number(mapping.offset_x) || 0;
   const offsetY = Number(mapping.offset_y) || 0;
   rig.scale.setScalar(scale);
+  // Independent per-axis rotation (not just spin around the detected
+  // up-axis) -- needed to correct for a projector that isn't perfectly
+  // perpendicular to the model, not just to turn it. Offset stays in the
+  // rig's parent (world) space, so it shifts the whole projected image
+  // regardless of how the model itself is currently rotated.
+  rig.rotation.set(
+    THREE.MathUtils.degToRad(rotX),
+    THREE.MathUtils.degToRad(rotY),
+    THREE.MathUtils.degToRad(rotZ)
+  );
   if (upAxis === "y") {
-    rig.rotation.y = THREE.MathUtils.degToRad(rotationDeg);
     rig.position.set(offsetX, 0, offsetY);
   } else {
-    rig.rotation.z = THREE.MathUtils.degToRad(rotationDeg);
     rig.position.set(offsetX, offsetY, 0);
   }
 }

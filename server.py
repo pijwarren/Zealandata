@@ -71,7 +71,18 @@ PROJECTION_OBJ_PATH = os.environ.get(
     "ZEALANDATA_PROJECTION_OBJ", os.path.join(BASE_DIR, "static", "projection_model.obj")
 )
 MAPPING_FILE = os.path.join(BASE_DIR, "mapping.json")
-DEFAULT_MAPPING = {"scale": 1.0, "rotation": 0.0, "offset_x": 0.0, "offset_y": 0.0}
+DEFAULT_MAPPING = {
+    "scale": 1.0,
+    # Independent Euler rotation in degrees around each axis, applied in
+    # x/y/z order -- not just a single "yaw" around the model's detected
+    # up-axis -- since correcting for a projector that isn't perfectly
+    # perpendicular to the model needs tilt/roll too, not just spin.
+    "rotation_x": 0.0,
+    "rotation_y": 0.0,
+    "rotation_z": 0.0,
+    "offset_x": 0.0,
+    "offset_y": 0.0,
+}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts"}
 
 # Image sequences: a leaf folder containing this many (or more) images, all
