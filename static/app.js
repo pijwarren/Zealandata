@@ -720,13 +720,19 @@ function closeDocViewer() {
 docViewerClose.addEventListener("click", closeDocViewer);
 docScrim.addEventListener("click", closeDocViewer);
 
+// Floats above the dock as its own scrollable strip (with hover arrows once
+// there are enough chips to overflow), rather than being crammed inside it.
+const dockDocsScrollUpdate = wrapScroller(dockDocs);
+const dockDocsViewport = dockDocs.parentElement;
+dockDocsViewport.classList.add("dock-docs-viewport", "hidden");
+
 // Supplementary docs/images for the currently playing video (a paper PDF,
 // reference images, ...) -- PDFs open in a new tab (letting the browser's
 // own viewer handle them); images open in an in-page lightbox instead.
 function paintDocs(attachments) {
   dockDocs.innerHTML = "";
   const list = attachments || [];
-  dockDocs.classList.toggle("hidden", list.length === 0);
+  dockDocsViewport.classList.toggle("hidden", list.length === 0);
   for (const att of list) {
     const chip = document.createElement("button");
     chip.type = "button";
@@ -739,7 +745,10 @@ function paintDocs(attachments) {
       thumb.alt = "";
       chip.appendChild(thumb);
     } else {
-      chip.textContent = "📄";
+      const icon = document.createElement("span");
+      icon.className = "dock__doc-chip__icon";
+      icon.textContent = "📄";
+      chip.appendChild(icon);
     }
     const label = document.createElement("span");
     label.className = "dock__doc-chip__name";
@@ -751,6 +760,7 @@ function paintDocs(attachments) {
     });
     dockDocs.appendChild(chip);
   }
+  dockDocsScrollUpdate();
 }
 
 let currentPlayingId = null;

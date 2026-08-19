@@ -114,7 +114,9 @@
   <img id="docViewerImg" alt="">
 </div>
 
-<div class="dock" id="dock">
+<div class="dock-wrap" id="dockWrap">
+  <div class="dock__docs" id="dockDocs"></div>
+  <div class="dock" id="dock">
   <div class="dock__preview hidden" id="dockPreviewWrap">
     <img id="dockPreview" alt="" />
   </div>
@@ -122,7 +124,6 @@
     <div class="dock__title-row">
       <div class="dock__title" id="playerTitle">Nothing playing</div>
     </div>
-    <div class="dock__docs hidden" id="dockDocs"></div>
     <div class="dock__time hidden" id="playerScrubControls">
       <span id="playerPos">0:00</span>
       <div class="dock__bar" id="scrubBar">
@@ -149,6 +150,7 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
     </button>
     <button type="button" class="btn-icon" id="setHeroBtn" aria-label="Set as hero video" title="Set as hero video" disabled>★</button>
+  </div>
   </div>
 </div>
 
