@@ -35,6 +35,11 @@ const categoryRows = document.getElementById("categoryRows");
 
 const dockPreviewWrap = document.getElementById("dockPreviewWrap");
 const dockPreview = document.getElementById("dockPreview");
+const dockDocs = document.getElementById("dockDocs");
+const docScrim = document.getElementById("docScrim");
+const docViewer = document.getElementById("docViewer");
+const docViewerClose = document.getElementById("docViewerClose");
+const docViewerImg = document.getElementById("docViewerImg");
 const playerStopBtn = document.getElementById("playerStopBtn");
 const setHeroBtn = document.getElementById("setHeroBtn");
 const loopBtn = document.getElementById("loopBtn");
@@ -698,6 +703,56 @@ function paintPreview(thumbnail) {
   }
 }
 
+function getMediaById(id) {
+  return allMediaItems.find((i) => i.id === id) || null;
+}
+
+function openDocViewer(url) {
+  docViewerImg.src = url;
+  docScrim.classList.remove("hidden");
+  docViewer.classList.remove("hidden");
+}
+function closeDocViewer() {
+  docScrim.classList.add("hidden");
+  docViewer.classList.add("hidden");
+  docViewerImg.removeAttribute("src");
+}
+docViewerClose.addEventListener("click", closeDocViewer);
+docScrim.addEventListener("click", closeDocViewer);
+
+// Supplementary docs/images for the currently playing video (a paper PDF,
+// reference images, ...) -- PDFs open in a new tab (letting the browser's
+// own viewer handle them); images open in an in-page lightbox instead.
+function paintDocs(attachments) {
+  dockDocs.innerHTML = "";
+  const list = attachments || [];
+  dockDocs.classList.toggle("hidden", list.length === 0);
+  for (const att of list) {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "dock__doc-chip";
+    chip.title = att.name;
+    if (att.kind === "image") {
+      const thumb = document.createElement("img");
+      thumb.className = "dock__doc-chip__thumb";
+      thumb.src = att.url;
+      thumb.alt = "";
+      chip.appendChild(thumb);
+    } else {
+      chip.textContent = "📄";
+    }
+    const label = document.createElement("span");
+    label.className = "dock__doc-chip__name";
+    label.textContent = att.name;
+    chip.appendChild(label);
+    chip.addEventListener("click", () => {
+      if (att.kind === "image") openDocViewer(att.url);
+      else window.open(att.url, "_blank", "noopener");
+    });
+    dockDocs.appendChild(chip);
+  }
+}
+
 let currentPlayingId = null;
 
 // Buttons that only make sense once something's actually playing -- kept
@@ -710,6 +765,7 @@ function paintDockIdle(screensaverTitle) {
   currentPlayingId = null;
   playerTitle.textContent = screensaverTitle ? `Screensaver mode: ${screensaverTitle}` : "Nothing playing";
   paintPreview(null);
+  paintDocs(null);
   playerScrubControls.classList.add("hidden");
   frameCounter.classList.add("hidden");
   currentFrameCount = null;
@@ -724,6 +780,7 @@ async function playItem(item, { restart = false } = {}) {
   currentPlayingId = item.id;
   playerTitle.textContent = item.title;
   paintPreview(item.thumbnail);
+  paintDocs(item.attachments);
   setSequenceMode(!!item.is_sequence, item.frame_count, 0);
   setPauseIcon(false);
   paintSetHeroBtn();
@@ -837,6 +894,7 @@ async function pollStatus() {
       if (s.id && s.id !== currentPlayingId) {
         currentPlayingId = s.id;
         paintSetHeroBtn();
+        paintDocs((getMediaById(s.id) || {}).attachments);
       }
       playerTitle.textContent = s.title || playerTitle.textContent;
       if (s.thumbnail && dockPreview.getAttribute("src") !== s.thumbnail) {

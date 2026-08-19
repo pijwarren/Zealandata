@@ -106,6 +106,14 @@
   </div>
 </div>
 
+<div class="scrim hidden" id="docScrim"></div>
+<div class="doc-viewer hidden" id="docViewer" role="dialog" aria-modal="true" aria-label="Document viewer">
+  <button type="button" class="btn-icon doc-viewer__close" id="docViewerClose" aria-label="Close">
+    <svg width="15" height="15" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+  </button>
+  <img id="docViewerImg" alt="">
+</div>
+
 <div class="dock" id="dock">
   <div class="dock__preview hidden" id="dockPreviewWrap">
     <img id="dockPreview" alt="" />
@@ -114,6 +122,7 @@
     <div class="dock__title-row">
       <div class="dock__title" id="playerTitle">Nothing playing</div>
     </div>
+    <div class="dock__docs hidden" id="dockDocs"></div>
     <div class="dock__time hidden" id="playerScrubControls">
       <span id="playerPos">0:00</span>
       <div class="dock__bar" id="scrubBar">

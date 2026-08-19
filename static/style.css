@@ -396,6 +396,32 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 }
 .dock__frame-counter{ font-variant-numeric:tabular-nums; font-size:12px; color:var(--color-neutral-300); }
 
+.dock__docs{ display:flex; align-items:center; gap:6px; margin-bottom:8px; overflow-x:auto; }
+.dock__doc-chip{
+  flex-shrink:0; display:inline-flex; align-items:center; gap:6px;
+  max-width:140px; padding:5px 10px 5px 6px;
+  background:rgba(233,233,237,0.07); border:1px solid var(--color-divider);
+  border-radius:980px; color:var(--color-neutral-200); font-size:11px;
+  cursor:pointer; transition:background .15s ease, border-color .15s ease;
+}
+.dock__doc-chip:hover{ background:rgba(233,233,237,0.14); border-color:var(--color-accent); }
+.dock__doc-chip__thumb{
+  flex-shrink:0; width:18px; height:18px; border-radius:4px; object-fit:cover;
+  background:var(--color-surface);
+}
+.dock__doc-chip__name{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+.doc-viewer{
+  position:fixed; inset:0; z-index:72;
+  display:flex; align-items:center; justify-content:center;
+  padding:min(48px, 5vh) min(48px, 5vw);
+}
+.doc-viewer img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); }
+.doc-viewer__close{
+  position:absolute; top:20px; right:20px;
+  background:rgba(35,37,50,0.85); border-color:var(--color-divider);
+}
+
 .dock__controls{ display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .dock__controls .btn-icon{ width:38px; height:38px; }
 .dock__stop:hover{ border-color:var(--color-danger); color:var(--color-danger); }

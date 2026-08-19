@@ -62,6 +62,15 @@ SEQUENCE_EXTS = {".png", ".jpg", ".jpeg", ".tif", ".tiff"}
 SEQUENCE_MIN_FRAMES = int(os.environ.get("ZEALANDATA_SEQUENCE_MIN_FRAMES", "3"))
 SEQUENCE_FPS = float(os.environ.get("ZEALANDATA_SEQUENCE_FPS", "12"))
 
+# Supplementary documents (e.g. a scientific paper PDF, reference images)
+# shown alongside a video in the web UI while it plays. For a plain video
+# file, e.g. nova.mp4, anything in the same folder whose name is nova.*  or
+# starts with nova_/nova-/nova. and has one of these extensions is picked
+# up as an attachment. For an image-sequence folder, attachments instead
+# live in an attachments/ subfolder (since the folder itself is full of
+# frame images).
+ATTACHMENT_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"}
+
 # Screensaver: when nothing's been chosen, shuffle through random videos
 # from the library itself.
 SCREENSAVER_ENABLED = os.environ.get("ZEALANDATA_SCREENSAVER_ENABLED", "1") == "1"
@@ -143,6 +152,7 @@ _interaction_lock = threading.Lock()
 _last_interaction = time.monotonic()
 
 _media_cache = {"items": None, "mtime": 0}
+_media_attachments = {}  # media_id -> {filename: absolute path}, rebuilt on every scan
 
 progress_lock = threading.Lock()
 hero_lock = threading.Lock()
@@ -305,16 +315,21 @@ def _find_description_file(dir_path):
 
 
 def _is_image_sequence_dir(dir_path):
-    """A folder qualifies as an image sequence if it has no subfolders, at
-    least SEQUENCE_MIN_FRAMES images all of the same extension, and nothing
-    else besides those images and (optionally) a description.txt. Returns
-    the sorted list of frame filenames, or None if it doesn't qualify."""
+    """A folder qualifies as an image sequence if it has no subfolders
+    (other than a reserved attachments/ one, see _find_attachment_paths),
+    at least SEQUENCE_MIN_FRAMES images all of the same extension, and
+    nothing else besides those images and (optionally) a description.txt.
+    Returns the sorted list of frame filenames, or None if it doesn't
+    qualify."""
     try:
         entries = os.listdir(dir_path)
     except OSError:
         return None
 
-    if any(os.path.isdir(os.path.join(dir_path, e)) for e in entries):
+    if any(
+        os.path.isdir(os.path.join(dir_path, e)) and e.lower() != "attachments"
+        for e in entries
+    ):
         return None
 
     files = [e for e in entries if os.path.isfile(os.path.join(dir_path, e))]
@@ -363,6 +378,36 @@ def _convert_sequence_to_video(dir_path, ext, output_path):
     return True
 
 
+def _find_attachment_paths(metadata_path):
+    if os.path.isdir(metadata_path):
+        attach_dir = os.path.join(metadata_path, "attachments")
+        if not os.path.isdir(attach_dir):
+            return []
+        try:
+            names = sorted(os.listdir(attach_dir))
+        except OSError:
+            return []
+        return [os.path.join(attach_dir, n) for n in names if Path(n).suffix.lower() in ATTACHMENT_EXTS]
+
+    dir_path = os.path.dirname(metadata_path)
+    stem = Path(metadata_path).stem
+    try:
+        names = sorted(os.listdir(dir_path))
+    except OSError:
+        return []
+    matches = []
+    for name in names:
+        full = os.path.join(dir_path, name)
+        if full == metadata_path or not os.path.isfile(full):
+            continue
+        if Path(name).suffix.lower() not in ATTACHMENT_EXTS:
+            continue
+        other_stem = Path(name).stem
+        if other_stem == stem or other_stem.startswith(stem + "_") or other_stem.startswith(stem + "-") or other_stem.startswith(stem + "."):
+            matches.append(full)
+    return matches
+
+
 def _build_media_item(playback_path, metadata_path, description=None, frame_count=None):
     """playback_path is what mpv actually opens; metadata_path is what the
     id/title/category get derived from (same as playback_path for a plain
@@ -385,6 +430,15 @@ def _build_media_item(playback_path, metadata_path, description=None, frame_coun
 
     title = get_title_override(media_id) or Path(metadata_path).stem.replace(".", " ").replace("_", " ")
 
+    attachments = []
+    attachment_files = {}
+    for full in _find_attachment_paths(metadata_path):
+        name = os.path.basename(full)
+        kind = "pdf" if Path(name).suffix.lower() == ".pdf" else "image"
+        attachments.append({"name": name, "kind": kind, "url": f"/api/media/{media_id}/attachments/{name}"})
+        attachment_files[name] = full
+    _media_attachments[media_id] = attachment_files
+
     return {
         "id": media_id,
         "title": title,
@@ -395,6 +449,7 @@ def _build_media_item(playback_path, metadata_path, description=None, frame_coun
         "is_sequence": frame_count is not None,
         "frame_count": frame_count,
         "thumbnail": f"/thumbnails/{media_id}.jpg" if os.path.exists(thumb_path) else None,
+        "attachments": attachments,
     }
 
 
@@ -428,6 +483,12 @@ def _scan_dir(dir_path, items, is_root=False):
     for name in entries:
         full = os.path.join(dir_path, name)
         if os.path.isdir(full):
+            # "attachments" is a reserved folder name for a sequence's
+            # supplementary docs/images (see _find_attachment_paths) -- it's
+            # not itself a category or a sequence to scan into, even though
+            # it may hold >= SEQUENCE_MIN_FRAMES images of the same format.
+            if name.lower() == "attachments":
+                continue
             _scan_dir(full, items)
         else:
             ext = Path(name).suffix.lower()
@@ -438,6 +499,7 @@ def _scan_dir(dir_path, items, is_root=False):
 
 def _scan_media():
     items = []
+    _media_attachments.clear()
     _scan_dir(MEDIA_DIR, items, is_root=True)
     items.sort(key=lambda i: i["title"].lower())
     return items
@@ -938,6 +1000,20 @@ def thumbnails(filename):
 @app.route("/hero_thumbnails/<path:filename>")
 def hero_thumbnails(filename):
     return send_from_directory(HERO_THUMB_DIR, filename)
+
+
+@app.route("/api/media/<media_id>/attachments/<path:filename>")
+def media_attachment(media_id, filename):
+    """Serves a supplementary doc/image registered for media_id during the
+    last scan. Only ever serves paths _find_attachment_paths already found
+    on disk -- filename must match a key recorded there, so this can't be
+    used to read arbitrary files (no ../.. traversal possible)."""
+    get_media()  # ensure the cache (and _media_attachments) is populated
+    full = _media_attachments.get(media_id, {}).get(filename)
+    if not full or not os.path.isfile(full):
+        return jsonify({"error": "not found"}), 404
+    directory, name = os.path.split(full)
+    return send_from_directory(directory, name)
 
 
 @app.route("/api/screensaver", methods=["GET"])

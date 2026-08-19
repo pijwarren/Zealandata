@@ -440,6 +440,38 @@ frames instead. Purely optional — videos without a matching text file just
 show no description. It's shown only while browsing (hero preview), not in
 the "now playing" dock once something's actually playing.
 
+## Supplementary docs/images (papers, reference figures)
+
+A video can carry its own small set of extra files — a PDF of the paper
+it's based on, reference images, figures — shown as chips in the "now
+playing" dock while that video plays. Clicking a PDF chip opens it in a
+new browser tab; clicking an image chip opens it in an in-page viewer.
+
+For a plain video file, anything in the same folder whose name starts
+with the video's own filename (before the extension) and ends in
+`.pdf`, `.png`, `.jpg`/`.jpeg`, `.gif`, or `.webp` is picked up
+automatically:
+```
+media/
+  Seismic/
+    fault_lines_overview.mp4
+    fault_lines_overview.pdf         (the paper)
+    fault_lines_overview_fig2.png    (a reference figure)
+```
+For an image-sequence folder (see below), put them in an `attachments/`
+subfolder inside it instead, since the folder itself is already full of
+frame images:
+```
+media/
+  Seismic/
+    2016_kaikoura_sequence/
+      frame_0001.png
+      ...
+      attachments/
+        source_paper.pdf
+```
+Purely optional — nothing changes for videos without matching files.
+
 ## Image sequences
 
 If some of your data comes as a folder of numbered frames rather than a
@@ -465,7 +497,8 @@ thumbnail, progress tracking, and continue-watching support.
   one per sequence, not a mix)
 - Nothing else in the folder besides the frames and an optional
   `description.txt`
-- No subfolders inside it
+- No subfolders inside it, other than a reserved `attachments/` one (see
+  above)
 
 Frames are read in filename order, so **zero-padded, consistently-named
 files matter** (`frame_0001.png`, `frame_0002.png`, ... — not `frame_1.png`,
