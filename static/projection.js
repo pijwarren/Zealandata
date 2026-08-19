@@ -13,7 +13,11 @@
 import * as THREE from "/static/vendor/three/three.module.js";
 import { OBJLoader } from "/static/vendor/three/loaders/OBJLoader.js";
 
-const POLL_MS = 300;
+// Also the calibration update rate: mapping changes only reach the
+// projector on a poll, so at 300ms dragging a slider stepped about three
+// times a second and read as choppy no matter how fast the render loop
+// was going. The payloads are tiny and the client is on the same box.
+const POLL_MS = 100;
 const HEARTBEAT_MS = 250;
 
 const canvas = document.getElementById("scene");
