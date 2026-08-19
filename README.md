@@ -280,12 +280,14 @@ frame-stepping all keep working normally on that final frame, so you can
 scrub back into the video freely. It stays there until someone picks
 something else, hits stop, or the idle timeout (below) fires.
 
-Set `ZEALANDATA_LOOP_SELECTED=1` to loop the video indefinitely instead —
-useful for something like a seismic animation meant to run continuously
-once chosen. The loop button in the dock also lets you flip this on or off
-per-video at any point during playback, regardless of the env var default.
-Either way, this only applies to a deliberate selection — the
-screensaver's own random picks are never looped or held open, since
+Set `ZEALANDATA_LOOP_SELECTED=1` to loop every selected video indefinitely
+instead — useful for something like a seismic animation meant to run
+continuously once chosen. The loop button in the dock is a global toggle
+on top of that: flipping it on or off carries forward into whatever gets
+selected next, rather than resetting per-video — turn it on once and it
+stays on across category browsing, hero picks, everything, until you turn
+it off again. Either way, this only applies to a deliberate selection —
+the screensaver's own random picks are never looped or held open, since
 finishing normally is what lets the shuffle keep shuffling.
 
 ## Loading screen instead of the console flashing through

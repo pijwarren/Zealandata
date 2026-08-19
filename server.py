@@ -83,7 +83,10 @@ SCREENSAVER_MUTED = os.environ.get("ZEALANDATA_SCREENSAVER_MUTED", "1") == "1"
 # last frame (see keep-open=yes below), so it can be scrubbed back and
 # forth rather than the screensaver kicking back in automatically. Set this
 # to loop the video indefinitely instead — screensaver picks are never
-# looped individually either way, only a deliberate selection.
+# looped individually either way, only a deliberate selection. This is
+# just the startup default; the loop button in the dock flips a global
+# loop_enabled (below), which -- unlike this constant -- carries forward
+# into whatever gets selected next, rather than resetting every time.
 LOOP_SELECTED_VIDEO = os.environ.get("ZEALANDATA_LOOP_SELECTED", "0") == "1"
 
 # If something's left PAUSED (not stopped) for this long with no further
@@ -142,6 +145,11 @@ mpv_generation = 0  # bumped every time ownership of the persistent mpv
 
 current_kind = "idle"  # "idle" | "video" | "screensaver" — whatever the
                         # persistent mpv process is currently showing
+
+loop_enabled = LOOP_SELECTED_VIDEO  # global toggle (dock loop button) --
+                                     # applied to every subsequent
+                                     # selection until switched off again,
+                                     # not just the video it was set on
 
 screensaver_thread = None
 screensaver_stop_event = threading.Event()
@@ -1002,7 +1010,7 @@ def _watch_mpv_playback(generation, media_id, title):
 
 def _start_mpv_playback(match, resume_seconds, loop=None, gen=None):
     if loop is None:
-        loop = LOOP_SELECTED_VIDEO
+        loop = loop_enabled
     if gen is None:
         gen = _claim_generation("video")
     _hdmi_load(
@@ -1354,6 +1362,7 @@ def api_play(media_id):
 
 @app.route("/api/control/<action>", methods=["POST"])
 def api_control(action):
+    global loop_enabled
     _mark_interaction()
 
     mapping = {
@@ -1383,7 +1392,8 @@ def api_control(action):
     if action == "loop":
         loop_r = mpv_send({"command": ["get_property", "loop-file"]})
         data = loop_r.get("data") if loop_r else None
-        return jsonify({"result": result, "looping": data not in (None, False, "no")})
+        loop_enabled = data not in (None, False, "no")
+        return jsonify({"result": result, "looping": loop_enabled})
     return jsonify({"result": result})
 
 
