@@ -21,6 +21,16 @@ const playTrackingField = document.getElementById("playTrackingField");
 const playTrackingBtn = document.getElementById("playTrackingBtn");
 const popularVisibilityField = document.getElementById("popularVisibilityField");
 const popularVisibilityBtn = document.getElementById("popularVisibilityBtn");
+const mappingField = document.getElementById("mappingField");
+const mappingScale = document.getElementById("mappingScale");
+const mappingScaleValue = document.getElementById("mappingScaleValue");
+const mappingRotation = document.getElementById("mappingRotation");
+const mappingRotationValue = document.getElementById("mappingRotationValue");
+const mappingOffsetX = document.getElementById("mappingOffsetX");
+const mappingOffsetXValue = document.getElementById("mappingOffsetXValue");
+const mappingOffsetY = document.getElementById("mappingOffsetY");
+const mappingOffsetYValue = document.getElementById("mappingOffsetYValue");
+const mappingResetBtn = document.getElementById("mappingResetBtn");
 const pinScrim = document.getElementById("pinScrim");
 const pinModal = document.getElementById("pinModal");
 const pinTitle = document.getElementById("pinTitle");
@@ -659,6 +669,7 @@ function paintAdminMode() {
   uploadField.classList.toggle("hidden", !adminPin);
   playTrackingField.classList.toggle("hidden", !adminPin);
   popularVisibilityField.classList.toggle("hidden", !adminPin);
+  mappingField.classList.toggle("hidden", !adminPin);
   if (adminPin) paintUploadCategories();
   paintSetHeroBtn();
 }
@@ -764,6 +775,70 @@ popularVisibilityBtn.addEventListener("click", async () => {
   // loadMedia() cycle, so the row's visibility change shows immediately.
   const popularRes = await fetch("/api/most-popular");
   renderPopularRow(await popularRes.json());
+});
+
+// Calibrates how the video lines up with the physical 3D-printed model on
+// the projection output (see server.py's RENDER_BACKEND/mapping.json) --
+// only meaningful when the projector backend is active, but the controls
+// stay available regardless since there's no harm in adjusting values
+// that simply aren't being rendered against right now.
+function paintMappingControls(mapping) {
+  mappingScale.value = mapping.scale;
+  mappingScaleValue.textContent = `${Number(mapping.scale).toFixed(2)}×`;
+  mappingRotation.value = mapping.rotation;
+  mappingRotationValue.textContent = `${Number(mapping.rotation).toFixed(0)}°`;
+  mappingOffsetX.value = mapping.offset_x;
+  mappingOffsetXValue.textContent = Number(mapping.offset_x).toFixed(2);
+  mappingOffsetY.value = mapping.offset_y;
+  mappingOffsetYValue.textContent = Number(mapping.offset_y).toFixed(2);
+}
+
+async function loadMappingState() {
+  const res = await fetch("/api/mapping");
+  paintMappingControls(await res.json());
+}
+
+let mappingSendTimer = null;
+function sendMappingUpdate(partial) {
+  if (!adminPin) return;
+  // Sliders fire continuously while dragging -- debounce so each drag only
+  // sends a burst of requests, not one per pixel of movement.
+  if (mappingSendTimer) clearTimeout(mappingSendTimer);
+  mappingSendTimer = setTimeout(async () => {
+    await fetch("/api/mapping", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: adminPin, ...partial }),
+    });
+  }, 80);
+}
+
+mappingScale.addEventListener("input", () => {
+  mappingScaleValue.textContent = `${Number(mappingScale.value).toFixed(2)}×`;
+  sendMappingUpdate({ scale: Number(mappingScale.value) });
+});
+mappingRotation.addEventListener("input", () => {
+  mappingRotationValue.textContent = `${Number(mappingRotation.value).toFixed(0)}°`;
+  sendMappingUpdate({ rotation: Number(mappingRotation.value) });
+});
+mappingOffsetX.addEventListener("input", () => {
+  mappingOffsetXValue.textContent = Number(mappingOffsetX.value).toFixed(2);
+  sendMappingUpdate({ offset_x: Number(mappingOffsetX.value) });
+});
+mappingOffsetY.addEventListener("input", () => {
+  mappingOffsetYValue.textContent = Number(mappingOffsetY.value).toFixed(2);
+  sendMappingUpdate({ offset_y: Number(mappingOffsetY.value) });
+});
+mappingResetBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  const defaults = { scale: 1, rotation: 0, offset_x: 0, offset_y: 0 };
+  const res = await fetch("/api/mapping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, ...defaults }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.error) paintMappingControls(data);
 });
 
 async function renameMedia(item) {
@@ -1199,6 +1274,7 @@ async function pollStatus() {
   loadScreensaverState();
   loadPlayTrackingState();
   loadPopularVisibilityState();
+  loadMappingState();
   pollStatus();
   setInterval(pollStatus, 1000);
 })();

@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Zealandata Projection</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+      cursor: none;
+    }
+    #scene, #idleImg {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="scene"></canvas>
+  <img id="idleImg" class="hidden" alt="" />
+  <video id="sourceVideo" playsinline crossorigin="anonymous" style="display:none"></video>
+  <script type="module" src="/static/projection.js"></script>
+</body>
+</html>

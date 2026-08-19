@@ -10,6 +10,7 @@ progress.json
 hero.json
 titles.json
 play_counts.json
+mapping.json
 
 # Python
 __pycache__/

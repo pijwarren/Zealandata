@@ -34,7 +34,7 @@ import hashlib
 import shutil
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory, render_template
+from flask import Flask, jsonify, request, send_from_directory, send_file, render_template
 from werkzeug.utils import secure_filename
 
 # ---------------------------------------------------------------- config ---
@@ -55,6 +55,23 @@ MPV_SOCKET = "/tmp/zealandata-mpv.sock"
 # Ignored entirely when using headless DRM output (see README).
 X_DISPLAY = os.environ.get("ZEALANDATA_DISPLAY", ":0")
 USE_DRM = os.environ.get("ZEALANDATA_USE_DRM", "0") == "1"
+
+# Which thing actually owns the HDMI output: "mpv" (default) drives a
+# persistent mpv process exactly as described above. "webgl" instead points
+# a fullscreen Chromium kiosk at this server's own /projection page, which
+# renders the same video content texture-mapped onto a 3D model (see
+# PROJECTION_OBJ_PATH) for physical projection-mapping setups, with its pose
+# (scale/rotation/offset) calibrated via /api/mapping. All the higher-level
+# orchestration (screensaver shuffling, spinner transitions, idle timeout,
+# progress tracking) is shared between both backends -- only the low-level
+# "load this file" / "get playback position" / "pause, seek, stop" primitives
+# differ, behind the backend_* functions below.
+RENDER_BACKEND = os.environ.get("ZEALANDATA_RENDER_BACKEND", "mpv").strip().lower()
+PROJECTION_OBJ_PATH = os.environ.get(
+    "ZEALANDATA_PROJECTION_OBJ", os.path.join(BASE_DIR, "static", "projection_model.obj")
+)
+MAPPING_FILE = os.path.join(BASE_DIR, "mapping.json")
+DEFAULT_MAPPING = {"scale": 1.0, "rotation": 0.0, "offset_x": 0.0, "offset_y": 0.0}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts"}
 
 # Image sequences: a leaf folder containing this many (or more) images, all
@@ -191,6 +208,116 @@ progress_lock = threading.Lock()
 hero_lock = threading.Lock()
 titles_lock = threading.Lock()
 play_counts_lock = threading.Lock()
+mapping_lock = threading.Lock()
+
+# ---------------------------------------------------------- webgl backend ---
+# Only meaningful when RENDER_BACKEND == "webgl". There's no persistent mpv
+# process to hold state for us, so the /projection page reports its own
+# playback position/state back via /api/projection/heartbeat, and this
+# dict is what backend_get() reads from. projection_state is the other
+# direction -- what the page should currently be showing/doing, polled via
+# /api/projection/state. Together these two dicts play the same role mpv's
+# IPC socket does for the mpv backend: one for "tell it what to do", one for
+# "ask it what's happening".
+projection_lock = threading.Lock()
+projection_state = {
+    "load_seq": 0,       # bumped every time "path" changes -- lets the page
+                          # tell a fresh load apart from a same-value poll
+    "path": None,         # stream URL for the page's <video>, or None
+    "is_image": False,    # True => show a plain <img> overlay, not the 3D scene
+    "keep_open": "yes",   # mirrors mpv's keep-open: "yes" = pause on last
+                           # frame when finished, "no" = report idle-active
+    "loop": False,
+    "mute": False,
+    "start": 0.0,          # seconds to seek to right after loading
+    "fps": SEQUENCE_FPS,
+    "command": None,       # one-shot control command, see backend_control()
+    "command_seq": 0,
+}
+projection_report = {
+    "load_seq": None,      # last load_seq this report reflects
+    "position": None, "duration": None, "paused": None,
+    "idle_active": None, "looping": None, "frame_number": None,
+    "ack_seq": 0,
+}
+
+
+def get_mapping():
+    if not os.path.exists(MAPPING_FILE):
+        return dict(DEFAULT_MAPPING)
+    try:
+        with open(MAPPING_FILE, "r") as f:
+            data = json.load(f)
+        return {**DEFAULT_MAPPING, **{k: data[k] for k in DEFAULT_MAPPING if k in data}}
+    except (json.JSONDecodeError, OSError):
+        return dict(DEFAULT_MAPPING)
+
+
+def set_mapping(values):
+    with mapping_lock:
+        merged = {**get_mapping(), **values}
+        tmp = MAPPING_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(merged, f)
+        os.replace(tmp, MAPPING_FILE)
+        return merged
+
+
+def backend_get(name):
+    """Returns the raw value (not mpv's {"data": ...} wrapper) for one of a
+    small set of playback properties, from whichever backend is active."""
+    if RENDER_BACKEND != "webgl":
+        r = mpv_send({"command": ["get_property", name]})
+        return r.get("data") if r else None
+    with projection_lock:
+        rep = dict(projection_report)
+    return {
+        "idle-active": rep.get("idle_active"),
+        "time-pos": rep.get("position"),
+        "duration": rep.get("duration"),
+        "pause": rep.get("paused"),
+        "loop-file": rep.get("looping"),
+        "estimated-frame-number": rep.get("frame_number"),
+        "filename": None,
+    }.get(name)
+
+
+def backend_control(action, value=None, wait=True, timeout=1.5):
+    """Issues a control action ("toggle_pause", "stop", "seek",
+    "frame_step", "frame_back_step", "toggle_loop") to whichever backend is
+    active. For mpv this is a direct IPC command. For webgl this posts a
+    one-shot command for the /projection page to pick up on its next poll
+    and, if wait=True, blocks (briefly) until that page's next heartbeat
+    acknowledges it -- mirroring mpv_send's own synchronous request/reply
+    IPC call, just over HTTP polling instead of a socket."""
+    if RENDER_BACKEND != "webgl":
+        mpv_mapping = {
+            "toggle_pause": {"command": ["cycle", "pause"]},
+            "stop": {"command": ["stop"]},
+            "seek": {"command": ["seek", value, "absolute"]},
+            "frame_step": {"command": ["frame-step"]},
+            "frame_back_step": {"command": ["frame-back-step"]},
+            "toggle_loop": {"command": ["cycle-values", "loop-file", "inf", "no"]},
+        }
+        return mpv_send(mpv_mapping[action])
+
+    with projection_lock:
+        projection_state["command_seq"] += 1
+        seq = projection_state["command_seq"]
+        projection_state["command"] = {"seq": seq, "action": action, "value": value}
+    if not wait:
+        return None
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        with projection_lock:
+            if projection_report.get("ack_seq") == seq:
+                return dict(projection_report)
+        time.sleep(0.05)
+    return None
+
+
+def backend_stop():
+    backend_control("stop", wait=False)
 
 # PIN brute-force lockout: per-client-IP wrong-attempt counts and lockout
 # expiry, checked by every admin-gated endpoint (see check_admin_pin).
@@ -821,7 +948,50 @@ def _claim_generation(kind):
         return mpv_generation
 
 
-def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, spinner=True, gen=None):
+def _backend_set_props_and_load(path, keep_open, loop_file, mute, start, image_duration=None, media_id=None, is_image=False):
+    """The one place that actually pushes a file onto whichever backend
+    owns HDMI output -- everything above this (spinner timing, generation
+    checks) is shared between both backends."""
+    if RENDER_BACKEND != "webgl":
+        if image_duration is not None:
+            mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
+        mpv_send({"command": ["set_property", "keep-open", keep_open]})
+        mpv_send({"command": ["set_property", "loop-file", loop_file]})
+        mpv_send({"command": ["set_property", "mute", mute]})
+        mpv_send({"command": ["set_property", "start", start]})
+        mpv_send({"command": ["set_property", "pause", "no"]})
+        mpv_send({"command": ["loadfile", path, "replace"]})
+        return
+
+    # webgl backend: translate an mpv-style absolute filesystem path into a
+    # URL the /projection page's <video> can actually load. media_id (when
+    # the caller has one -- a real library item) is the normal case; the
+    # spinner and idle image are the two fixed exceptions.
+    if media_id:
+        url = f"/api/media/{media_id}/stream"
+    elif path == SPINNER_VIDEO_PATH:
+        url = "/static/spinner.mp4"
+    elif path == LOADING_IMAGE_PATH:
+        url = "/api/loading-image"
+    else:
+        url = None
+    try:
+        start_seconds = 0.0 if start in ("none", None) else float(start)
+    except (TypeError, ValueError):
+        start_seconds = 0.0
+    with projection_lock:
+        projection_state.update({
+            "load_seq": projection_state["load_seq"] + 1,
+            "path": url,
+            "is_image": is_image,
+            "keep_open": keep_open,
+            "loop": loop_file not in (None, False, "no"),
+            "mute": mute == "yes",
+            "start": start_seconds,
+        })
+
+
+def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, spinner=True, gen=None, media_id=None, is_image=False):
     """Set the playback properties that should apply to the next file, then
     load it. Done as separate set_property calls (rather than loadfile's
     own trailing "options" argument) since that argument's exact position
@@ -846,26 +1016,18 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     generation by any of those points, this bails out immediately rather
     than finishing a transition that's about to be immediately overwritten
     (e.g. someone picked a video while a screensaver pick's spinner was
-    still showing)."""
+    still showing).
+
+    media_id/is_image are only meaningful for the webgl backend -- see
+    _backend_set_props_and_load."""
     if not _still_current(gen):
         return
     if spinner and os.path.exists(SPINNER_VIDEO_PATH):
-        mpv_send({"command": ["set_property", "keep-open", "no"]})
-        mpv_send({"command": ["set_property", "loop-file", "inf"]})
-        mpv_send({"command": ["set_property", "mute", "yes"]})
-        mpv_send({"command": ["set_property", "pause", "no"]})
-        mpv_send({"command": ["loadfile", SPINNER_VIDEO_PATH, "replace"]})
+        _backend_set_props_and_load(SPINNER_VIDEO_PATH, keep_open="no", loop_file="inf", mute="yes", start="none")
         time.sleep(SPINNER_HOLD_SECONDS)
         if not _still_current(gen):
             return
-    if image_duration is not None:
-        mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
-    mpv_send({"command": ["set_property", "keep-open", keep_open]})
-    mpv_send({"command": ["set_property", "loop-file", loop_file]})
-    mpv_send({"command": ["set_property", "mute", mute]})
-    mpv_send({"command": ["set_property", "start", start]})
-    mpv_send({"command": ["set_property", "pause", "no"]})
-    mpv_send({"command": ["loadfile", path, "replace"]})
+    _backend_set_props_and_load(path, keep_open, loop_file, mute, start, image_duration=image_duration, media_id=media_id, is_image=is_image)
 
 
 def _go_idle(spinner=True, gen=None):
@@ -876,9 +1038,9 @@ def _go_idle(spinner=True, gen=None):
     current_kind = "idle"
     if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
         _hdmi_load(LOADING_IMAGE_PATH, keep_open="yes", loop_file="no",
-                   mute="yes", image_duration="inf", spinner=spinner, gen=gen)
+                   mute="yes", image_duration="inf", spinner=spinner, gen=gen, is_image=True)
     else:
-        mpv_send({"command": ["stop"]})
+        backend_stop()
 
 
 def _enter_idle_state(spinner=True):
@@ -918,9 +1080,8 @@ def _idle_watcher_loop():
         if not IDLE_TIMEOUT_ENABLED or _idle_seconds() < IDLE_TIMEOUT_SECONDS:
             continue
         if current_kind == "video":
-            r = mpv_send({"command": ["get_property", "pause"]})
-            if r and r.get("data"):
-                mpv_send({"command": ["stop"]})
+            if backend_get("pause"):
+                backend_stop()
                 _mark_interaction()
 
 
@@ -1000,22 +1161,22 @@ def _screensaver_loop(gen, spinner=True):
         # selection, a crash-restart), instead of finishing this pick's
         # transition first and making the newer thing wait behind it.
         _hdmi_load(pick["path"], keep_open="no", loop_file="no",
-                   mute="yes" if SCREENSAVER_MUTED else "no", spinner=spinner, gen=gen)
+                   mute="yes" if SCREENSAVER_MUTED else "no", spinner=spinner, gen=gen,
+                   media_id=pick["id"])
         spinner = True
 
         while not screensaver_stop_event.is_set():
-            # Sleep before checking, not after -- mpv can still briefly
-            # report idle-active=true for a moment right after loadfile
-            # returns, while it's still opening the file. Checking
-            # immediately reads that as "this pick already finished" and
-            # jumps straight to the next one, firing a second transition
-            # right on top of the first.
+            # Sleep before checking, not after -- mpv (or the webgl page)
+            # can still briefly report idle-active=true for a moment right
+            # after loadfile returns, while it's still opening the file.
+            # Checking immediately reads that as "this pick already
+            # finished" and jumps straight to the next one, firing a second
+            # transition right on top of the first.
             time.sleep(1)
             with mpv_lock:
                 if gen != mpv_generation:
                     return
-            r = mpv_send({"command": ["get_property", "idle-active"]})
-            if r and r.get("data"):
+            if backend_get("idle-active"):
                 break  # this pick finished naturally -> loop around to a new one
 
 
@@ -1034,15 +1195,13 @@ def _watch_mpv_playback(generation, media_id, title):
         with mpv_lock:
             if generation != mpv_generation:
                 return  # superseded by something newer
-        r = mpv_send({"command": ["get_property", "idle-active"]})
-        if r is None:
-            continue  # socket hiccup — don't mistake it for "went idle"
-        if r.get("data"):
+        idle_active = backend_get("idle-active")
+        if idle_active is None:
+            continue  # socket hiccup / no heartbeat yet — don't mistake it for "went idle"
+        if idle_active:
             break
-        pos_r = mpv_send({"command": ["get_property", "time-pos"]})
-        dur_r = mpv_send({"command": ["get_property", "duration"]})
-        pos = pos_r.get("data") if pos_r else None
-        dur = dur_r.get("data") if dur_r else None
+        pos = backend_get("time-pos")
+        dur = backend_get("duration")
         if pos is not None:
             last_pos, last_dur = pos, dur
             update_progress(media_id, title, pos, dur)
@@ -1064,7 +1223,7 @@ def _start_mpv_playback(match, resume_seconds, loop=None, gen=None):
     _hdmi_load(
         match["path"], keep_open="yes", loop_file="inf" if loop else "no",
         mute="no", start=str(resume_seconds) if resume_seconds > 0 else "none",
-        gen=gen,
+        gen=gen, media_id=match["id"],
     )
     threading.Thread(
         target=_watch_mpv_playback,
@@ -1086,6 +1245,101 @@ def _is_foreground_playing():
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/projection")
+def projection():
+    """The fullscreen, chrome-less page a kiosk browser points at for HDMI
+    output when RENDER_BACKEND=webgl -- see the module docstring's note on
+    RENDER_BACKEND. Renders fine (just idle, no model) even when the mpv
+    backend is active, so it's not gated behind RENDER_BACKEND itself."""
+    return render_template("projection.html")
+
+
+@app.route("/api/projection/model")
+def api_projection_model():
+    if not os.path.exists(PROJECTION_OBJ_PATH):
+        return jsonify({"error": "no projection model configured"}), 404
+    return send_file(PROJECTION_OBJ_PATH, mimetype="text/plain")
+
+
+@app.route("/api/projection/state")
+def api_projection_state():
+    """Polled by the /projection page (a few times a second) to learn what
+    it should currently be showing/doing."""
+    with projection_lock:
+        state = dict(projection_state)
+    state["mapping"] = get_mapping()
+    return jsonify(state)
+
+
+@app.route("/api/projection/heartbeat", methods=["POST"])
+def api_projection_heartbeat():
+    """Posted by the /projection page every ~250ms with its current
+    playback state -- the webgl-backend equivalent of polling mpv's IPC
+    socket for get_property replies, just pushed instead of pulled since
+    there's no persistent socket to poll here."""
+    body = request.get_json(silent=True) or {}
+    with projection_lock:
+        projection_report.update({
+            "load_seq": body.get("load_seq"),
+            "position": body.get("position"),
+            "duration": body.get("duration"),
+            "paused": body.get("paused"),
+            "idle_active": body.get("idle_active"),
+            "looping": body.get("looping"),
+            "frame_number": body.get("frame_number"),
+        })
+        if body.get("ack_seq") is not None:
+            projection_report["ack_seq"] = body["ack_seq"]
+    return jsonify({"ok": True})
+
+
+@app.route("/api/mapping", methods=["GET"])
+def api_get_mapping():
+    return jsonify(get_mapping())
+
+
+@app.route("/api/mapping", methods=["POST"])
+def api_set_mapping():
+    """Admin-gated, same PIN pattern as the other calibration-adjacent
+    endpoints -- this is a physical-setup control, not something a regular
+    viewer should be able to nudge."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+    values = {}
+    for key in DEFAULT_MAPPING:
+        if key in body:
+            try:
+                values[key] = float(body[key])
+            except (TypeError, ValueError):
+                return jsonify({"error": f"{key} must be a number"}), 400
+    return jsonify(set_mapping(values))
+
+
+@app.route("/api/loading-image")
+def api_loading_image():
+    if not LOADING_IMAGE_PATH or not os.path.exists(LOADING_IMAGE_PATH):
+        return jsonify({"error": "no loading image configured"}), 404
+    return send_file(LOADING_IMAGE_PATH)
+
+
+@app.route("/api/media/<media_id>/stream")
+def api_media_stream(media_id):
+    """Serves a library item's raw video bytes for the /projection page's
+    <video> element (RENDER_BACKEND=webgl only -- mpv opens match["path"]
+    directly off disk and never hits this). conditional=True gives Range
+    request support for free, which is what makes seeking work."""
+    match = get_media_by_id(media_id)
+    if not match:
+        return jsonify({"error": "not found"}), 404
+    return send_file(match["path"], conditional=True)
 
 
 @app.route("/api/media")
@@ -1207,7 +1461,7 @@ def api_start_screensaver_now():
     _mark_interaction()
     SCREENSAVER_ENABLED = True
     if _is_foreground_playing():
-        mpv_send({"command": ["stop"]})
+        backend_stop()
     start_screensaver()
     return jsonify({"enabled": SCREENSAVER_ENABLED})
 
@@ -1480,33 +1734,39 @@ def api_control(action):
     global loop_enabled
     _mark_interaction()
 
-    mapping = {
-        "pause": {"command": ["cycle", "pause"]},
-        "stop": {"command": ["stop"]},
-        # mpv pauses automatically after stepping, which is exactly what you
-        # want for frame-accurate scrubbing.
-        "seek_forward": {"command": ["frame-step"]},
-        "seek_backward": {"command": ["frame-back-step"]},
-        "volume_up": {"command": ["add", "volume", 5]},
-        "volume_down": {"command": ["add", "volume", -5]},
-        "loop": {"command": ["cycle-values", "loop-file", "inf", "no"]},
+    # Maps the dock's action names onto backend_control()'s own action
+    # vocabulary -- volume isn't otherwise a backend_control action since
+    # nothing else needs it, so it's handled as a direct dispatch below.
+    backend_actions = {
+        "pause": "toggle_pause",
+        "stop": "stop",
+        # both backends pause automatically after stepping, which is
+        # exactly what you want for frame-accurate scrubbing.
+        "seek_forward": "frame_step",
+        "seek_backward": "frame_back_step",
+        "loop": "toggle_loop",
     }
-    if action not in mapping:
+    if action in ("volume_up", "volume_down"):
+        delta = 5 if action == "volume_up" else -5
+        if RENDER_BACKEND != "webgl":
+            result = mpv_send({"command": ["add", "volume", delta]})
+        else:
+            result = backend_control("volume", value=delta, wait=False)
+        return jsonify({"result": result})
+    if action not in backend_actions:
         return jsonify({"error": "unknown action"}), 400
-    result = mpv_send(mapping[action])
+
+    result = backend_control(backend_actions[action])
     if action == "pause":
-        # "cycle pause" doesn't report the resulting state, so read it back
-        paused = mpv_send({"command": ["get_property", "pause"]})
-        return jsonify({"result": result, "paused": paused.get("data") if paused else None})
+        # toggling pause doesn't report the resulting state, so read it back
+        return jsonify({"result": result, "paused": backend_get("pause")})
     if action in ("seek_forward", "seek_backward"):
-        # both leave mpv paused; report the resulting frame number so the
-        # dock can show "Frame 3 of 5" immediately for sequences, without
-        # waiting on a poll
-        frame_r = mpv_send({"command": ["get_property", "estimated-frame-number"]})
-        return jsonify({"result": result, "frame_number": frame_r.get("data") if frame_r else None})
+        # both leave playback paused; report the resulting frame number so
+        # the dock can show "Frame 3 of 5" immediately for sequences,
+        # without waiting on a poll
+        return jsonify({"result": result, "frame_number": backend_get("estimated-frame-number")})
     if action == "loop":
-        loop_r = mpv_send({"command": ["get_property", "loop-file"]})
-        data = loop_r.get("data") if loop_r else None
+        data = backend_get("loop-file")
         loop_enabled = data not in (None, False, "no")
         return jsonify({"result": result, "looping": loop_enabled})
     return jsonify({"result": result})
@@ -1518,7 +1778,7 @@ def api_seek_to():
     seconds = request.get_json(force=True).get("seconds")
     if seconds is None:
         return jsonify({"error": "seconds required"}), 400
-    return jsonify({"result": mpv_send({"command": ["seek", seconds, "absolute"]})})
+    return jsonify({"result": backend_control("seek", value=seconds)})
 
 
 @app.route("/api/status")
@@ -1530,9 +1790,7 @@ def api_status():
     if current_kind != "video":
         return jsonify({"playing": False, "screensaver": False})
 
-    def prop(name):
-        r = mpv_send({"command": ["get_property", name]})
-        return r.get("data") if r else None
+    prop = backend_get
 
     with meta_lock:
         description = current_media_meta.get("description")
@@ -1563,9 +1821,13 @@ def api_status():
 
 
 if __name__ == "__main__":
-    _spawn_hdmi_process()
+    if RENDER_BACKEND == "webgl":
+        print(f"[projection] webgl backend active -- point a kiosk browser at "
+              f"http://localhost:{os.environ.get('ZEALANDATA_PORT', '8000')}/projection")
+    else:
+        _spawn_hdmi_process()
+        threading.Thread(target=_hdmi_supervisor_loop, daemon=True).start()
     _go_idle(spinner=False)
-    threading.Thread(target=_hdmi_supervisor_loop, daemon=True).start()
     threading.Thread(target=_boot_grace_then_screensaver, daemon=True).start()
     threading.Thread(target=_idle_watcher_loop, daemon=True).start()
     port = int(os.environ.get("ZEALANDATA_PORT", "8000"))

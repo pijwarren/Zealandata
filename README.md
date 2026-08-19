@@ -127,6 +127,39 @@ sudo systemctl enable --now zealandata
 ```
 Check status/logs with `systemctl status zealandata` and `journalctl -u zealandata -f`.
 
+## Projection mapping onto a physical 3D model
+
+Instead of mpv, HDMI output can instead be a Chromium kiosk rendering a
+Three.js scene that texture-maps the current video onto a 3D model (e.g. a
+3D-printed relief map) — for projecting video onto the physical object so
+it lines up with it, rather than onto a flat screen/wall.
+
+Set `ZEALANDATA_RENDER_BACKEND=webgl` and `ZEALANDATA_PROJECTION_OBJ=/path/to/model.obj`
+(defaults to `static/projection_model.obj` if unset — falls back to a flat
+placeholder plane if that file doesn't exist, so the rest of the pipeline
+is still testable without a real model). Point a fullscreen Chromium kiosk
+at `http://localhost:8000/projection` instead of relying on mpv to own the
+display — e.g.:
+```bash
+chromium-browser --kiosk --autoplay-policy=no-user-gesture-required \
+  --noerrdialogs --disable-session-crashed-bubble http://localhost:8000/projection
+```
+`--autoplay-policy=no-user-gesture-required` matters: without it, Chromium
+blocks the page's own (unmuted) video.play() calls, and playback will sit
+paused until someone presses Play from the dock a second time.
+
+The video is projected onto the model top-down (like sunlight), using the
+model's own footprint rather than whatever UVs the OBJ file happens to
+carry — works whether or not the export has a sensible texture map. Scale,
+rotation, and X/Y offset are calibrated live from the web UI's admin panel
+("Projection mapping" in Settings, once admin mode is unlocked) — nudge the
+sliders while watching the actual projector output until the video lines
+up with the physical print.
+
+Screensaver shuffling, the spinner transition, resume, and progress
+tracking all work identically to the mpv backend — none of that logic
+changed, only where the actual pixels end up.
+
 ## Browsing from a tablet, phone, or laptop
 
 The server listens on every network interface by default (not just the Pi
