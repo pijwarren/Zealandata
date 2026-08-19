@@ -89,8 +89,12 @@ LOOP_SELECTED_VIDEO = os.environ.get("ZEALANDATA_LOOP_SELECTED", "0") == "1"
 # If something's left PAUSED (not stopped) for this long with no further
 # interaction, automatically stop it and fall back to the screensaver.
 # Doesn't affect actively-playing/looping video — only abandoned pauses.
+# Also reused as the one-time boot-grace delay before the screensaver
+# takes over after a fresh start/restart (see _boot_grace_then_screensaver)
+# -- same "how long is quiet before something automatic kicks in" idea, so
+# this is really the screensaver's default timeout in both places it applies.
 IDLE_TIMEOUT_ENABLED = os.environ.get("ZEALANDATA_IDLE_TIMEOUT_ENABLED", "0") == "1"
-IDLE_TIMEOUT_SECONDS = float(os.environ.get("ZEALANDATA_IDLE_TIMEOUT_SECONDS", "300"))
+IDLE_TIMEOUT_SECONDS = float(os.environ.get("ZEALANDATA_IDLE_TIMEOUT_SECONDS", "600"))
 
 # Optional: a static image shown whenever there's genuinely nothing else
 # queued (server just started, playback was explicitly stopped, or the
@@ -1095,6 +1099,26 @@ def api_set_screensaver():
         # turn on and nothing's currently selected -> start it right away
         # rather than waiting for the next natural idle transition
         start_screensaver()
+    return jsonify({"enabled": SCREENSAVER_ENABLED})
+
+
+@app.route("/api/screensaver/start", methods=["POST"])
+def api_start_screensaver_now():
+    """Starts the screensaver immediately, interrupting whatever's
+    currently selected if something is, and turning the enabled toggle on
+    if it was off -- distinct from just flipping that toggle, which only
+    auto-starts the screensaver when nothing's already playing. Stopping
+    playback here is enough on its own to eventually reach the screensaver
+    (_watch_mpv_playback notices mpv going idle and calls
+    _enter_idle_state), but that's polled every 2s -- calling
+    start_screensaver() directly makes an explicit "now" button feel
+    instant, and it's a no-op if one's already running."""
+    global SCREENSAVER_ENABLED
+    _mark_interaction()
+    SCREENSAVER_ENABLED = True
+    if _is_foreground_playing():
+        mpv_send({"command": ["stop"]})
+    start_screensaver()
     return jsonify({"enabled": SCREENSAVER_ENABLED})
 
 

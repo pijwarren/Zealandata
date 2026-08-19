@@ -1,5 +1,6 @@
 // ---------------------------------------------------------------- DOM refs
 const topbarScreensaverTag = document.getElementById("screensaverTag");
+const startScreensaverBtn = document.getElementById("startScreensaverBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const settingsScrim = document.getElementById("settingsScrim");
@@ -454,6 +455,18 @@ async function setScreensaver(enabled) {
   paintScreensaverToggle(data.enabled);
 }
 topbarScreensaverTag.addEventListener("click", () => setScreensaver(!screensaverEnabled));
+
+startScreensaverBtn.addEventListener("click", async () => {
+  startScreensaverBtn.disabled = true;
+  try {
+    const res = await fetch("/api/screensaver/start", { method: "POST" });
+    const data = await res.json().catch(() => ({}));
+    if (typeof data.enabled === "boolean") paintScreensaverToggle(data.enabled);
+    paintDockIdle(); // next pollStatus tick fills in the actual pick's title
+  } finally {
+    startScreensaverBtn.disabled = false;
+  }
+});
 
 rescanBtn.addEventListener("click", async () => {
   rescanBtn.textContent = "Scanning…";

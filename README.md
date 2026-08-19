@@ -376,12 +376,12 @@ settled.
 ## Idle timeout
 
 If a video is left **paused** (not stopped) with no further interaction for
-`ZEALANDATA_IDLE_TIMEOUT_SECONDS` (default 300 = 5 minutes), it
+`ZEALANDATA_IDLE_TIMEOUT_SECONDS` (default 600 = 10 minutes), it
 automatically stops and falls back to the screensaver. Off by default —
 enable with:
 ```
 Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=1
-Environment=ZEALANDATA_IDLE_TIMEOUT_SECONDS=300
+Environment=ZEALANDATA_IDLE_TIMEOUT_SECONDS=600
 ```
 This only watches for the "paused and abandoned" case — a video that's
 actively playing (or looping) is left alone no matter how long it's been
@@ -417,12 +417,17 @@ Environment=ZEALANDATA_SCREENSAVER_ENABLED=1
 
 **On boot or a service restart**, the screensaver doesn't start shuffling
 immediately — the loading image (if configured) is held for
-`ZEALANDATA_IDLE_TIMEOUT_SECONDS` (default 300s = 5 min, the same value
-the idle-timeout feature below uses) first, so a restart mid-event or
+`ZEALANDATA_IDLE_TIMEOUT_SECONDS` (default 600s = 10 min, the same value
+the idle-timeout feature above uses) first, so a restart mid-event or
 mid-setup doesn't suddenly start playing an unrelated video on screen.
 This is a one-time startup delay only — every other idle transition (a
 video ending, an explicit stop) still brings the screensaver back
 immediately, same as always.
+
+**To start it immediately** regardless of that delay (or any timeout),
+hit the ▷ "Start screensaver" button in the top bar — it interrupts
+whatever's currently selected and jumps straight into shuffling, turning
+the screensaver on if it was off.
 It starts right after boot, and comes back automatically a few seconds
 after a video finishes, is stopped, or the idle timeout fires. It picks a
 new random item (never immediately repeating the last one) each time a
