@@ -35,6 +35,18 @@ const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.01, 100);
 const rig = new THREE.Group();
 scene.add(rig);
 
+// The model's own resting orientation, applied inside the rig so it sits
+// *underneath* the calibration rotations rather than competing with them:
+// this is what "all sliders at 0" looks like. The OBJ as exported lands
+// 90 degrees off from how the physical print actually faces the
+// projector, so baking that in here means calibration starts from the
+// right orientation instead of everyone having to dial the same 90 back
+// in by hand every time it's reset.
+const BASE_ORIENTATION_Y_DEG = 90;
+const baseOrient = new THREE.Group();
+baseOrient.rotation.y = THREE.MathUtils.degToRad(BASE_ORIENTATION_Y_DEG);
+rig.add(baseOrient);
+
 let modelMesh = null;
 let upAxis = "z"; // whichever axis turns out to have the smallest extent
 let videoTexture = null;
@@ -120,7 +132,10 @@ function placeMesh(geometry) {
   const center = new THREE.Vector3();
   box.getCenter(center);
   modelMesh.position.sub(center);
-  rig.add(modelMesh);
+  baseOrient.add(modelMesh);
+  // Measured after baseOrient is applied, so the camera frames the model
+  // as it actually rests rather than as the OBJ happened to be exported.
+  baseOrient.updateWorldMatrix(true, true);
   const worldBox = new THREE.Box3().setFromObject(modelMesh);
   fitOrthoCamera(worldBox);
 }
