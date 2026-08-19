@@ -34,6 +34,7 @@ import hashlib
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory, render_template
+from werkzeug.utils import secure_filename
 
 # ---------------------------------------------------------------- config ---
 
@@ -91,6 +92,7 @@ LOADING_IMAGE_PATH = os.environ.get("ZEALANDATA_LOADING_IMAGE", "").strip() or N
 ADMIN_PIN = os.environ.get("ZEALANDATA_ADMIN_PIN", "").strip() or None
 ADMIN_MAX_ATTEMPTS = 5
 ADMIN_LOCKOUT_SECONDS = 120
+UPLOAD_MAX_MB = int(os.environ.get("ZEALANDATA_UPLOAD_MAX_MB", "8192"))
 
 # A short spinner animation is shown between every HDMI transition (a
 # selected video, a screensaver pick, the idle image) rather than a
@@ -110,6 +112,7 @@ os.makedirs(HERO_THUMB_DIR, exist_ok=True)
 os.makedirs(SEQUENCE_CACHE_DIR, exist_ok=True)
 
 app = Flask(__name__)
+app.config["MAX_CONTENT_LENGTH"] = UPLOAD_MAX_MB * 1024 * 1024
 
 mpv_process = None
 mpv_lock = threading.Lock()
@@ -1066,6 +1069,51 @@ def api_rename_media(media_id):
     set_title_override(media_id, title)
     get_media(force=True)
     return jsonify({"id": media_id, "title": title})
+
+
+@app.route("/api/admin/upload", methods=["POST"])
+def api_upload_media():
+    """PIN-gated video upload. pin/category arrive as regular form fields
+    alongside the file (not JSON) since this is a multipart/form-data
+    request. category becomes a top-level subfolder of MEDIA_DIR -- the
+    same thing _build_media_item derives a card's category from -- so an
+    uploaded file shows up in the matching row (or a new one) after
+    rescan."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    ok, locked_seconds = check_admin_pin(str(request.form.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"error": "no file provided"}), 400
+
+    ext = Path(upload.filename).suffix.lower()
+    if ext not in VIDEO_EXTS:
+        return jsonify({"error": f"unsupported file type {ext or '(none)'}"}), 400
+
+    filename = secure_filename(Path(upload.filename).stem) + ext
+    if not filename or filename == ext:
+        return jsonify({"error": "invalid filename"}), 400
+
+    category = secure_filename((request.form.get("category") or "").strip())
+    dest_dir = os.path.join(MEDIA_DIR, category) if category else MEDIA_DIR
+    os.makedirs(dest_dir, exist_ok=True)
+
+    dest_path = os.path.join(dest_dir, filename)
+    if os.path.exists(dest_path):
+        stem, n = Path(filename).stem, 2
+        while os.path.exists(dest_path):
+            dest_path = os.path.join(dest_dir, f"{stem} ({n}){ext}")
+            n += 1
+
+    upload.save(dest_path)
+    get_media(force=True)
+    item = next((i for i in get_media() if i["path"] == dest_path), None)
+    return jsonify({"ok": True, "item": item})
 
 
 @app.route("/api/play/<media_id>", methods=["POST"])

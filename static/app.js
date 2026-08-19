@@ -6,6 +6,10 @@ const settingsScrim = document.getElementById("settingsScrim");
 const settingsDrawer = document.getElementById("settingsDrawer");
 const rescanBtn = document.getElementById("rescanBtn");
 const adminModeBtn = document.getElementById("adminModeBtn");
+const uploadField = document.getElementById("uploadField");
+const uploadInput = document.getElementById("uploadInput");
+const uploadBtn = document.getElementById("uploadBtn");
+const uploadStatus = document.getElementById("uploadStatus");
 const pinScrim = document.getElementById("pinScrim");
 const pinModal = document.getElementById("pinModal");
 const pinTitle = document.getElementById("pinTitle");
@@ -530,6 +534,7 @@ let adminPin = null;
 function paintAdminMode() {
   document.body.classList.toggle("admin-mode", !!adminPin);
   adminModeBtn.textContent = adminPin ? "Lock admin mode" : "Unlock admin mode";
+  uploadField.classList.toggle("hidden", !adminPin);
   paintSetHeroBtn();
 }
 
@@ -574,6 +579,38 @@ async function renameMedia(item) {
   }
   loadMedia();
 }
+
+uploadBtn.addEventListener("click", () => uploadInput.click());
+
+uploadInput.addEventListener("change", async () => {
+  const file = uploadInput.files[0];
+  uploadInput.value = "";
+  if (!file) return;
+
+  const category = prompt("Category for this upload (leave blank for Uncategorized):", "") || "";
+
+  const form = new FormData();
+  form.append("pin", adminPin);
+  form.append("category", category.trim());
+  form.append("file", file);
+
+  uploadBtn.disabled = true;
+  uploadStatus.textContent = `Uploading ${file.name}…`;
+  try {
+    const res = await fetch("/api/admin/upload", { method: "POST", body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      uploadStatus.textContent = data.error || "Upload failed";
+      return;
+    }
+    uploadStatus.textContent = `Uploaded ${file.name}`;
+    await loadMedia();
+  } catch (err) {
+    uploadStatus.textContent = "Upload failed — check your connection";
+  } finally {
+    uploadBtn.disabled = false;
+  }
+});
 
 // ----------------------------------------------------------------------
 // Sequence (frame-step) mode

@@ -63,7 +63,14 @@
   <div class="field">
     <label>Admin mode</label>
     <button type="button" class="btn btn-secondary btn-block" id="adminModeBtn">Unlock admin mode</button>
-    <p class="field__hint">PIN-protected — lets you rename videos and set the hero banner.</p>
+    <p class="field__hint">PIN-protected — lets you rename videos, set the hero banner, and upload new files.</p>
+  </div>
+
+  <div class="field hidden" id="uploadField">
+    <label>Upload video</label>
+    <input type="file" id="uploadInput" accept=".mp4,.mkv,.avi,.mov,.m4v,.webm,.ts" class="hidden">
+    <button type="button" class="btn btn-secondary btn-block" id="uploadBtn">Choose file…</button>
+    <p class="field__hint" id="uploadStatus"></p>
   </div>
 </div>
 

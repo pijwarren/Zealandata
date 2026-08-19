@@ -220,7 +220,7 @@ Persists across restarts (stored in `hero.json`, gitignored like
 `progress.json`). If the pinned file is later removed from the library, it
 just falls back to the automatic pick again rather than showing nothing.
 
-## Admin mode (renaming videos, setting the hero banner)
+## Admin mode (renaming videos, setting the hero banner, uploading files)
 
 Set `ZEALANDATA_ADMIN_PIN` to a 4-digit PIN to unlock a small admin mode
 in the web UI — off entirely (no admin-mode UI, no endpoints active)
@@ -244,6 +244,12 @@ accident:
 - Every poster in the browse grid grows a small ✎ button (on hover) that
   renames it.
 - The ★ "set as hero" button reappears in the now-playing dock.
+- An "Upload video" field appears in Settings. Pick a file (any extension
+  in `VIDEO_EXTS`) and optionally name a category — it's saved as a
+  top-level subfolder of `MEDIA_DIR`, the same thing that drives a poster's
+  category the rest of the time — then the library is rescanned
+  automatically. Max upload size is 8GB by default; raise it with
+  `ZEALANDATA_UPLOAD_MAX_MB` if needed.
 
 The PIN itself is only held in that browser tab's memory — never
 stored — and is re-checked by the server on every rename request, so it
