@@ -147,6 +147,35 @@ function mirrorAlongUpAxis(geometry, axis) {
   geometry.computeVertexNormals();
 }
 
+// How the video needs turning to land the right way up on the print.
+// Rotation is clockwise, in degrees, as seen on the projector; the flip
+// mirrors top and bottom (i.e. across the horizontal axis) and is applied
+// after the rotation.
+const VIDEO_ROTATION_CW_DEG = 90;
+const VIDEO_FLIP_ACROSS_HORIZONTAL = true;
+
+// Turns a UV coordinate into the one to actually sample. Note this is the
+// *inverse* of the transform being described: to make the displayed image
+// turn clockwise the sample coordinates have to turn counter-clockwise,
+// and an inverse composition applies its steps in reverse order -- hence
+// the flip landing before the rotation here even though it's described
+// (and applied on screen) after it.
+function orientUV(u, v) {
+  if (VIDEO_FLIP_ACROSS_HORIZONTAL) v = 1 - v;
+  switch (((VIDEO_ROTATION_CW_DEG % 360) + 360) % 360) {
+    case 90:
+      [u, v] = [1 - v, u];
+      break;
+    case 180:
+      [u, v] = [1 - u, 1 - v];
+      break;
+    case 270:
+      [u, v] = [v, 1 - u];
+      break;
+  }
+  return [u, v];
+}
+
 // Projects the video onto the mesh top-down (like sunlight) using its
 // world-footprint position, not whatever UVs the OBJ export happened to
 // carry (raw scan/print exports often have none, or ones meant for a
@@ -166,6 +195,7 @@ function applyPlanarUVs(geometry, box) {
       u = size.x > 0 ? (pos.getX(i) - min.x) / size.x : 0.5;
       v = size.y > 0 ? (pos.getY(i) - min.y) / size.y : 0.5;
     }
+    [u, v] = orientUV(u, v);
     uv[i * 2] = u;
     uv[i * 2 + 1] = v;
   }
