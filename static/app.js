@@ -1,4 +1,5 @@
 // ---------------------------------------------------------------- DOM refs
+const topbar = document.getElementById("topbar");
 const topbarScreensaverTag = document.getElementById("screensaverTag");
 const startScreensaverBtn = document.getElementById("startScreensaverBtn");
 const settingsBtn = document.getElementById("settingsBtn");
@@ -427,6 +428,25 @@ setHeroBtn.addEventListener("click", async () => {
   // needing a full reload
   paintHeroFromPick(lastContinueItems, allMediaItems);
 });
+
+// ------------------------------------------------------- auto-hiding topbar
+
+// Slides the top bar out of view on scroll-down, back in on scroll-up --
+// ignores tiny jitter (a few px either way) and never hides near the very
+// top of the page, so it doesn't flicker away right as you start scrolling.
+let lastScrollY = window.scrollY;
+window.addEventListener("scroll", () => {
+  const y = window.scrollY;
+  const delta = y - lastScrollY;
+  if (y < 80) {
+    topbar.classList.remove("topbar--hidden");
+  } else if (delta > 8) {
+    topbar.classList.add("topbar--hidden");
+  } else if (delta < -8) {
+    topbar.classList.remove("topbar--hidden");
+  }
+  lastScrollY = y;
+}, { passive: true });
 
 // -------------------------------------------------------------- settings
 

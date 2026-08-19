@@ -140,7 +140,10 @@ button:focus-visible, .card:focus-visible{
   display:flex; align-items:center; justify-content:space-between;
   padding:var(--space-4) var(--space-6);
   background:linear-gradient(180deg, rgba(22,24,38,0.92) 0%, rgba(22,24,38,0) 100%);
+  transform:translateY(0);
+  transition:transform .25s ease;
 }
+.topbar--hidden{ transform:translateY(-100%); }
 .topbar__title{
   font-family:var(--font-heading);
   font-weight:500;
