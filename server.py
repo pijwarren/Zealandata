@@ -264,6 +264,7 @@ projection_report = {
     "idle_active": None, "looping": None, "frame_number": None,
     "ack_seq": 0,
     "renderer_fps": None,  # diagnostic only -- see /api/projection/stats
+    "model_vertices": None,
 }
 
 
@@ -1315,6 +1316,7 @@ def api_projection_heartbeat():
             "looping": body.get("looping"),
             "frame_number": body.get("frame_number"),
             "renderer_fps": body.get("renderer_fps"),
+            "model_vertices": body.get("model_vertices"),
         })
         if body.get("ack_seq") is not None:
             projection_report["ack_seq"] = body["ack_seq"]
@@ -1330,6 +1332,7 @@ def api_projection_stats():
         rep = dict(projection_report)
     return jsonify({
         "renderer_fps": rep.get("renderer_fps"),
+        "model_vertices": rep.get("model_vertices"),
         "position": rep.get("position"),
         "paused": rep.get("paused"),
     })

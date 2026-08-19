@@ -12,6 +12,7 @@
  */
 import * as THREE from "/static/vendor/three/three.module.js";
 import { OBJLoader } from "/static/vendor/three/loaders/OBJLoader.js";
+import { mergeVertices } from "/static/vendor/three/utils/BufferGeometryUtils.js";
 
 // Also the calibration update rate: mapping changes only reach the
 // projector on a poll, so at 300ms dragging a slider stepped about three
@@ -64,6 +65,7 @@ let videoTexture = null;
 let flatMaterial = null;
 let shadedMaterial = null;
 let appliedRenderScale = 1;
+let modelVertexCount = null;
 
 // Only ever lights the Lambert (calibration) material -- the unlit
 // projection material ignores them entirely, so these can just stay in
@@ -149,7 +151,9 @@ function mirrorAlongUpAxis(geometry, axis) {
   else if (axis === "z") geometry.scale(1, 1, -1);
   else geometry.scale(-1, 1, 1);
   reverseWinding(geometry);
-  geometry.computeVertexNormals();
+  // Normals deliberately not computed here -- placeMesh does it once,
+  // after the UVs are in place, so a 100k-vertex mesh isn't walked twice
+  // at load for no benefit.
 }
 
 // How the video needs turning to land the right way up on the print.
@@ -228,7 +232,29 @@ function buildMaterials() {
   return flatMaterial;
 }
 
-function placeMesh(geometry) {
+// OBJLoader hands back non-indexed geometry -- every triangle carries its
+// own three vertices, so a 210k-face model is drawn as ~632k vertices
+// even though it only has ~106k distinct ones. Once the render scale
+// stopped the GPU being fill-rate bound, that redundant vertex work
+// became the next ceiling, so the mesh is indexed here before anything
+// else touches it.
+//
+// Normals and UVs are dropped first on purpose: mergeVertices only
+// collapses vertices whose attributes all match, and the per-face normals
+// OBJLoader (or computeVertexNormals on non-indexed geometry) produces
+// differ between adjacent triangles -- leaving them in place would block
+// almost every merge. Both are regenerated below, from the indexed mesh.
+function indexGeometry(geometry) {
+  geometry.deleteAttribute("normal");
+  geometry.deleteAttribute("uv");
+  const merged = mergeVertices(geometry);
+  if (merged !== geometry) geometry.dispose();
+  return merged;
+}
+
+function placeMesh(inputGeometry) {
+  const geometry = indexGeometry(inputGeometry);
+  modelVertexCount = geometry.attributes.position.count;
   geometry.computeBoundingBox();
   upAxis = detectUpAxis(geometry.boundingBox);
   if (INVERT_RELIEF) {
@@ -238,10 +264,11 @@ function placeMesh(geometry) {
   const box = geometry.boundingBox;
   applyPlanarUVs(geometry, box);
   const material = buildMaterials();
-  // Lambert shading needs normals; an OBJ exported without them (or with
-  // only face-level ones) otherwise renders uniformly flat, which would
-  // make the shading toggle look broken rather than merely subtle.
-  if (!geometry.attributes.normal) geometry.computeVertexNormals();
+  // Lambert shading needs normals, and they have to be built after the
+  // merge above -- computing them earlier is what would have prevented it.
+  // On indexed geometry this also gives smooth normals across shared
+  // edges rather than faceted ones, which reads better on relief.
+  geometry.computeVertexNormals();
   modelMesh = new THREE.Mesh(geometry, material);
   // Recenter so calibration scale/rotate pivots around the model's own
   // middle, not wherever the OBJ's own origin happened to be.
@@ -481,6 +508,7 @@ async function sendHeartbeat() {
     frame_number: Math.round((videoEl.currentTime || 0) * fps),
     ack_seq: lastAckSeq,
     renderer_fps: measuredFps,
+    model_vertices: modelVertexCount,
   };
   try {
     await fetch("/api/projection/heartbeat", {
