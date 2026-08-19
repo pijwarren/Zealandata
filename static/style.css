@@ -525,7 +525,18 @@ body.admin-mode #setHeroBtn{ display:flex; }
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
   .hero{ height:52vh; min-height:320px; }
-  .hero__content{ left:16px; right:16px; bottom:36px; }
+  /* bottom must clear #browseMain's -40px overlap (below) or the hero's
+     own content -- particularly the Play button, last in the stack --
+     gets visually covered by #browseMain painting on top of it */
+  .hero__content{ left:16px; right:16px; bottom:52px; }
+  /* the content stack is anchored from the bottom with nothing above it,
+     so a long description can push the tag/title off the top of a short
+     mobile hero entirely (behind the sticky top bar) -- capping the
+     description to 3 lines keeps the stack's height predictable */
+  .hero__content p{
+    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+    overflow:hidden; margin-bottom:16px;
+  }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 150px; }
   .row__arrow{ display:none !important; }
