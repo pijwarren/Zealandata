@@ -658,7 +658,15 @@ int main(void) {
     CHECK(mpv, "mpv_create");
     mpv_set_option_string(mpv, "input-ipc-server", sockpath);
     mpv_set_option_string(mpv, "idle", "yes");
-    mpv_set_option_string(mpv, "hwdec", "auto");
+    /* "auto" silently accepted a software-decode fallback here: hwdec-current
+       read back as "no" even though hwdec-interop reported drmprime as
+       available, and every decoded frame was costing ~54ms as a result --
+       almost the entire per-frame budget. DRM-PRIME zero-copy interop under
+       the render API (as opposed to mpv's own standalone --gpu-context=drm)
+       needs the DRM fd/crtc/connector handed over explicitly via
+       MPV_RENDER_PARAM_DRM_DISPLAY_V2 below, or it has nothing to import
+       the decoded buffer into and falls back rather than erroring. */
+    mpv_set_option_string(mpv, "hwdec", "drmprime");
     mpv_set_option_string(mpv, "keep-open", "yes");
     mpv_set_option_string(mpv, "osc", "no");
     mpv_set_option_string(mpv, "osd-level", "0");
@@ -670,10 +678,16 @@ int main(void) {
 
     mpv_opengl_init_params gl_init = { .get_proc_address = get_proc_address_egl };
     int advanced = 1;
+    mpv_opengl_drm_params_v2 drm_params = {
+        .fd = drm.fd, .crtc_id = (int)drm.crtc_id, .connector_id = (int)drm.connector_id,
+        .atomic_request_ptr = NULL,  /* legacy (non-atomic) modesetting, as present() uses */
+        .render_fd = -1,             /* only needed for VAAPI interop, not V3D/drmprime */
+    };
     mpv_render_param params[] = {
         { MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_OPENGL },
         { MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init },
         { MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced },
+        { MPV_RENDER_PARAM_DRM_DISPLAY_V2, &drm_params },
         { 0 }
     };
     CHECK(mpv_render_context_create(&mpv_gl, mpv, params) >= 0, "mpv_render_context_create");
