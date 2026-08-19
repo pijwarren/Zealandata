@@ -584,6 +584,14 @@ int main(void) {
     const char *sockpath= getenv("ZEALANDATA_MPV_SOCKET");
     const char *mapfile = getenv("ZEALANDATA_MAPPING_FILE");
     const char *idleimg = getenv("ZEALANDATA_LOADING_IMAGE");
+    /* Cap for the texture mpv renders into. Every frame mpv does a full
+       colour-convert/scale pass into this, so its size is a direct per-frame
+       cost -- and the mesh never samples it at 1:1 anyway, since the model
+       covers only part of the screen and is tilted. Capping it is far more
+       effective than shrinking the mesh. */
+    const char *vmaxs = getenv("ZEALANDATA_VIDEO_MAX_WIDTH");
+    int video_max_w = vmaxs ? atoi(vmaxs) : 1280;
+    if (video_max_w < 160) video_max_w = 160;
     if (!card)     card = "/dev/dri/card1";
     if (!objpath)  objpath = "/home/pj/zealandata-warped/static/3dPrint_210kFaces.obj";
     if (!sockpath) sockpath = "/tmp/zealandata-mpv.sock";
@@ -669,6 +677,8 @@ int main(void) {
         { 0 }
     };
     CHECK(mpv_render_context_create(&mpv_gl, mpv, params) >= 0, "mpv_render_context_create");
+    mpv_observe_property(mpv, 0, "dwidth", MPV_FORMAT_INT64);
+    mpv_observe_property(mpv, 0, "dheight", MPV_FORMAT_INT64);
     printf("[mpv] ready, ipc socket %s\n", sockpath);
 
     if (idleimg && *idleimg) {
@@ -681,6 +691,10 @@ int main(void) {
     double last_cal = 0, last_fps = now_sec();
     int frames = 0;
     int pending_w = 0, pending_h = 0;
+    /* Per-phase timing: with a vsync-locked flip it's otherwise impossible
+       to tell "the GPU is busy" from "we're being paced", and those want
+       opposite fixes. */
+    double acc_mpv = 0, acc_draw = 0, acc_present = 0;
     while (running) {
         /* calibration is polled rather than watched: one stat() per 100ms is
            nothing next to a frame, and it avoids an inotify dependency */
@@ -707,13 +721,19 @@ int main(void) {
 
         /* keep the video FBO matched to the actual decoded size, so the
            texture isn't up- or down-scaled twice on its way to the mesh */
-        if (pending_w > 0 && pending_h > 0 && (pending_w != vidW || pending_h != vidH)) {
-            vidW = pending_w; vidH = pending_h;
+        int tgtW = pending_w, tgtH = pending_h;
+        if (tgtW > video_max_w) {          /* keep aspect while capping */
+            tgtH = (int)((float)tgtH * video_max_w / (float)tgtW);
+            tgtW = video_max_w;
+        }
+        if (tgtW > 0 && tgtH > 0 && (tgtW != vidW || tgtH != vidH)) {
+            vidW = tgtW; vidH = tgtH;
             glBindTexture(GL_TEXTURE_2D, videoTex);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vidW, vidH, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
             printf("[mpv] video %dx%d\n", vidW, vidH);
         }
 
+        double tA = now_sec();
         uint64_t flags = mpv_render_context_update(mpv_gl);
         if (flags & MPV_RENDER_UPDATE_FRAME) {
             mpv_opengl_fbo fbo = { .fbo = (int)videoFbo, .w = vidW, .h = vidH, .internal_format = 0 };
@@ -726,12 +746,20 @@ int main(void) {
             mpv_render_context_render(mpv_gl, rp);
         }
 
-        /* scene target sized by render_scale */
-        int wantW = (int)(drm.mode.hdisplay * map_cur.render_scale);
-        int wantH = (int)(drm.mode.vdisplay * map_cur.render_scale);
+        acc_mpv += now_sec() - tA;
+
+        /* Scene target sized by render_scale. At full scale the mesh is drawn
+           straight to the display instead: the intermediate FBO exists only
+           so a reduced-resolution render can be upscaled, and the blit that
+           does it costs a full 1920x1080 pass every frame no matter how small
+           the scene target is -- which is why lowering render_scale appeared
+           to do nothing at all until this was split out. */
+        bool direct = map_cur.render_scale >= 0.999f;
+        int wantW = direct ? drm.mode.hdisplay : (int)(drm.mode.hdisplay * map_cur.render_scale);
+        int wantH = direct ? drm.mode.vdisplay : (int)(drm.mode.vdisplay * map_cur.render_scale);
         if (wantW < 16) wantW = 16;
         if (wantH < 16) wantH = 16;
-        if (wantW != sceneW || wantH != sceneH) {
+        if (!direct && (wantW != sceneW || wantH != sceneH)) {
             sceneW = wantW; sceneH = wantH;
             if (!sceneFbo) { glGenFramebuffers(1, &sceneFbo); glGenTextures(1, &sceneTex); glGenRenderbuffers(1, &sceneDepth); }
             glBindTexture(GL_TEXTURE_2D, sceneTex);
@@ -763,12 +791,13 @@ int main(void) {
         mat_mul(model, mT, tmp);
 
         float half = 1.15f;            /* padding around the fitted model */
-        float aspect = (float)sceneW / (float)sceneH;
+        float aspect = (float)wantW / (float)wantH;
         mat_ortho(proj, -half * aspect, half * aspect, -half, half, -100.f, 100.f);
         mat_mul(mvp, proj, model);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
-        glViewport(0, 0, sceneW, sceneH);
+        double tB = now_sec();
+        glBindFramebuffer(GL_FRAMEBUFFER, direct ? 0 : sceneFbo);
+        glViewport(0, 0, wantW, wantH);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
@@ -781,22 +810,32 @@ int main(void) {
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 
-        /* upscale the scene to the display */
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFbo);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-        glViewport(0, 0, drm.mode.hdisplay, drm.mode.vdisplay);
-        glBlitFramebuffer(0, 0, sceneW, sceneH,
-                          0, 0, drm.mode.hdisplay, drm.mode.vdisplay,
-                          GL_COLOR_BUFFER_BIT, GL_LINEAR);
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        if (!direct) {   /* upscale the reduced-resolution scene to the display */
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFbo);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+            glViewport(0, 0, drm.mode.hdisplay, drm.mode.vdisplay);
+            glBlitFramebuffer(0, 0, sceneW, sceneH,
+                              0, 0, drm.mode.hdisplay, drm.mode.vdisplay,
+                              GL_COLOR_BUFFER_BIT, GL_LINEAR);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        }
 
+        glFinish();                       /* so the timing splits are real */
+        acc_draw += now_sec() - tB;
+
+        double tC = now_sec();
         present();
         mpv_render_context_report_swap(mpv_gl);
+        acc_present += now_sec() - tC;
 
         frames++;
         if (now_sec() - last_fps >= 5.0) {
-            printf("[fps] %.1f\n", frames / (now_sec() - last_fps));
+            double el = now_sec() - last_fps;
+            printf("[fps] %.1f  (per frame: mpv %.1fms, draw %.1fms, present %.1fms)\n",
+                   frames / el, 1000 * acc_mpv / frames,
+                   1000 * acc_draw / frames, 1000 * acc_present / frames);
             frames = 0;
+            acc_mpv = acc_draw = acc_present = 0;
             last_fps = now_sec();
         }
     }
