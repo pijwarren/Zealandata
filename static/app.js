@@ -874,7 +874,9 @@ window.addEventListener("keydown", (e) => {
 // there are enough chips to overflow), rather than being crammed inside it.
 const dockDocsScrollUpdate = wrapScroller(dockDocs);
 const dockDocsViewport = dockDocs.parentElement;
-dockDocsViewport.classList.add("dock-docs-viewport", "hidden");
+dockDocsViewport.classList.add("dock-docs-viewport");
+const dockDocsPanel = document.getElementById("dockDocsPanel");
+dockDocsPanel.classList.add("hidden");
 
 // Only fades the edge that actually has more chips scrolled past it --
 // chips fully within the dock's own width stay fully opaque, matching its
@@ -896,7 +898,7 @@ window.addEventListener("resize", updateDocsFade);
 function paintDocs(attachments) {
   dockDocs.innerHTML = "";
   const list = attachments || [];
-  dockDocsViewport.classList.toggle("hidden", list.length === 0);
+  dockDocsPanel.classList.toggle("hidden", list.length === 0);
   list.forEach((att, index) => {
     const chip = document.createElement("button");
     chip.type = "button";
