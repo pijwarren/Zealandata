@@ -67,6 +67,13 @@ USE_DRM = os.environ.get("ZEALANDATA_USE_DRM", "0") == "1"
 # "load this file" / "get playback position" / "pause, seek, stop" primitives
 # differ, behind the backend_* functions below.
 RENDER_BACKEND = os.environ.get("ZEALANDATA_RENDER_BACKEND", "mpv").strip().lower()
+
+# Set when something else already owns the mpv instance -- specifically the
+# native projector (see projector/projector.c), which embeds libmpv to draw
+# video onto the 3D model and exposes the same IPC socket. Everything about
+# the mpv backend still applies; the server just doesn't spawn or supervise
+# the process, since it isn't its to restart.
+MPV_EXTERNAL = os.environ.get("ZEALANDATA_MPV_EXTERNAL", "0") == "1"
 PROJECTION_OBJ_PATH = os.environ.get(
     "ZEALANDATA_PROJECTION_OBJ", os.path.join(BASE_DIR, "static", "projection_model.obj")
 )
@@ -1870,6 +1877,10 @@ if __name__ == "__main__":
     if RENDER_BACKEND == "webgl":
         print(f"[projection] webgl backend active -- point a kiosk browser at "
               f"http://localhost:{os.environ.get('ZEALANDATA_PORT', '8000')}/projection")
+    elif MPV_EXTERNAL:
+        print(f"[projection] using externally-owned mpv at {MPV_SOCKET} "
+              f"(native projector) -- not spawning or supervising one here")
+        _wait_for_socket(MPV_SOCKET, timeout=30)
     else:
         _spawn_hdmi_process()
         threading.Thread(target=_hdmi_supervisor_loop, daemon=True).start()
