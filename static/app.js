@@ -738,22 +738,11 @@ function paintDocs(attachments) {
     chip.type = "button";
     chip.className = "dock__doc-chip";
     chip.title = att.name;
-    if (att.kind === "image") {
-      const thumb = document.createElement("img");
-      thumb.className = "dock__doc-chip__thumb";
-      thumb.src = att.url;
-      thumb.alt = "";
-      chip.appendChild(thumb);
-    } else {
-      const icon = document.createElement("span");
-      icon.className = "dock__doc-chip__icon";
-      icon.textContent = "📄";
-      chip.appendChild(icon);
-    }
-    const label = document.createElement("span");
-    label.className = "dock__doc-chip__name";
-    label.textContent = att.name;
-    chip.appendChild(label);
+    const thumb = document.createElement("img");
+    thumb.className = "dock__doc-chip__thumb";
+    thumb.src = att.kind === "image" ? att.url : "/static/icons/pdf.svg";
+    thumb.alt = "";
+    chip.appendChild(thumb);
     chip.addEventListener("click", () => {
       if (att.kind === "image") openDocViewer(att.url);
       else window.open(att.url, "_blank", "noopener");
