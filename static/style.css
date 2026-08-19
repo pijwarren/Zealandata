@@ -204,9 +204,10 @@ button:focus-visible, .card:focus-visible{
 .row{ margin-bottom:var(--space-8); scroll-margin-top:90px; }
 
 .category-nav{
+  position:sticky; top:58px; z-index:20;
   display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
   background:var(--color-bg);
-  padding:16px var(--space-6);
+  padding:16px var(--space-6) 20px;
   margin-bottom:var(--space-8);
 }
 .category-nav__item{
@@ -567,7 +568,7 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 150px; }
   .row__arrow{ display:none !important; }
-  .category-nav{ padding:14px 16px; }
+  .category-nav{ top:64px; padding:14px 16px 18px; }
   .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; }
   .dock{
     padding:12px 16px; column-gap:12px; row-gap:16px;
