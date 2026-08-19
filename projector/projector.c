@@ -745,6 +745,9 @@ int main(void) {
             };
             mpv_render_context_render(mpv_gl, rp);
         }
+        glFinish();  /* GPU work is async -- without this, mpv's actual cost
+                        bleeds into whichever bucket next blocks on the GPU,
+                        which made these numbers untrustworthy. */
 
         acc_mpv += now_sec() - tA;
 
