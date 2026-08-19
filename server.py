@@ -1202,12 +1202,16 @@ def api_rename_media(media_id):
 
 @app.route("/api/admin/upload", methods=["POST"])
 def api_upload_media():
-    """PIN-gated video upload. pin/category arrive as regular form fields
+    """PIN-gated video upload, with optional supplementary docs/images
+    uploaded alongside it. pin/category arrive as regular form fields
     alongside the file (not JSON) since this is a multipart/form-data
     request. category becomes a top-level subfolder of MEDIA_DIR -- the
     same thing _build_media_item derives a card's category from -- so an
     uploaded file shows up in the matching row (or a new one) after
-    rescan."""
+    rescan. Any files under the "attachments" field go straight into the
+    new video's <stem>.attachments/ folder (see _video_attachment_dir),
+    the same place _migrate_video_sidecars would eventually move loose
+    ones to -- so there's nothing to migrate for videos uploaded this way."""
     if not ADMIN_PIN:
         return jsonify({"error": "admin mode isn't configured on this server"}), 404
     ok, locked_seconds = check_admin_pin(str(request.form.get("pin", "")))
@@ -1240,6 +1244,26 @@ def api_upload_media():
             n += 1
 
     upload.save(dest_path)
+
+    attachments = [f for f in request.files.getlist("attachments") if f and f.filename]
+    if attachments:
+        attach_dir = _video_attachment_dir(dest_path)
+        os.makedirs(attach_dir, exist_ok=True)
+        for att in attachments:
+            att_ext = Path(att.filename).suffix.lower()
+            if att_ext not in ATTACHMENT_EXTS:
+                continue  # silently skip rather than fail the whole upload
+            att_filename = secure_filename(Path(att.filename).stem) + att_ext
+            if not att_filename or att_filename == att_ext:
+                continue
+            att_dest = os.path.join(attach_dir, att_filename)
+            if os.path.exists(att_dest):
+                att_stem, n = Path(att_filename).stem, 2
+                while os.path.exists(att_dest):
+                    att_dest = os.path.join(attach_dir, f"{att_stem} ({n}){att_ext}")
+                    n += 1
+            att.save(att_dest)
+
     get_media(force=True)
     item = next((i for i in get_media() if i["path"] == dest_path), None)
     return jsonify({"ok": True, "item": item})

@@ -11,6 +11,8 @@ const uploadCategorySelect = document.getElementById("uploadCategorySelect");
 const uploadNewCategory = document.getElementById("uploadNewCategory");
 const uploadInput = document.getElementById("uploadInput");
 const uploadChooseBtn = document.getElementById("uploadChooseBtn");
+const uploadAttachmentsInput = document.getElementById("uploadAttachmentsInput");
+const uploadAttachmentsChooseBtn = document.getElementById("uploadAttachmentsChooseBtn");
 const uploadBtn = document.getElementById("uploadBtn");
 const uploadStatus = document.getElementById("uploadStatus");
 const pinScrim = document.getElementById("pinScrim");
@@ -635,7 +637,17 @@ uploadChooseBtn.addEventListener("click", () => uploadInput.click());
 uploadInput.addEventListener("change", () => {
   const file = uploadInput.files[0];
   uploadBtn.classList.toggle("hidden", !file);
+  uploadAttachmentsChooseBtn.classList.toggle("hidden", !file);
   uploadChooseBtn.textContent = file ? file.name : "Choose file…";
+});
+
+uploadAttachmentsChooseBtn.addEventListener("click", () => uploadAttachmentsInput.click());
+
+uploadAttachmentsInput.addEventListener("change", () => {
+  const files = [...uploadAttachmentsInput.files];
+  uploadAttachmentsChooseBtn.textContent = files.length
+    ? `${files.length} supplementary file${files.length === 1 ? "" : "s"} selected`
+    : "Add supplementary files (optional)";
 });
 
 uploadBtn.addEventListener("click", async () => {
@@ -650,9 +662,11 @@ uploadBtn.addEventListener("click", async () => {
   form.append("pin", adminPin);
   form.append("category", category);
   form.append("file", file);
+  for (const att of uploadAttachmentsInput.files) form.append("attachments", att);
 
   uploadBtn.disabled = true;
   uploadChooseBtn.disabled = true;
+  uploadAttachmentsChooseBtn.disabled = true;
   uploadStatus.textContent = `Uploading ${file.name}…`;
   try {
     const res = await fetch("/api/admin/upload", { method: "POST", body: form });
@@ -663,15 +677,19 @@ uploadBtn.addEventListener("click", async () => {
     }
     uploadStatus.textContent = `Uploaded ${file.name}`;
     uploadInput.value = "";
+    uploadAttachmentsInput.value = "";
     uploadNewCategory.value = "";
     uploadBtn.classList.add("hidden");
+    uploadAttachmentsChooseBtn.classList.add("hidden");
     uploadChooseBtn.textContent = "Choose file…";
+    uploadAttachmentsChooseBtn.textContent = "Add supplementary files (optional)";
     await loadMedia();
   } catch (err) {
     uploadStatus.textContent = "Upload failed — check your connection";
   } finally {
     uploadBtn.disabled = false;
     uploadChooseBtn.disabled = false;
+    uploadAttachmentsChooseBtn.disabled = false;
   }
 });
 
