@@ -285,6 +285,20 @@ button:focus-visible, .card:focus-visible{
   pointer-events:none;
 }
 .card--selected .card__play{ opacity:1; transform:translate(-50%,-50%) scale(1); }
+.card--coming-soon{
+  cursor:default;
+  background:transparent;
+  border:1px dashed var(--color-divider);
+}
+.card--coming-soon:hover, .card--coming-soon:focus-visible{ transform:none; box-shadow:none; }
+.card__coming-soon-label{
+  position:absolute; inset:0;
+  display:flex; align-items:center; justify-content:center;
+  padding:16px; text-align:center;
+  color:var(--color-neutral-600);
+  font-family:var(--font-heading); font-weight:500;
+  font-size:12px; text-transform:uppercase; letter-spacing:.5px;
+}
 .card__title{ position:absolute; left:13px; right:13px; bottom:13px; font-size:13px; font-weight:500; color:var(--color-text); }
 .card__top-right{
   position:absolute; top:9px; right:9px;

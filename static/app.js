@@ -172,6 +172,19 @@ document.addEventListener("click", (e) => {
   if (selectedCard && !selectedCard.contains(e.target)) clearSelection();
 });
 
+// A non-interactive placeholder card appended to the end of every category
+// row, since each category is still filling out -- not tied to any real
+// item, so it's built separately from buildCard rather than shoehorned in.
+function buildComingSoonCard() {
+  const card = document.createElement("div");
+  card.className = "card card--coming-soon";
+  const label = document.createElement("div");
+  label.className = "card__coming-soon-label";
+  label.textContent = "More coming soon";
+  card.appendChild(label);
+  return card;
+}
+
 function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
   const card = document.createElement("div");
   card.className = "card";
@@ -338,6 +351,7 @@ function renderCategories(items) {
     const scroller = document.createElement("div");
     scroller.className = "row__scroller";
     for (const item of byCategory.get(name)) scroller.appendChild(buildCard(item));
+    scroller.appendChild(buildComingSoonCard());
     section.appendChild(scroller);
     wrapScroller(scroller);
 
