@@ -87,6 +87,13 @@ SCREENSAVER_MUTED = os.environ.get("ZEALANDATA_SCREENSAVER_MUTED", "1") == "1"
 # counts unless someone in admin mode explicitly opts in for that session.
 PLAY_TRACKING_ENABLED = False
 
+# Whether the "Most Popular" row is actually shown to viewers, independent
+# of whether counts are being tracked -- lets an admin accumulate/curate
+# data with tracking on while keeping the row itself hidden from regular
+# browsing until they're ready to reveal it. Same off-by-default,
+# admin-gated-only-toggle reasoning as PLAY_TRACKING_ENABLED above.
+POPULAR_ROW_VISIBLE = False
+
 # Default behavior when a selected video reaches the end: mpv pauses on the
 # last frame (see keep-open=yes below), so it can be scrubbed back and
 # forth rather than the screensaver kicking back in automatically. Set this
@@ -1107,6 +1114,11 @@ def api_continue_watching():
 
 @app.route("/api/most-popular")
 def api_most_popular():
+    if not POPULAR_ROW_VISIBLE:
+        # Short-circuits before touching play_counts.json at all, so hiding
+        # the row also means not leaking counts to the client while it's
+        # curated -- not just a client-side display toggle.
+        return jsonify([])
     items_by_id = {i["id"]: i for i in get_media()}
     counts = get_all_play_counts()
     out = []
@@ -1299,6 +1311,26 @@ def api_set_play_tracking():
         return jsonify({"error": "incorrect PIN"}), 403
     PLAY_TRACKING_ENABLED = bool(body.get("enabled"))
     return jsonify({"enabled": PLAY_TRACKING_ENABLED})
+
+
+@app.route("/api/popular-visibility", methods=["GET"])
+def api_get_popular_visibility():
+    return jsonify({"enabled": POPULAR_ROW_VISIBLE})
+
+
+@app.route("/api/popular-visibility", methods=["POST"])
+def api_set_popular_visibility():
+    global POPULAR_ROW_VISIBLE
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+    POPULAR_ROW_VISIBLE = bool(body.get("enabled"))
+    return jsonify({"enabled": POPULAR_ROW_VISIBLE})
 
 
 @app.route("/api/media/<media_id>/rename", methods=["POST"])

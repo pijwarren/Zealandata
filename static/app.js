@@ -19,6 +19,8 @@ const uploadBtn = document.getElementById("uploadBtn");
 const uploadStatus = document.getElementById("uploadStatus");
 const playTrackingField = document.getElementById("playTrackingField");
 const playTrackingBtn = document.getElementById("playTrackingBtn");
+const popularVisibilityField = document.getElementById("popularVisibilityField");
+const popularVisibilityBtn = document.getElementById("popularVisibilityBtn");
 const pinScrim = document.getElementById("pinScrim");
 const pinModal = document.getElementById("pinModal");
 const pinTitle = document.getElementById("pinTitle");
@@ -656,6 +658,7 @@ function paintAdminMode() {
   adminModeBtn.textContent = adminPin ? "Lock admin mode" : "Unlock admin mode";
   uploadField.classList.toggle("hidden", !adminPin);
   playTrackingField.classList.toggle("hidden", !adminPin);
+  popularVisibilityField.classList.toggle("hidden", !adminPin);
   if (adminPin) paintUploadCategories();
   paintSetHeroBtn();
 }
@@ -711,6 +714,35 @@ playTrackingBtn.addEventListener("click", async () => {
   });
   const data = await res.json().catch(() => ({}));
   if (typeof data.enabled === "boolean") paintPlayTrackingToggle(data.enabled);
+});
+
+// Separate from playTrackingEnabled above -- this controls whether the row
+// is shown to viewers at all, independent of whether plays are currently
+// being counted (see server.py's POPULAR_ROW_VISIBLE comment).
+let popularRowVisible = false;
+
+function paintPopularVisibilityToggle(enabled) {
+  popularRowVisible = enabled;
+  popularVisibilityBtn.textContent = enabled ? "Hide Most Popular row" : "Show Most Popular row";
+}
+async function loadPopularVisibilityState() {
+  const res = await fetch("/api/popular-visibility");
+  const data = await res.json();
+  paintPopularVisibilityToggle(data.enabled);
+}
+popularVisibilityBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  const res = await fetch("/api/popular-visibility", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, enabled: !popularRowVisible }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (typeof data.enabled === "boolean") paintPopularVisibilityToggle(data.enabled);
+  // Re-fetch and re-render right away rather than waiting for the next
+  // loadMedia() cycle, so the row's visibility change shows immediately.
+  const popularRes = await fetch("/api/most-popular");
+  renderPopularRow(await popularRes.json());
 });
 
 async function renameMedia(item) {
@@ -1145,6 +1177,7 @@ async function pollStatus() {
   await loadMedia();
   loadScreensaverState();
   loadPlayTrackingState();
+  loadPopularVisibilityState();
   pollStatus();
   setInterval(pollStatus, 1000);
 })();
