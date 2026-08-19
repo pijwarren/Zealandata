@@ -310,9 +310,26 @@ function applyMapping(mapping) {
   }
 }
 
+// Rolling render rate, reported in the heartbeat. Worth having
+// permanently rather than only while chasing a specific problem: this
+// page is the HDMI output on a headless box, so there's otherwise no way
+// to tell a slow render apart from slow playback without plugging in a
+// keyboard and opening devtools on the projector.
+let renderedFrames = 0;
+let fpsWindowStart = performance.now();
+let measuredFps = null;
+
 function render() {
   requestAnimationFrame(render);
   renderer.render(scene, camera);
+  renderedFrames++;
+  const now = performance.now();
+  const elapsed = now - fpsWindowStart;
+  if (elapsed >= 1000) {
+    measuredFps = Math.round((renderedFrames * 1000) / elapsed);
+    renderedFrames = 0;
+    fpsWindowStart = now;
+  }
 }
 
 window.addEventListener("resize", () => {
@@ -446,6 +463,7 @@ async function sendHeartbeat() {
     looping: videoEl.loop,
     frame_number: Math.round((videoEl.currentTime || 0) * fps),
     ack_seq: lastAckSeq,
+    renderer_fps: measuredFps,
   };
   try {
     await fetch("/api/projection/heartbeat", {

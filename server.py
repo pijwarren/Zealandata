@@ -257,6 +257,7 @@ projection_report = {
     "position": None, "duration": None, "paused": None,
     "idle_active": None, "looping": None, "frame_number": None,
     "ack_seq": 0,
+    "renderer_fps": None,  # diagnostic only -- see /api/projection/stats
 }
 
 
@@ -1307,10 +1308,25 @@ def api_projection_heartbeat():
             "idle_active": body.get("idle_active"),
             "looping": body.get("looping"),
             "frame_number": body.get("frame_number"),
+            "renderer_fps": body.get("renderer_fps"),
         })
         if body.get("ack_seq") is not None:
             projection_report["ack_seq"] = body["ack_seq"]
     return jsonify({"ok": True})
+
+
+@app.route("/api/projection/stats")
+def api_projection_stats():
+    """How the projection page is actually performing, for diagnosing a
+    sluggish projector from an SSH session -- it's the HDMI output on a
+    headless box, so there's no devtools to open on it otherwise."""
+    with projection_lock:
+        rep = dict(projection_report)
+    return jsonify({
+        "renderer_fps": rep.get("renderer_fps"),
+        "position": rep.get("position"),
+        "paused": rep.get("paused"),
+    })
 
 
 @app.route("/api/mapping", methods=["GET"])
