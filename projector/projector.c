@@ -680,26 +680,35 @@ int main(void) {
     /* ---- render loop ---- */
     double last_cal = 0, last_fps = now_sec();
     int frames = 0;
+    int pending_w = 0, pending_h = 0;
     while (running) {
         /* calibration is polled rather than watched: one stat() per 100ms is
            nothing next to a frame, and it avoids an inotify dependency */
         double t = now_sec();
         if (t - last_cal > 0.1) { mapping_reload(); last_cal = t; }
 
-        /* drain mpv events so it can make progress */
+        /* Drain mpv events. The video size arrives here rather than being
+           polled with mpv_get_property each frame: those are synchronous
+           calls into the mpv core, and doing two of them per frame was
+           enough on its own to halve the render rate. */
         while (1) {
             mpv_event *ev = mpv_wait_event(mpv, 0);
             if (ev->event_id == MPV_EVENT_NONE) break;
             if (ev->event_id == MPV_EVENT_SHUTDOWN) running = 0;
+            if (ev->event_id == MPV_EVENT_PROPERTY_CHANGE) {
+                mpv_event_property *pr = ev->data;
+                if (pr->format == MPV_FORMAT_INT64) {
+                    int64_t v = *(int64_t *)pr->data;
+                    if (!strcmp(pr->name, "dwidth")) pending_w = (int)v;
+                    else if (!strcmp(pr->name, "dheight")) pending_h = (int)v;
+                }
+            }
         }
 
         /* keep the video FBO matched to the actual decoded size, so the
            texture isn't up- or down-scaled twice on its way to the mesh */
-        int64_t dw = 0, dh = 0;
-        if (mpv_get_property(mpv, "dwidth", MPV_FORMAT_INT64, &dw) >= 0 &&
-            mpv_get_property(mpv, "dheight", MPV_FORMAT_INT64, &dh) >= 0 &&
-            dw > 0 && dh > 0 && ((int)dw != vidW || (int)dh != vidH)) {
-            vidW = (int)dw; vidH = (int)dh;
+        if (pending_w > 0 && pending_h > 0 && (pending_w != vidW || pending_h != vidH)) {
+            vidW = pending_w; vidH = pending_h;
             glBindTexture(GL_TEXTURE_2D, videoTex);
             glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vidW, vidH, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
             printf("[mpv] video %dx%d\n", vidW, vidH);
