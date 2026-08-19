@@ -151,7 +151,7 @@ function mirrorAlongUpAxis(geometry, axis) {
 // Rotation is clockwise, in degrees, as seen on the projector; the flip
 // mirrors top and bottom (i.e. across the horizontal axis) and is applied
 // after the rotation.
-const VIDEO_ROTATION_CW_DEG = 90;
+const VIDEO_ROTATION_CW_DEG = 270;
 const VIDEO_FLIP_ACROSS_HORIZONTAL = true;
 
 // Turns a UV coordinate into the one to actually sample. Note this is the
