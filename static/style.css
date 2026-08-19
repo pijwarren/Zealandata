@@ -561,6 +561,6 @@ body.admin-mode #setHeroBtn{ display:flex; }
       "frame frame";
   }
   .dock__preview{ width:70px; }
-  .dock__controls{ justify-content:center; flex-wrap:wrap; gap:12px; }
+  .dock__controls{ justify-content:center; flex-wrap:wrap; gap:12px; margin-top:6px; }
   .dock__controls .btn-icon{ width:46px; height:46px; }
 }

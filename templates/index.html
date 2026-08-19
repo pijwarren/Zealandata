@@ -147,17 +147,17 @@
   </div>
   <div class="dock__frame-counter hidden" id="frameCounter">Frame — of —</div>
   <div class="dock__controls">
-    <button type="button" class="btn-icon btn-icon-text" id="seekBackBtn" aria-label="Previous frame" title="Previous frame" disabled>−1</button>
     <button type="button" class="btn btn-primary btn-icon" id="pauseBtn" aria-label="Play or pause" disabled>
       <svg id="iconPlay" class="hidden" width="17" height="17" viewBox="0 0 256 256" fill="currentColor"><path d="M240,128a15.74,15.74,0,0,1-7.6,13.51L88.32,229.65a16,16,0,0,1-16.2.3A15.86,15.86,0,0,1,64,216.13V39.87a15.86,15.86,0,0,1,8.12-13.82,16,16,0,0,1,16.2.3L232.4,114.49A15.74,15.74,0,0,1,240,128Z"></path></svg>
       <svg id="iconPause" width="17" height="17" viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H160a16,16,0,0,0-16,16V192a16,16,0,0,0,16,16h56a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48ZM96,48H40A16,16,0,0,0,24,64V192a16,16,0,0,0,16,16H96a16,16,0,0,0,16-16V64A16,16,0,0,0,96,48Z"></path></svg>
     </button>
+    <button type="button" class="btn-icon dock__stop" id="playerStopBtn" aria-label="Stop" disabled>
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
+    </button>
+    <button type="button" class="btn-icon btn-icon-text" id="seekBackBtn" aria-label="Previous frame" title="Previous frame" disabled>−1</button>
     <button type="button" class="btn-icon btn-icon-text" id="seekFwdBtn" aria-label="Next frame" title="Next frame" disabled>+1</button>
     <button type="button" class="btn-icon" id="loopBtn" aria-label="Loop video" title="Loop video" disabled>
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
-    </button>
-    <button type="button" class="btn-icon dock__stop" id="playerStopBtn" aria-label="Stop" disabled>
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor"><rect x="4" y="4" width="16" height="16" rx="2"></rect></svg>
     </button>
     <button type="button" class="btn-icon" id="setHeroBtn" aria-label="Set as hero video" title="Set as hero video" disabled>★</button>
   </div>
