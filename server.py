@@ -31,6 +31,7 @@ import threading
 import time
 import random
 import hashlib
+import shutil
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory, render_template
@@ -64,12 +65,14 @@ SEQUENCE_FPS = float(os.environ.get("ZEALANDATA_SEQUENCE_FPS", "12"))
 
 # Supplementary documents (e.g. a scientific paper PDF, reference images)
 # shown alongside a video in the web UI while it plays. For a plain video
-# file, e.g. nova.mp4, anything in the same folder whose name is nova.*  or
-# starts with nova_/nova-/nova. and has one of these extensions is picked
-# up as an attachment. For an image-sequence folder, attachments instead
-# live in an attachments/ subfolder (since the folder itself is full of
-# frame images).
+# file, e.g. nova.mp4, they (and its description.txt) live in a dedicated
+# nova.attachments/ sibling folder, keeping the category folder itself down
+# to just one entry per video instead of a pile of loose sidecar files. For
+# an image-sequence folder, attachments instead live in an attachments/
+# subfolder inside it (since the folder itself is already dedicated to that
+# one item).
 ATTACHMENT_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"}
+ATTACHMENTS_DIR_SUFFIX = ".attachments"
 
 # Screensaver: when nothing's been chosen, shuffle through random videos
 # from the library itself.
@@ -378,19 +381,36 @@ def _convert_sequence_to_video(dir_path, ext, output_path):
     return True
 
 
+def _video_attachment_dir(video_path):
+    return os.path.splitext(video_path)[0] + ATTACHMENTS_DIR_SUFFIX
+
+
 def _find_attachment_paths(metadata_path):
+    """metadata_path is a sequence folder (attachments live in an
+    attachments/ subfolder inside it) or a plain video file (attachments
+    live in a <stem>.attachments/ sibling folder -- see
+    _migrate_video_sidecars, which is what actually gets files there)."""
     if os.path.isdir(metadata_path):
         attach_dir = os.path.join(metadata_path, "attachments")
-        if not os.path.isdir(attach_dir):
-            return []
-        try:
-            names = sorted(os.listdir(attach_dir))
-        except OSError:
-            return []
-        return [os.path.join(attach_dir, n) for n in names if Path(n).suffix.lower() in ATTACHMENT_EXTS]
+    else:
+        attach_dir = _video_attachment_dir(metadata_path)
+    if not os.path.isdir(attach_dir):
+        return []
+    try:
+        names = sorted(os.listdir(attach_dir))
+    except OSError:
+        return []
+    return [os.path.join(attach_dir, n) for n in names if Path(n).suffix.lower() in ATTACHMENT_EXTS]
 
-    dir_path = os.path.dirname(metadata_path)
-    stem = Path(metadata_path).stem
+
+def _legacy_sidecar_paths(video_path):
+    """Attachment files under the pre-cleanup convention: loose in the same
+    folder as the video, named exactly like it or prefixed with its stem
+    (nova.pdf, nova_fig1.jpg, ...). Only used by _migrate_video_sidecars to
+    find things to move into the new nova.attachments/ folder -- once
+    migrated, _find_attachment_paths is what's actually read from."""
+    dir_path = os.path.dirname(video_path)
+    stem = Path(video_path).stem
     try:
         names = sorted(os.listdir(dir_path))
     except OSError:
@@ -398,7 +418,7 @@ def _find_attachment_paths(metadata_path):
     matches = []
     for name in names:
         full = os.path.join(dir_path, name)
-        if full == metadata_path or not os.path.isfile(full):
+        if full == video_path or not os.path.isfile(full):
             continue
         if Path(name).suffix.lower() not in ATTACHMENT_EXTS:
             continue
@@ -406,6 +426,37 @@ def _find_attachment_paths(metadata_path):
         if other_stem == stem or other_stem.startswith(stem + "_") or other_stem.startswith(stem + "-") or other_stem.startswith(stem + "."):
             matches.append(full)
     return matches
+
+
+def _migrate_video_sidecars(video_path):
+    """One-time cleanup, re-checked (cheaply) on every scan: moves a
+    video's loose description.txt and sidecar files out of the shared
+    category folder and into its own <stem>.attachments/ folder, so a
+    folder of N videos doesn't end up with N*(1 + attachments) loose files
+    sitting side by side. No-op once already migrated."""
+    dir_path = os.path.dirname(video_path)
+    stem = Path(video_path).stem
+    old_desc = os.path.join(dir_path, stem + ".txt")
+    has_desc = os.path.isfile(old_desc)
+    legacy_files = _legacy_sidecar_paths(video_path)
+    if not has_desc and not legacy_files:
+        return
+
+    attach_dir = _video_attachment_dir(video_path)
+    os.makedirs(attach_dir, exist_ok=True)
+    moved = 0
+    if has_desc:
+        dest = os.path.join(attach_dir, "description.txt")
+        if not os.path.exists(dest):
+            shutil.move(old_desc, dest)
+            moved += 1
+    for src in legacy_files:
+        dest = os.path.join(attach_dir, os.path.basename(src))
+        if not os.path.exists(dest):
+            shutil.move(src, dest)
+            moved += 1
+    if moved:
+        print(f"[sidecar] moved {moved} file(s) for '{stem}' into {attach_dir}")
 
 
 def _build_media_item(playback_path, metadata_path, description=None, frame_count=None):
@@ -483,17 +534,19 @@ def _scan_dir(dir_path, items, is_root=False):
     for name in entries:
         full = os.path.join(dir_path, name)
         if os.path.isdir(full):
-            # "attachments" is a reserved folder name for a sequence's
-            # supplementary docs/images (see _find_attachment_paths) -- it's
-            # not itself a category or a sequence to scan into, even though
-            # it may hold >= SEQUENCE_MIN_FRAMES images of the same format.
-            if name.lower() == "attachments":
+            # "attachments" is reserved for a sequence's own supplementary
+            # docs/images, and anything.attachments/ for a plain video's
+            # (see _find_attachment_paths) -- neither is itself a category
+            # or a sequence to scan into, even though the latter might hold
+            # >= SEQUENCE_MIN_FRAMES images of the same format.
+            if name.lower() == "attachments" or name.lower().endswith(ATTACHMENTS_DIR_SUFFIX):
                 continue
             _scan_dir(full, items)
         else:
             ext = Path(name).suffix.lower()
             if ext in VIDEO_EXTS:
-                description = _read_text_file(os.path.splitext(full)[0] + ".txt")
+                _migrate_video_sidecars(full)
+                description = _read_text_file(os.path.join(_video_attachment_dir(full), "description.txt"))
                 items.append(_build_media_item(full, full, description=description))
 
 

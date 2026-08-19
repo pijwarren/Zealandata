@@ -428,49 +428,52 @@ after a video finishes, is stopped, or the idle timeout fires. It picks a
 new random item (never immediately repeating the last one) each time a
 pick ends, for as long as nothing's been explicitly chosen.
 
-## Per-video descriptions
+## Per-video descriptions, and supplementary docs/images
 
-Drop a text file with the same name as a video (`fault_lines_overview.mp4`
-+ `fault_lines_overview.txt`) and its contents show up over the hero image
-when that video is selected in the browse grid — handy for giving
-scientific/educational context a filename alone can't ("2016 Kaikōura
-earthquake aftershock sequence, animated over 6 weeks"). For an image
-sequence folder, put a `description.txt` *inside* the folder alongside the
-frames instead. Purely optional — videos without a matching text file just
-show no description. It's shown only while browsing (hero preview), not in
-the "now playing" dock once something's actually playing.
+A video can carry a description (shown over the hero image when it's
+selected in the browse grid) and a small set of extra files — a PDF of the
+paper it's based on, reference images, figures — shown as chips in the
+"now playing" dock while it plays. Clicking a chip opens it in an in-page
+viewer, with prev/next arrows to flick through the rest.
 
-## Supplementary docs/images (papers, reference figures)
-
-A video can carry its own small set of extra files — a PDF of the paper
-it's based on, reference images, figures — shown as chips in the "now
-playing" dock while that video plays. Clicking a PDF chip opens it in a
-new browser tab; clicking an image chip opens it in an in-page viewer.
-
-For a plain video file, anything in the same folder whose name starts
-with the video's own filename (before the extension) and ends in
-`.pdf`, `.png`, `.jpg`/`.jpeg`, `.gif`, or `.webp` is picked up
-automatically:
+For a plain video file, both live in a dedicated `<video-name>.attachments/`
+folder next to it, rather than as loose files scattered through the
+category folder:
 ```
 media/
   Seismic/
     fault_lines_overview.mp4
-    fault_lines_overview.pdf         (the paper)
-    fault_lines_overview_fig2.png    (a reference figure)
+    fault_lines_overview.attachments/
+      description.txt              (shown as the hero description)
+      source_paper.pdf
+      fig2.png
 ```
-For an image-sequence folder (see below), put them in an `attachments/`
-subfolder inside it instead, since the folder itself is already full of
-frame images:
+Everything in there is optional and independent — a video can have just a
+description, just attachments, both, or neither (in which case it needs no
+`.attachments/` folder at all). File names inside it don't matter beyond
+their extension (`.pdf`, `.png`, `.jpg`/`.jpeg`, `.gif`, `.webp` for
+attachments; exactly `description.txt` for the description).
+
+For an image-sequence folder (see below), both instead live *inside* the
+sequence's own folder, since that folder is already dedicated to that one
+item:
 ```
 media/
   Seismic/
     2016_kaikoura_sequence/
       frame_0001.png
       ...
+      description.txt
       attachments/
         source_paper.pdf
 ```
-Purely optional — nothing changes for videos without matching files.
+
+**Migrating older libraries:** if you already have loose sidecar files
+from before this folder convention existed (`fault_lines_overview.txt` /
+`fault_lines_overview_fig2.png` sitting directly next to the video),
+Zealandata cleans them up automatically — the next Rescan moves them into
+`fault_lines_overview.attachments/` for you (with the description renamed
+to `description.txt`), no manual reorganizing needed.
 
 ## Image sequences
 
