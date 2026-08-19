@@ -131,6 +131,9 @@ app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = UPLOAD_MAX_MB * 1024 * 1024
 
 mpv_process = None
+mpv_binary_missing = False  # set once if mpv isn't on PATH at all -- stops
+                             # _hdmi_supervisor_loop from retrying every 2s
+                             # forever on a machine that will never have it
 mpv_lock = threading.Lock()
 mpv_generation = 0  # bumped every time ownership of the persistent mpv
                      # process changes hands (idle / a selected video /
@@ -640,6 +643,14 @@ def ensure_hero_thumbnail(media_id, video_path):
 
 
 def mpv_send(command):
+    if not hasattr(socket, "AF_UNIX"):
+        # Windows without AF_UNIX support (older Windows builds, or Python
+        # built without it) -- there's no mpv IPC to speak of here anyway,
+        # so degrade the same way a missing mpv binary already does rather
+        # than crashing every play/control/status call. Lets the rest of
+        # the web UI (browsing, admin, uploads) run fine on any machine for
+        # testing, even with no real playback backing it.
+        return None
     try:
         with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
             s.settimeout(2)
@@ -691,7 +702,7 @@ def _spawn_hdmi_process():
     sequenced. If a loading image is configured, it's passed as the
     startup file directly (the normal, best-tested mpv codepath) rather
     than relying on an idle black window."""
-    global mpv_process
+    global mpv_process, mpv_binary_missing
     if os.path.exists(MPV_SOCKET):
         os.remove(MPV_SOCKET)
     cmd = [
@@ -706,7 +717,9 @@ def _spawn_hdmi_process():
     try:
         mpv_process = subprocess.Popen(cmd, env=_env_for_display())
     except FileNotFoundError:
-        print("[mpv] 'mpv' not found on PATH — HDMI playback won't work")
+        if not mpv_binary_missing:
+            print("[mpv] 'mpv' not found on PATH — HDMI playback won't work")
+        mpv_binary_missing = True
         mpv_process = None
         return
     _wait_for_socket(MPV_SOCKET)
@@ -721,7 +734,7 @@ def _hdmi_supervisor_loop():
     while True:
         time.sleep(2)
         with mpv_lock:
-            if _mpv_is_running():
+            if _mpv_is_running() or mpv_binary_missing:
                 continue
             print("[mpv] persistent HDMI process died — restarting")
             _spawn_hdmi_process()
