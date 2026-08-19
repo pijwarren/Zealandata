@@ -570,8 +570,14 @@ body.admin-mode #setHeroBtn{ display:flex; }
   .row__arrow{ display:none !important; }
   .category-nav{ top:64px; padding:14px 16px 18px; }
   .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; }
+  /* row-gap isn't used here (rather than margin on each row) because a
+     hidden (display:none) row still consumes its row-gap in a CSS grid --
+     with time/frame hidden while idle, that leftover gap-without-content
+     piled up as dead space below the buttons, throwing off how centered
+     the title looked in the dock overall. Margins on the following row
+     collapse away for free when that row is hidden, so use those instead. */
   .dock{
-    padding:12px 16px; column-gap:12px; row-gap:16px;
+    padding:12px 16px; column-gap:12px; row-gap:0;
     grid-template-columns:1fr;
     grid-template-areas:
       "title"
@@ -581,6 +587,8 @@ body.admin-mode #setHeroBtn{ display:flex; }
   }
   .dock__preview{ display:none; }
   .dock__title{ justify-content:center; text-align:center; }
-  .dock__controls{ justify-content:center; flex-wrap:nowrap; gap:clamp(3px, 1.6vw, 8px); margin-top:-6px; }
+  .dock__controls{ justify-content:center; flex-wrap:nowrap; gap:clamp(3px, 1.6vw, 8px); margin-top:10px; }
   .dock__controls .btn-icon{ width:clamp(38px, 12vw, 50px); height:clamp(38px, 12vw, 50px); flex-shrink:0; }
+  .dock__time{ margin-top:16px; }
+  .dock__frame-counter{ margin-top:16px; }
 }
