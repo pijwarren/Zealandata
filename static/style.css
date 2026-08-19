@@ -118,6 +118,7 @@ button.tag:hover{ opacity:.85; }
   border:1px solid var(--color-divider);
   background:rgba(35,37,50,0.7);
   color:var(--color-text);
+  font-family:var(--font-body);
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
   transition:background .15s ease, border-color .15s ease;
