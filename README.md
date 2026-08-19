@@ -565,14 +565,38 @@ and hyphens in folder names are turned into spaces for display. If you don't
 use subfolders at all, everything just shows up under one plain "Library"
 shelf. Hit Rescan after adding or moving folders around.
 
+### This library's 6 categories
+
+The categories in active use here, each anchoring one of Earth Sciences
+New Zealand's core science mission areas:
+
+- **Geological Hazards** — risk reduction and response for earthquakes,
+  volcanoes, landslides, and tsunamis (anchoring the GeoNet network)
+- **Weather and Climate Hazards** — extreme weather, floods, droughts,
+  wildfires, coastal hazards, and climate-driven extremes
+- **Atmosphere and Climate** — greenhouse gases, low-carbon transitions,
+  and long-term climate impacts
+- **Land and Water** — water security, ecosystem health, and integrated
+  catchment-to-coast management
+- **Oceans and Fisheries** — sustainable marine environments, ecosystems,
+  and fisheries management
+- **Energy** — progress toward a secure, low-emissions, sustainable
+  long-term energy system
+
+Matching folder names under `MEDIA_DIR`: `Geological Hazards/`,
+`Weather and Climate Hazards/`, `Atmosphere and Climate/`, `Land and Water/`,
+`Oceans and Fisheries/`, `Energy/`. The category row-icon strip above
+Continue Watching (see below) jumps straight to whichever of these has
+content.
+
 ## Notes & tweaks
 
 - **Thumbnails** are generated once per file (grabbed at the 1-minute mark,
   falling back to 2 seconds for short clips) and cached in
   `static/thumbnails/`. Hit "Rescan" in the UI after adding new files.
-- **Fonts/CSS** intentionally use only system fonts — no external CDN — so
-  the UI works even if the Pi and client devices have no internet access,
-  only the local network.
+- **Fonts/CSS**: Inter (`static/fonts/`) is hosted locally rather than
+  pulled from Google Fonts, so the UI works even if the Pi and client
+  devices have no internet access — only the local network.
 - **Remote control**: the dock bar's pause/seek/stop buttons call mpv over
   its local IPC socket, so multiple people on the network see the same
   live status (whoever presses pause, pauses it for everyone).

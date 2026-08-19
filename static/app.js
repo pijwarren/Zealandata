@@ -36,6 +36,7 @@ const emptyEl = document.getElementById("empty");
 const continueRow = document.getElementById("continueRow");
 const continueGrid = document.getElementById("continueGrid");
 const categoryRows = document.getElementById("categoryRows");
+const categoryNav = document.getElementById("categoryNav");
 
 const dockPreviewWrap = document.getElementById("dockPreviewWrap");
 const dockPreview = document.getElementById("dockPreview");
@@ -279,6 +280,31 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
 
 let allMediaItems = [];
 
+// Wordmark placeholders for this library's fixed 6 categories (real icons
+// TBD) -- jumps to that category's row when clicked, regardless of scroll
+// position. Built once; renderCategories() below just toggles which ones
+// currently have any content, since not every category necessarily has
+// videos in it yet.
+const CATEGORY_NAV_NAMES = [
+  "Geological Hazards",
+  "Weather and Climate Hazards",
+  "Atmosphere and Climate",
+  "Land and Water",
+  "Oceans and Fisheries",
+  "Energy",
+];
+for (const name of CATEGORY_NAV_NAMES) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "category-nav__item";
+  btn.textContent = name;
+  btn.addEventListener("click", () => {
+    const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
+    if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  categoryNav.appendChild(btn);
+}
+
 function renderCategories(items) {
   selectedCard = null; // about to be torn down along with the old cards
   previewedItem = null; // loadMedia() repaints the hero right after this anyway
@@ -316,6 +342,10 @@ function renderCategories(items) {
     wrapScroller(scroller);
 
     categoryRows.appendChild(section);
+  }
+
+  for (const btn of categoryNav.children) {
+    btn.classList.toggle("category-nav__item--empty", !sortedNames.includes(btn.textContent));
   }
 }
 
