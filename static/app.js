@@ -771,6 +771,20 @@ const dockDocsScrollUpdate = wrapScroller(dockDocs);
 const dockDocsViewport = dockDocs.parentElement;
 dockDocsViewport.classList.add("dock-docs-viewport", "hidden");
 
+// Only fades the edge that actually has more chips scrolled past it --
+// chips fully within the dock's own width stay fully opaque, matching its
+// edges exactly rather than fading decoratively regardless of overflow.
+function updateDocsFade() {
+  const max = dockDocs.scrollWidth - dockDocs.clientWidth;
+  const canLeft = dockDocs.scrollLeft > 4;
+  const canRight = max > 4 && dockDocs.scrollLeft < max - 4;
+  const mask = `linear-gradient(to right, ${canLeft ? "transparent" : "black"} 0, black 64px, black calc(100% - 64px), ${canRight ? "transparent" : "black"} 100%)`;
+  dockDocs.style.webkitMaskImage = mask;
+  dockDocs.style.maskImage = mask;
+}
+dockDocs.addEventListener("scroll", updateDocsFade);
+window.addEventListener("resize", updateDocsFade);
+
 // Supplementary docs/images for the currently playing video (a paper PDF,
 // reference images, ...), shown as chips that open in the lightbox above,
 // flickable left/right through the rest of that video's attachments.
@@ -792,6 +806,7 @@ function paintDocs(attachments) {
     dockDocs.appendChild(chip);
   });
   dockDocsScrollUpdate();
+  updateDocsFade();
 }
 
 let currentPlayingId = null;

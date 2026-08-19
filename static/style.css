@@ -402,11 +402,9 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 
 .dock-docs-viewport.hidden{ display:none; }
 .dock__docs{
-  display:flex; align-items:flex-start; gap:16px;
+  display:flex; align-items:flex-start; justify-content:safe center; gap:16px;
   overflow-x:auto; scrollbar-width:none;
   padding:4px 6px 6px;
-  -webkit-mask-image:linear-gradient(to right, transparent, black 64px, black calc(100% - 64px), transparent);
-  mask-image:linear-gradient(to right, transparent, black 64px, black calc(100% - 64px), transparent);
 }
 .dock__docs::-webkit-scrollbar{ display:none; }
 .dock__doc-chip{
