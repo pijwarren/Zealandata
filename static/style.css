@@ -1,8 +1,25 @@
 /* Design tokens ported from the Claude Design import ("Zealandata AppleTV").
-   One deliberate substitution: the import pulls "Inter" from Google Fonts
-   CDN — this Pi never has internet access (ad-hoc wifi hotspot), so we use
-   a system font stack that approximates it instead. Everything else
-   (colors, spacing, radii, shadows) is ported as specified. */
+   The import originally pulled "Inter" from Google Fonts CDN, which doesn't
+   work here -- this Pi never has internet access (ad-hoc wifi hotspot) --
+   so the actual font files are hosted locally instead (static/fonts/,
+   variable-weight, covering the 100-900 range Inter ships in one file).
+   Everything else (colors, spacing, radii, shadows) is ported as specified. */
+
+@font-face{
+  font-family:"Inter";
+  src:url("/static/fonts/Inter-Variable.ttf") format("truetype");
+  font-weight:100 900;
+  font-style:normal;
+  font-display:swap;
+}
+@font-face{
+  font-family:"Inter";
+  src:url("/static/fonts/Inter-Italic-Variable.ttf") format("truetype");
+  font-weight:100 900;
+  font-style:italic;
+  font-display:swap;
+}
+
 :root{
   --color-bg:        #161826;
   --color-surface:   #232532;
@@ -26,8 +43,8 @@
   --color-divider:   rgba(233,233,237,0.16);
   --color-danger:    #ff6b6b;
 
-  --font-heading: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-body:    -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-body:    "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   --space-4: 11px;
   --space-6: 17px;
