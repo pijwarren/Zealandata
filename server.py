@@ -71,7 +71,7 @@ PROJECTION_OBJ_PATH = os.environ.get(
     "ZEALANDATA_PROJECTION_OBJ", os.path.join(BASE_DIR, "static", "projection_model.obj")
 )
 MAPPING_FILE = os.path.join(BASE_DIR, "mapping.json")
-DEFAULT_MAPPING = {
+MAPPING_NUMERIC = {
     "scale": 1.0,
     # Independent Euler rotation in degrees around each axis, applied in
     # x/y/z order -- not just a single "yaw" around the model's detected
@@ -83,6 +83,13 @@ DEFAULT_MAPPING = {
     "offset_x": 0.0,
     "offset_y": 0.0,
 }
+# Calibration aid only: lights the model from an angle so its relief is
+# actually readable while lining it up. Deliberately off by default and
+# never left on for real projection -- shading the video with fake light
+# fights the physical object's own real shading, which is the whole point
+# of projecting onto it.
+MAPPING_BOOLEAN = {"shading": False}
+DEFAULT_MAPPING = {**MAPPING_NUMERIC, **MAPPING_BOOLEAN}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts"}
 
 # Image sequences: a leaf folder containing this many (or more) images, all
@@ -1325,12 +1332,15 @@ def api_set_mapping():
     if not ok:
         return jsonify({"error": "incorrect PIN"}), 403
     values = {}
-    for key in DEFAULT_MAPPING:
+    for key in MAPPING_NUMERIC:
         if key in body:
             try:
                 values[key] = float(body[key])
             except (TypeError, ValueError):
                 return jsonify({"error": f"{key} must be a number"}), 400
+    for key in MAPPING_BOOLEAN:
+        if key in body:
+            values[key] = bool(body[key])
     return jsonify(set_mapping(values))
 
 

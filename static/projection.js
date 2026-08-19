@@ -50,6 +50,19 @@ rig.add(baseOrient);
 let modelMesh = null;
 let upAxis = "z"; // whichever axis turns out to have the smallest extent
 let videoTexture = null;
+let flatMaterial = null;
+let shadedMaterial = null;
+
+// Only ever lights the Lambert (calibration) material -- the unlit
+// projection material ignores them entirely, so these can just stay in
+// the scene rather than being added/removed as the toggle flips.
+// Deliberately oblique rather than straight down the camera axis: a light
+// parallel to the view direction flattens relief out again, which is the
+// exact problem the toggle exists to solve.
+const calibrationKeyLight = new THREE.DirectionalLight(0xffffff, 2.2);
+calibrationKeyLight.position.set(-1, 1.6, 1);
+scene.add(calibrationKeyLight);
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 
 function fitOrthoCamera(box) {
   const size = new THREE.Vector3();
@@ -114,10 +127,17 @@ function detectUpAxis(box) {
   return "y";
 }
 
-function buildMaterial() {
+// Two materials over the same video texture, swapped by the calibration
+// shading toggle. Unlit (basic) is the real projection material -- adding
+// fake light to what's projected onto a physical object fights the
+// object's own real shading. Lambert exists purely so relief is readable
+// on screen while lining the model up.
+function buildMaterials() {
   videoTexture = new THREE.VideoTexture(videoEl);
   videoTexture.colorSpace = THREE.SRGBColorSpace;
-  return new THREE.MeshBasicMaterial({ map: videoTexture, side: THREE.DoubleSide });
+  flatMaterial = new THREE.MeshBasicMaterial({ map: videoTexture, side: THREE.DoubleSide });
+  shadedMaterial = new THREE.MeshLambertMaterial({ map: videoTexture, side: THREE.DoubleSide });
+  return flatMaterial;
 }
 
 function placeMesh(geometry) {
@@ -125,7 +145,11 @@ function placeMesh(geometry) {
   const box = geometry.boundingBox;
   upAxis = detectUpAxis(box);
   applyPlanarUVs(geometry, box);
-  const material = buildMaterial();
+  const material = buildMaterials();
+  // Lambert shading needs normals; an OBJ exported without them (or with
+  // only face-level ones) otherwise renders uniformly flat, which would
+  // make the shading toggle look broken rather than merely subtle.
+  if (!geometry.attributes.normal) geometry.computeVertexNormals();
   modelMesh = new THREE.Mesh(geometry, material);
   // Recenter so calibration scale/rotate pivots around the model's own
   // middle, not wherever the OBJ's own origin happened to be.
@@ -188,6 +212,14 @@ function applyMapping(mapping) {
     rig.position.set(offsetX, 0, offsetY);
   } else {
     rig.position.set(offsetX, offsetY, 0);
+  }
+
+  if (modelMesh) {
+    const wantShaded = !!mapping.shading;
+    const nextMaterial = wantShaded ? shadedMaterial : flatMaterial;
+    if (nextMaterial && modelMesh.material !== nextMaterial) {
+      modelMesh.material = nextMaterial;
+    }
   }
 }
 

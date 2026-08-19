@@ -34,6 +34,7 @@ const mappingOffsetX = document.getElementById("mappingOffsetX");
 const mappingOffsetXValue = document.getElementById("mappingOffsetXValue");
 const mappingOffsetY = document.getElementById("mappingOffsetY");
 const mappingOffsetYValue = document.getElementById("mappingOffsetYValue");
+const mappingShadingBtn = document.getElementById("mappingShadingBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
 const pinScrim = document.getElementById("pinScrim");
 const pinModal = document.getElementById("pinModal");
@@ -786,6 +787,8 @@ popularVisibilityBtn.addEventListener("click", async () => {
 // only meaningful when the projector backend is active, but the controls
 // stay available regardless since there's no harm in adjusting values
 // that simply aren't being rendered against right now.
+let mappingShadingEnabled = false;
+
 function paintMappingControls(mapping) {
   mappingScale.value = mapping.scale;
   mappingScaleValue.textContent = `${Number(mapping.scale).toFixed(2)}×`;
@@ -799,6 +802,10 @@ function paintMappingControls(mapping) {
   mappingOffsetXValue.textContent = Number(mapping.offset_x).toFixed(2);
   mappingOffsetY.value = mapping.offset_y;
   mappingOffsetYValue.textContent = Number(mapping.offset_y).toFixed(2);
+  mappingShadingEnabled = !!mapping.shading;
+  mappingShadingBtn.textContent = mappingShadingEnabled
+    ? "Turn off calibration shading"
+    : "Turn on calibration shading";
 }
 
 async function loadMappingState() {
@@ -851,6 +858,16 @@ mappingOffsetX.addEventListener("input", () => {
 mappingOffsetY.addEventListener("input", () => {
   mappingOffsetYValue.textContent = Number(mappingOffsetY.value).toFixed(2);
   sendMappingUpdate({ offset_y: Number(mappingOffsetY.value) });
+});
+mappingShadingBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  const res = await fetch("/api/mapping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, shading: !mappingShadingEnabled }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.error) paintMappingControls(data);
 });
 mappingResetBtn.addEventListener("click", async () => {
   if (!adminPin) return;
