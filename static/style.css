@@ -384,8 +384,8 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 }
 .dock__preview img{ width:100%; height:100%; object-fit:cover; display:block; }
 
-.dock__info{ flex:1; min-width:0; }
-.dock__title-row{ display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+.dock__info{ flex:1; min-width:0; display:flex; flex-direction:column; gap:8px; }
+.dock__title-row{ display:flex; align-items:center; gap:10px; }
 .dock__title{
   font-family:var(--font-heading); font-weight:500; font-size:14px;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
