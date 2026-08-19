@@ -39,7 +39,10 @@ const dockDocs = document.getElementById("dockDocs");
 const docScrim = document.getElementById("docScrim");
 const docViewer = document.getElementById("docViewer");
 const docViewerClose = document.getElementById("docViewerClose");
-const docViewerImg = document.getElementById("docViewerImg");
+const docViewerContent = document.getElementById("docViewerContent");
+const docViewerPrev = document.getElementById("docViewerPrev");
+const docViewerNext = document.getElementById("docViewerNext");
+const docViewerCounter = document.getElementById("docViewerCounter");
 const playerStopBtn = document.getElementById("playerStopBtn");
 const setHeroBtn = document.getElementById("setHeroBtn");
 const loopBtn = document.getElementById("loopBtn");
@@ -707,18 +710,60 @@ function getMediaById(id) {
   return allMediaItems.find((i) => i.id === id) || null;
 }
 
-function openDocViewer(url) {
-  docViewerImg.src = url;
+// Lightbox for the current video's attachments -- opens on whichever chip
+// was clicked, and lets you flick left/right through the rest of that
+// video's docs/images without closing and reopening.
+let docViewerList = [];
+let docViewerIndex = 0;
+
+function renderDocViewerItem() {
+  const att = docViewerList[docViewerIndex];
+  docViewerContent.innerHTML = "";
+  if (att.kind === "image") {
+    const img = document.createElement("img");
+    img.src = att.url;
+    img.alt = att.name;
+    docViewerContent.appendChild(img);
+  } else {
+    const frame = document.createElement("iframe");
+    frame.src = att.url;
+    frame.title = att.name;
+    docViewerContent.appendChild(frame);
+  }
+  const multiple = docViewerList.length > 1;
+  docViewerPrev.classList.toggle("hidden", !multiple);
+  docViewerNext.classList.toggle("hidden", !multiple);
+  docViewerCounter.classList.toggle("hidden", !multiple);
+  if (multiple) docViewerCounter.textContent = `${docViewerIndex + 1} / ${docViewerList.length}`;
+}
+
+function openDocViewer(list, index) {
+  docViewerList = list;
+  docViewerIndex = index;
+  renderDocViewerItem();
   docScrim.classList.remove("hidden");
   docViewer.classList.remove("hidden");
 }
 function closeDocViewer() {
   docScrim.classList.add("hidden");
   docViewer.classList.add("hidden");
-  docViewerImg.removeAttribute("src");
+  docViewerContent.innerHTML = "";
+  docViewerList = [];
+}
+function stepDocViewer(delta) {
+  docViewerIndex = (docViewerIndex + delta + docViewerList.length) % docViewerList.length;
+  renderDocViewerItem();
 }
 docViewerClose.addEventListener("click", closeDocViewer);
 docScrim.addEventListener("click", closeDocViewer);
+docViewerPrev.addEventListener("click", () => stepDocViewer(-1));
+docViewerNext.addEventListener("click", () => stepDocViewer(1));
+window.addEventListener("keydown", (e) => {
+  if (docViewer.classList.contains("hidden")) return;
+  if (e.key === "Escape") closeDocViewer();
+  else if (e.key === "ArrowLeft") stepDocViewer(-1);
+  else if (e.key === "ArrowRight") stepDocViewer(1);
+});
 
 // Floats above the dock as its own scrollable strip (with hover arrows once
 // there are enough chips to overflow), rather than being crammed inside it.
@@ -727,13 +772,13 @@ const dockDocsViewport = dockDocs.parentElement;
 dockDocsViewport.classList.add("dock-docs-viewport", "hidden");
 
 // Supplementary docs/images for the currently playing video (a paper PDF,
-// reference images, ...) -- PDFs open in a new tab (letting the browser's
-// own viewer handle them); images open in an in-page lightbox instead.
+// reference images, ...), shown as chips that open in the lightbox above,
+// flickable left/right through the rest of that video's attachments.
 function paintDocs(attachments) {
   dockDocs.innerHTML = "";
   const list = attachments || [];
   dockDocsViewport.classList.toggle("hidden", list.length === 0);
-  for (const att of list) {
+  list.forEach((att, index) => {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "dock__doc-chip";
@@ -743,12 +788,9 @@ function paintDocs(attachments) {
     thumb.src = att.kind === "image" ? att.url : "/static/icons/pdf.svg";
     thumb.alt = "";
     chip.appendChild(thumb);
-    chip.addEventListener("click", () => {
-      if (att.kind === "image") openDocViewer(att.url);
-      else window.open(att.url, "_blank", "noopener");
-    });
+    chip.addEventListener("click", () => openDocViewer(list, index));
     dockDocs.appendChild(chip);
-  }
+  });
   dockDocsScrollUpdate();
 }
 
