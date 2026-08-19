@@ -571,6 +571,6 @@ body.admin-mode #setHeroBtn{ display:flex; }
   }
   .dock__preview{ display:none; }
   .dock__title{ justify-content:center; text-align:center; }
-  .dock__controls{ justify-content:center; flex-wrap:nowrap; gap:clamp(4px, 2vw, 12px); margin-top:6px; }
-  .dock__controls .btn-icon{ width:clamp(36px, 11vw, 46px); height:clamp(36px, 11vw, 46px); flex-shrink:0; }
+  .dock__controls{ justify-content:center; flex-wrap:nowrap; gap:clamp(3px, 1.6vw, 8px); margin-top:6px; }
+  .dock__controls .btn-icon{ width:clamp(38px, 12vw, 50px); height:clamp(38px, 12vw, 50px); flex-shrink:0; }
 }
