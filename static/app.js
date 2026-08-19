@@ -784,7 +784,7 @@ function paintDocs(attachments) {
     chip.className = "dock__doc-chip";
     chip.title = att.name;
     const thumb = document.createElement("img");
-    thumb.className = "dock__doc-chip__thumb";
+    thumb.className = "dock__doc-chip__thumb" + (att.kind === "image" ? "" : " dock__doc-chip__thumb--icon");
     thumb.src = att.kind === "image" ? att.url : "/static/icons/pdf.svg";
     thumb.alt = "";
     chip.appendChild(thumb);

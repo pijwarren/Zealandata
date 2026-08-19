@@ -420,6 +420,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   transition:border-color .15s ease;
 }
 .dock__doc-chip:hover .dock__doc-chip__thumb{ border-color:var(--color-accent); }
+.dock__doc-chip__thumb--icon{ object-fit:contain; padding:16px; box-sizing:border-box; }
 
 .doc-viewer{
   position:fixed; inset:0; z-index:72;
