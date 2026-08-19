@@ -430,9 +430,12 @@ static int load_obj(const char *path) {
     /* bounds */
     vec3 mn = m_pos[0], mx = m_pos[0];
     for (size_t i = 1; i < m_nvert; i++) {
-        if (m_pos[i].x < mn.x) mn.x = m_pos[i].x; if (m_pos[i].x > mx.x) mx.x = m_pos[i].x;
-        if (m_pos[i].y < mn.y) mn.y = m_pos[i].y; if (m_pos[i].y > mx.y) mx.y = m_pos[i].y;
-        if (m_pos[i].z < mn.z) mn.z = m_pos[i].z; if (m_pos[i].z > mx.z) mx.z = m_pos[i].z;
+        if (m_pos[i].x < mn.x) mn.x = m_pos[i].x;
+        if (m_pos[i].x > mx.x) mx.x = m_pos[i].x;
+        if (m_pos[i].y < mn.y) mn.y = m_pos[i].y;
+        if (m_pos[i].y > mx.y) mx.y = m_pos[i].y;
+        if (m_pos[i].z < mn.z) mn.z = m_pos[i].z;
+        if (m_pos[i].z > mx.z) mx.z = m_pos[i].z;
     }
     vec3 size = { mx.x - mn.x, mx.y - mn.y, mx.z - mn.z };
 
@@ -566,6 +569,15 @@ static GLuint compile_shader(GLenum type, const char *src) {
 static mpv_handle *mpv;
 static mpv_render_context *mpv_gl;
 
+/* mpv calls this as get_proc_address(ctx, name) -- passing eglGetProcAddress
+   directly looks like it should work and compiles with a cast, but it then
+   receives the context pointer as its name argument and dereferences it as a
+   string. Hence the wrapper. */
+static void *get_proc_address_egl(void *ctx, const char *name) {
+    (void)ctx;
+    return (void *)eglGetProcAddress(name);
+}
+
 int main(void) {
     const char *card    = getenv("ZEALANDATA_DRM_CARD");
     const char *objpath = getenv("ZEALANDATA_PROJECTION_OBJ");
@@ -648,8 +660,7 @@ int main(void) {
     mpv_set_option_string(mpv, "vo", "libmpv");
     CHECK(mpv_initialize(mpv) >= 0, "mpv_initialize");
 
-    mpv_opengl_init_params gl_init = { .get_proc_address = (void *(*)(void *, const char *))
-                                        (void *)eglGetProcAddress };
+    mpv_opengl_init_params gl_init = { .get_proc_address = get_proc_address_egl };
     int advanced = 1;
     mpv_render_param params[] = {
         { MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_OPENGL },
