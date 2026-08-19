@@ -139,9 +139,19 @@ button:focus-visible, .card:focus-visible{
   position:sticky; top:0; z-index:30;
   display:flex; align-items:center; justify-content:space-between;
   padding:var(--space-4) var(--space-6);
-  background:linear-gradient(180deg, rgba(22,24,38,0.92) 0%, rgba(22,24,38,0) 100%);
   transform:translateY(0);
   transition:transform .25s ease;
+}
+/* Blur+fade lives on a pseudo-element behind the title/buttons rather than
+   directly on .topbar, so the mask that fades the blur out doesn't also
+   fade the actual content sitting on top of it. */
+.topbar::before{
+  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background:linear-gradient(180deg, rgba(22,24,38,0.65) 0%, rgba(22,24,38,0) 100%);
+  backdrop-filter:blur(14px);
+  -webkit-backdrop-filter:blur(14px);
+  mask-image:linear-gradient(180deg, black 0%, black 55%, transparent 100%);
+  -webkit-mask-image:linear-gradient(180deg, black 0%, black 55%, transparent 100%);
 }
 .topbar--hidden{ transform:translateY(-100%); }
 .topbar__title{
@@ -163,7 +173,7 @@ button:focus-visible, .card:focus-visible{
 
 .hero{
   position:sticky; top:0; z-index:2;
-  height:64vh; min-height:380px; max-height:640px;
+  height:64vh; min-height:472px; max-height:732px;
 }
 .hero__bg{ width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
 .hero__scrim{
@@ -172,7 +182,7 @@ button:focus-visible, .card:focus-visible{
              linear-gradient(0deg, rgba(22,24,38,0.95) 0%, rgba(22,24,38,0) 30%);
 }
 .hero__content{
-  position:absolute; left:var(--space-6); right:var(--space-6); bottom:56px;
+  position:absolute; left:var(--space-6); right:var(--space-6); bottom:148px;
   max-width:620px;
 }
 .hero__content .tag{ margin-bottom:14px; }
@@ -203,12 +213,18 @@ button:focus-visible, .card:focus-visible{
 }
 .row{ margin-bottom:var(--space-8); scroll-margin-top:90px; }
 
+/* Lives inside .hero (bottom:40px, clear of #browseMain's -40px overlap
+   below) rather than being its own sticky element -- riding along with
+   the hero, which is already sticky, sidesteps position:sticky behaving
+   inconsistently across browsers for a second independently-stuck
+   element on the same page. */
 .category-nav{
-  position:sticky; top:58px; z-index:20;
+  position:absolute; left:0; right:0; bottom:40px; z-index:3;
   display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
-  background:var(--color-bg);
+  background:rgba(22,24,38,0.55);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
   padding:16px var(--space-6) 20px;
-  margin-bottom:var(--space-8);
 }
 .category-nav__item{
   flex:1 1 0; min-width:0; width:auto;
@@ -548,14 +564,16 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 body.admin-mode #setHeroBtn{ display:flex; }
 #setHeroBtn.active{ color:var(--color-accent); border-color:var(--color-accent); }
 #loopBtn.active{ color:var(--color-accent); border-color:var(--color-accent); }
+#screensaverTag.active{ color:var(--color-accent); border-color:var(--color-accent); }
 
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
-  .hero{ height:38vh; min-height:250px; }
-  /* bottom must clear #browseMain's -40px overlap (below) or the hero's
-     own content -- particularly the Play button, last in the stack --
-     gets visually covered by #browseMain painting on top of it */
-  .hero__content{ left:16px; right:16px; bottom:44px; }
+  .hero{ height:38vh; min-height:348px; }
+  /* bottom must clear both #browseMain's -40px overlap below and the
+     category-nav strip sitting above that -- otherwise the hero's own
+     content (particularly the Play button, last in the stack) ends up
+     covered by one or the other */
+  .hero__content{ left:16px; right:16px; bottom:142px; }
   /* the content stack is anchored from the bottom with nothing above it,
      so a long description can push the tag/title off the top of a short
      mobile hero entirely (behind the sticky top bar) -- capping the
@@ -568,7 +586,7 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 150px; }
   .row__arrow{ display:none !important; }
-  .category-nav{ top:64px; padding:14px 16px 18px; }
+  .category-nav{ padding:14px 16px 18px; }
   .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; }
   /* row-gap isn't used here (rather than margin on each row) because a
      hidden (display:none) row still consumes its row-gap in a CSS grid --

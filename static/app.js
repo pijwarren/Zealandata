@@ -510,9 +510,8 @@ let screensaverEnabled = false;
 
 function paintScreensaverToggle(enabled) {
   screensaverEnabled = enabled;
-  topbarScreensaverTag.textContent = enabled ? "Screensaver on" : "Screensaver off";
-  topbarScreensaverTag.classList.toggle("tag-accent", enabled);
-  topbarScreensaverTag.classList.toggle("tag-outline", !enabled);
+  topbarScreensaverTag.classList.toggle("active", enabled);
+  topbarScreensaverTag.title = enabled ? "Screensaver on" : "Screensaver off";
 }
 async function loadScreensaverState() {
   const res = await fetch("/api/screensaver");
