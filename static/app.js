@@ -7,7 +7,10 @@ const settingsDrawer = document.getElementById("settingsDrawer");
 const rescanBtn = document.getElementById("rescanBtn");
 const adminModeBtn = document.getElementById("adminModeBtn");
 const uploadField = document.getElementById("uploadField");
+const uploadCategorySelect = document.getElementById("uploadCategorySelect");
+const uploadNewCategory = document.getElementById("uploadNewCategory");
 const uploadInput = document.getElementById("uploadInput");
+const uploadChooseBtn = document.getElementById("uploadChooseBtn");
 const uploadBtn = document.getElementById("uploadBtn");
 const uploadStatus = document.getElementById("uploadStatus");
 const pinScrim = document.getElementById("pinScrim");
@@ -365,6 +368,7 @@ async function loadMedia() {
   renderContinueRow(continueItems);
   paintHeroFromPick(continueItems, items);
   paintSetHeroBtn();
+  paintUploadCategories();
 }
 
 async function loadHeroPreference() {
@@ -535,6 +539,7 @@ function paintAdminMode() {
   document.body.classList.toggle("admin-mode", !!adminPin);
   adminModeBtn.textContent = adminPin ? "Lock admin mode" : "Unlock admin mode";
   uploadField.classList.toggle("hidden", !adminPin);
+  if (adminPin) paintUploadCategories();
   paintSetHeroBtn();
 }
 
@@ -580,21 +585,66 @@ async function renameMedia(item) {
   loadMedia();
 }
 
-uploadBtn.addEventListener("click", () => uploadInput.click());
+// Repopulates the category dropdown from whatever's currently in the
+// library, keeping the "+ New category…" option last and preserving the
+// current selection if it still exists (falls back to Uncategorized).
+function paintUploadCategories() {
+  const prevValue = uploadCategorySelect.value;
+  const categories = [...new Set(allMediaItems.map((i) => i.category).filter((c) => c && c !== "Uncategorized"))]
+    .sort((a, b) => a.localeCompare(b));
 
-uploadInput.addEventListener("change", async () => {
+  uploadCategorySelect.innerHTML = "";
+  const uncatOpt = document.createElement("option");
+  uncatOpt.value = "";
+  uncatOpt.textContent = "Uncategorized";
+  uploadCategorySelect.appendChild(uncatOpt);
+
+  for (const cat of categories) {
+    const opt = document.createElement("option");
+    opt.value = cat;
+    opt.textContent = cat;
+    uploadCategorySelect.appendChild(opt);
+  }
+
+  const newOpt = document.createElement("option");
+  newOpt.value = "__new__";
+  newOpt.textContent = "+ New category…";
+  uploadCategorySelect.appendChild(newOpt);
+
+  if ([...uploadCategorySelect.options].some((o) => o.value === prevValue)) {
+    uploadCategorySelect.value = prevValue;
+  }
+  uploadNewCategory.classList.toggle("hidden", uploadCategorySelect.value !== "__new__");
+}
+
+uploadCategorySelect.addEventListener("change", () => {
+  uploadNewCategory.classList.toggle("hidden", uploadCategorySelect.value !== "__new__");
+  if (uploadCategorySelect.value === "__new__") uploadNewCategory.focus();
+});
+
+uploadChooseBtn.addEventListener("click", () => uploadInput.click());
+
+uploadInput.addEventListener("change", () => {
   const file = uploadInput.files[0];
-  uploadInput.value = "";
+  uploadBtn.classList.toggle("hidden", !file);
+  uploadChooseBtn.textContent = file ? file.name : "Choose file…";
+});
+
+uploadBtn.addEventListener("click", async () => {
+  const file = uploadInput.files[0];
   if (!file) return;
 
-  const category = prompt("Category for this upload (leave blank for Uncategorized):", "") || "";
+  const category = uploadCategorySelect.value === "__new__"
+    ? uploadNewCategory.value.trim()
+    : uploadCategorySelect.value;
 
   const form = new FormData();
   form.append("pin", adminPin);
-  form.append("category", category.trim());
+  form.append("category", category);
   form.append("file", file);
 
   uploadBtn.disabled = true;
+  uploadChooseBtn.disabled = true;
   uploadStatus.textContent = `Uploading ${file.name}…`;
   try {
     const res = await fetch("/api/admin/upload", { method: "POST", body: form });
@@ -604,11 +654,16 @@ uploadInput.addEventListener("change", async () => {
       return;
     }
     uploadStatus.textContent = `Uploaded ${file.name}`;
+    uploadInput.value = "";
+    uploadNewCategory.value = "";
+    uploadBtn.classList.add("hidden");
+    uploadChooseBtn.textContent = "Choose file…";
     await loadMedia();
   } catch (err) {
     uploadStatus.textContent = "Upload failed — check your connection";
   } finally {
     uploadBtn.disabled = false;
+    uploadChooseBtn.disabled = false;
   }
 });
 
