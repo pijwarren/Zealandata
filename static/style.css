@@ -293,11 +293,14 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 .drawer__header h2{ font-family:var(--font-heading); font-weight:500; font-size:18px; margin:0; }
 .field label{ display:block; font-size:12px; font-weight:500; color:var(--color-neutral-300); margin-bottom:9px; }
 .field__hint{ font-size:12px; color:var(--color-neutral-400); margin:9px 2px 0; line-height:1.5; }
+#uploadField{ display:flex; flex-direction:column; gap:9px; }
+#uploadField label{ margin-bottom:0; }
+#uploadField .field__hint{ margin-top:0; }
 .select-block, .field input[type="text"]{
   width:100%; box-sizing:border-box;
   background:var(--color-neutral-900); color:var(--color-text);
   border:1px solid var(--color-divider); border-radius:980px;
-  padding:11px 16px; font:inherit; margin-bottom:9px;
+  padding:11px 16px; font:inherit;
 }
 .select-block{
   appearance:none; -webkit-appearance:none;
