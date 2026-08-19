@@ -1,0 +1,44 @@
+[Unit]
+Description=Zealandata projection kiosk (Chromium in cage, owns HDMI)
+After=network.target zealandata-warped.service seatd.service
+Wants=zealandata-warped.service seatd.service
+
+[Service]
+# Stops the boot splash the moment this starts: it holds tty1 via mpv's
+# DRM/KMS backend, and cage needs that same VT. Same reasoning (and the
+# same non-fatal leading "-") as zealandata.service's own ExecStartPre --
+# see zealandata-splash.service for why this isn't a Conflicts=.
+ExecStartPre=-/usr/bin/systemctl stop zealandata-splash.service
+# Chromium loads the page immediately, so if Flask isn't listening yet it
+# lands on an error page and just sits there -- nothing ever retries it.
+# On a cold boot the server genuinely isn't up yet when this starts, so
+# wait for it rather than relying on ordering alone.
+ExecStartPre=/bin/sh -c 'until curl -sf -o /dev/null http://localhost:8008/api/mapping; do sleep 1; done'
+# cage (a minimal Wayland compositor) needs a real controlling TTY to take
+# over the display, exactly as mpv does in the other backend -- without
+# this it fails with "Could not open target tty: Permission denied".
+# Requires `sudo systemctl disable getty@tty1` so nothing contends for it.
+StandardInput=tty
+StandardOutput=journal
+StandardError=journal
+TTYPath=/dev/tty1
+TTYReset=yes
+TTYVHangup=yes
+User=pj
+# cage refuses to start without this, and a systemd service doesn't get it
+# from a login session the way an interactive shell does.
+Environment=XDG_RUNTIME_DIR=/run/user/1000
+WorkingDirectory=/home/pj/zealandata-warped
+# --autoplay-policy is load-bearing: without it Chromium blocks the page's
+# own unmuted video.play() calls and playback silently sits paused until
+# someone presses play a second time.
+ExecStart=/usr/bin/cage -- /usr/bin/chromium --kiosk \
+  --autoplay-policy=no-user-gesture-required \
+  --noerrdialogs --disable-session-crashed-bubble --no-first-run \
+  --check-for-update-interval=31536000 \
+  http://localhost:8008/projection
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,30 @@
+[Unit]
+Description=Zealandata projection server (WebGL backend)
+After=network.target sound.target
+
+[Service]
+# Unlike the mpv backend's zealandata.service, this one needs no TTY
+# binding: it never touches the display itself. The HDMI output is owned
+# entirely by zealandata-warped-kiosk.service, which points a browser at
+# this server's /projection page.
+User=pj
+WorkingDirectory=/home/pj/zealandata-warped
+Environment=ZEALANDATA_RENDER_BACKEND=webgl
+Environment=ZEALANDATA_PROJECTION_OBJ=/home/pj/zealandata-warped/static/3dPrint_210kFaces.obj
+Environment=ZEALANDATA_MEDIA_DIR=/home/pj/media
+Environment=ZEALANDATA_PORT=8008
+# Runs alongside the original mpv-based zealandata.service (port 8000), so
+# both can be installed at once even though only one owns HDMI at a time.
+Environment=ZEALANDATA_SCREENSAVER_ENABLED=1
+Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=1
+Environment=ZEALANDATA_IDLE_TIMEOUT_SECONDS=300
+Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
+Environment=ZEALANDATA_SEQUENCE_FPS=1
+Environment=ZEALANDATA_ADMIN_PIN=1234
+Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata-warped/loading.png
+ExecStart=/usr/bin/python3 /home/pj/zealandata-warped/server.py
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

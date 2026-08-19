@@ -160,6 +160,75 @@ Screensaver shuffling, the spinner transition, resume, and progress
 tracking all work identically to the mpv backend — none of that logic
 changed, only where the actual pixels end up.
 
+### Running it on boot
+
+The kiosk needs three packages the mpv backend doesn't. Chromium can't
+draw to a bare console: its Wayland backend needs *some* compositor, so
+`cage` (a minimal single-window one) provides it, and `seatd` is what
+lets cage take the display without running as root:
+
+```bash
+sudo apt install -y chromium cage seatd
+sudo systemctl enable --now seatd
+# cage needs a real VT, so nothing else may hold tty1
+sudo systemctl disable getty@tty1
+```
+
+`seatd` grants access via the `video` group, which the service user must
+be in (`sudo usermod -aG video pj`).
+
+Then install both units — the server and the kiosk are separate services
+because only the kiosk touches the display:
+
+```bash
+sudo cp zealandata-warped.service zealandata-warped-kiosk.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now zealandata-warped zealandata-warped-kiosk
+```
+
+Only one backend can own HDMI at a time, so disable the mpv one:
+```bash
+sudo systemctl disable --now zealandata
+```
+
+### Performance on a Raspberry Pi 4
+
+A Pi 4 cannot draw this at 1080p in real time. Measured with a 30fps
+source, the projection page renders at ~11fps at full resolution — the
+video decodes fine (hardware H.264 via `/dev/video10`, playback tracks
+real time), but two of every three frames never reach the screen. Check
+it live at `/api/projection/stats`, which reports the render rate and
+the model's vertex count.
+
+Two things dominate, and both are worth knowing before trying to
+optimise the wrong one:
+
+- **Render resolution.** The *Quality* slider in the admin panel draws
+  the canvas below native and scales it up. 50% takes ~11fps to ~25fps.
+  Softness costs little when the image lands on a relief model.
+- **Source video resolution.** Every decoded frame is uploaded to a GPU
+  texture, and that cost scales with pixel count no matter how
+  efficiently it decoded. At 50% quality: a 1080p source renders at
+  ~23fps, 720p at ~33fps, 960x540 at ~37fps.
+
+So **re-encode sources to 720p H.264** — it's the single biggest win:
+```bash
+ffmpeg -i in.mov -vf scale=1280:-2 -c:v libx264 -preset slow -crf 20 \
+  -pix_fmt yuv420p -movflags +faststart out.mp4
+```
+Keep H.264: it's the only codec with hardware decode here. H.265 falls
+back to software in practice, and VP9/AV1 have no hardware support on a
+Pi 4 at all. Bitrate doesn't affect render performance, so optimise it
+for quality freely.
+
+Model complexity matters *less* than it appears: at full resolution,
+dropping from 210k faces to two triangles gained only ~2fps, because the
+GPU was fill-rate bound. It only starts to matter once the Quality
+slider has lifted that ceiling — which is why the geometry is indexed at
+load (`mergeVertices`), since OBJLoader hands back non-indexed meshes
+and a 210k-face model would otherwise be drawn as ~632k vertices instead
+of ~106k.
+
 ## Browsing from a tablet, phone, or laptop
 
 The server listens on every network interface by default (not just the Pi
