@@ -147,7 +147,7 @@ button:focus-visible, .card:focus-visible{
    fade the actual content sitting on top of it. */
 .topbar::before{
   content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(22,24,38,0.65) 0%, rgba(22,24,38,0) 100%);
+  background:linear-gradient(180deg, rgba(22,24,38,0.28) 0%, rgba(22,24,38,0) 100%);
   backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px);
   mask-image:linear-gradient(180deg, black 0%, black 55%, transparent 100%);
@@ -221,9 +221,6 @@ button:focus-visible, .card:focus-visible{
 .category-nav{
   position:absolute; left:0; right:0; bottom:40px; z-index:3;
   display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
-  background:rgba(22,24,38,0.55);
-  backdrop-filter:blur(12px);
-  -webkit-backdrop-filter:blur(12px);
   padding:16px var(--space-6) 20px;
 }
 .category-nav__item{
