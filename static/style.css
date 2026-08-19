@@ -476,7 +476,12 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 .dock__docs{
   display:flex; align-items:flex-start; justify-content:safe center; gap:16px;
   overflow-x:auto; scrollbar-width:none;
-  padding:4px 6px 6px;
+  padding:14px 16px;
+  background:rgba(22,24,38,0.55);
+  backdrop-filter:blur(12px);
+  -webkit-backdrop-filter:blur(12px);
+  border:1px solid var(--color-divider);
+  border-radius:var(--radius-lg);
 }
 .dock__docs::-webkit-scrollbar{ display:none; }
 .dock__doc-chip{
@@ -536,18 +541,19 @@ body.admin-mode #setHeroBtn{ display:flex; }
 
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
-  .hero{ height:52vh; min-height:320px; }
+  .hero{ height:38vh; min-height:250px; }
   /* bottom must clear #browseMain's -40px overlap (below) or the hero's
      own content -- particularly the Play button, last in the stack --
      gets visually covered by #browseMain painting on top of it */
-  .hero__content{ left:16px; right:16px; bottom:52px; }
+  .hero__content{ left:16px; right:16px; bottom:44px; }
   /* the content stack is anchored from the bottom with nothing above it,
      so a long description can push the tag/title off the top of a short
      mobile hero entirely (behind the sticky top bar) -- capping the
-     description to 3 lines keeps the stack's height predictable */
+     description to 2 lines keeps the stack's height predictable now that
+     the hero itself is shorter */
   .hero__content p{
-    display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
-    overflow:hidden; margin-bottom:16px;
+    display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
+    overflow:hidden; margin-bottom:14px;
   }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 150px; }
