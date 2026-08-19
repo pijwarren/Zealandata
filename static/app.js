@@ -170,7 +170,7 @@ document.addEventListener("click", (e) => {
   if (selectedCard && !selectedCard.contains(e.target)) clearSelection();
 });
 
-function buildCard(item, { badge, showRestart } = {}) {
+function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
   const card = document.createElement("div");
   card.className = "card";
   card.tabIndex = 0;
@@ -255,7 +255,12 @@ function buildCard(item, { badge, showRestart } = {}) {
 
   const activate = () => {
     if (selectedCard === card) {
-      playItem(item); // clears the armed selection itself
+      // Resuming is only for the Continue Watching row -- every other
+      // selection (regular browse grid, hero) starts from the beginning,
+      // even if the video happens to have saved progress (but without
+      // touching that saved progress -- see the explicit ↺ restart
+      // button below for the "forget where I was" action).
+      playItem(item, { resume: isContinueRow }); // clears the armed selection itself
       return;
     }
     if (selectedCard) paintCardUnselected(selectedCard); // switching -- no hero flash in between
@@ -319,7 +324,7 @@ function renderContinueRow(items) {
   for (const item of items) {
     const remaining = item.progress.duration - item.progress.position;
     const badge = remaining > 60 ? `${fmtTime(remaining)} left` : "Almost done";
-    continueGrid.appendChild(buildCard(item, { badge, showRestart: true }));
+    continueGrid.appendChild(buildCard(item, { badge, showRestart: true, isContinueRow: true }));
   }
   continueScrollUpdate();
   return items;
@@ -339,6 +344,11 @@ function paintHero(item, heroThumbnail) {
   heroTitle.textContent = item.title;
   heroDesc.textContent = item.description || "";
   heroDesc.classList.toggle("hidden", !item.description);
+  // The hero is a browsing spotlight, not the Continue Watching row itself
+  // -- even when it happens to be showing your top in-progress pick --
+  // so its Play button always starts from the beginning, same as any
+  // other non-Continue-Watching selection (without resume, saved
+  // progress for it is simply left alone rather than cleared).
   heroPlayBtn.onclick = () => playItem(item);
 }
 
@@ -862,7 +872,7 @@ function paintDockIdle(screensaverTitle) {
   dockPlaybackBtns.forEach((btn) => { btn.disabled = true; });
 }
 
-async function playItem(item, { restart = false } = {}) {
+async function playItem(item, { resume = false, restart = false } = {}) {
   unselectCardOnly(); // in case this came from the hero's own Play button
   currentPlayingId = item.id;
   playerTitle.textContent = item.title;
@@ -876,7 +886,7 @@ async function playItem(item, { restart = false } = {}) {
   await fetch(`/api/play/${item.id}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ restart }),
+    body: JSON.stringify({ resume, restart }),
   });
 }
 

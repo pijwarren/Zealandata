@@ -205,6 +205,14 @@ top, with a "time left" badge and a progress sliver on the poster. Tapping
 it resumes ~3 seconds before where you left off. Once you cross that last
 5%, it's dropped from the row automatically (counted as watched).
 
+Resuming only ever happens from that row. Selecting the same video anywhere
+else — the regular browse grid, or the hero banner's Play button, even if
+it happens to be showing your in-progress pick — always starts it from the
+beginning instead, without touching the saved progress (so it's still
+there in Continue Watching afterward). The row also has its own explicit
+↺ "start over" button, which *does* clear the saved progress, for when you
+actually want to forget where you were.
+
 Progress is tracked per file path, shared by everyone on the network (this
 is a single shared Pi + projector, not a multi-user login system).
 

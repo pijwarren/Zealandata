@@ -1301,13 +1301,21 @@ def api_play(media_id):
         return jsonify({"error": "not found"}), 404
 
     body = request.get_json(silent=True) or {}
+    # resume=True is only sent for a normal click in the Continue Watching
+    # row -- every other selection (browse grid, hero) starts from the
+    # beginning, even if there's saved progress for it. restart=True is
+    # the row's own explicit "start over" button: also from the
+    # beginning, but additionally clears the saved progress, since that's
+    # a deliberate "forget where I was" action rather than just "don't
+    # resume this time".
+    resume = bool(body.get("resume"))
     restart_from_beginning = bool(body.get("restart"))
 
-    saved = None if restart_from_beginning else get_progress(media_id)
+    saved = get_progress(media_id) if resume else None
     resume_seconds = 0.0
     if saved and saved.get("duration") and RESUME_MIN_SECONDS <= saved["position"] < saved["duration"] * RESUME_MAX_FRACTION:
         resume_seconds = max(0, saved["position"] - 3)  # small rewind buffer
-    elif restart_from_beginning:
+    if restart_from_beginning:
         clear_progress(media_id)
 
     with meta_lock:
