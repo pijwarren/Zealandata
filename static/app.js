@@ -310,7 +310,7 @@ for (const name of CATEGORY_NAV_NAMES) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "category-nav__item";
-  btn.textContent = name;
+  btn.textContent = name.replace(/\band\b/gi, "&");
   btn.addEventListener("click", () => {
     const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
     if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });

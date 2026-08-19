@@ -171,11 +171,16 @@ button:focus-visible, .card:focus-visible{
 
 /* -------------------------------------------------------------- hero */
 
+/* .hero is one sticky unit -- the media area and the category-nav strip
+   below it stay pinned together as you scroll, rather than the nav being
+   left behind in normal flow underneath the pinned hero. */
 .hero{
   position:sticky; top:0; z-index:2;
+  display:flex; flex-direction:column;
   height:64vh; min-height:380px; max-height:640px;
 }
-.hero__bg{ width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
+.hero__media{ position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
+.hero__bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
 .hero__scrim{
   position:absolute; inset:0; pointer-events:none;
   background:linear-gradient(90deg, rgba(22,24,38,0.92) 0%, rgba(22,24,38,0.25) 55%, rgba(22,24,38,0) 78%),
@@ -214,9 +219,20 @@ button:focus-visible, .card:focus-visible{
 .row{ margin-bottom:var(--space-8); scroll-margin-top:90px; }
 
 .category-nav{
+  position:relative; flex-shrink:0; z-index:1;
   display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
   padding:16px var(--space-6) 20px;
-  margin-bottom:var(--space-8);
+}
+/* Blur+fade behind the buttons rather than on .category-nav itself, so it
+   doesn't also mute the button labels -- content sliding up from beneath
+   the sticky hero would otherwise show through the gaps around them. */
+.category-nav::before{
+  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background:linear-gradient(180deg, rgba(22,24,38,0.25) 0%, rgba(22,24,38,0.7) 100%);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  mask-image:linear-gradient(180deg, transparent 0%, black 40%);
+  -webkit-mask-image:linear-gradient(180deg, transparent 0%, black 40%);
 }
 .category-nav__item{
   flex:1 1 0; min-width:0; width:auto;
