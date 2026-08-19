@@ -43,6 +43,13 @@ scene.add(rig);
 // right orientation instead of everyone having to dial the same 90 back
 // in by hand every time it's reset.
 const BASE_ORIENTATION_Y_DEG = 90;
+
+// The OBJ's relief comes through inverted (peaks sunken, hollows raised),
+// so its height axis is mirrored at load -- see mirrorAlongUpAxis. Baked
+// in rather than exposed as a control for the same reason as the base
+// orientation above: it's a fixed property of this model file, not
+// something that varies with where the projector happens to be.
+const INVERT_RELIEF = true;
 const baseOrient = new THREE.Group();
 baseOrient.rotation.y = THREE.MathUtils.degToRad(BASE_ORIENTATION_Y_DEG);
 rig.add(baseOrient);
@@ -94,6 +101,52 @@ function fitOrthoCamera(box) {
   camera.updateProjectionMatrix();
 }
 
+// Mirroring a mesh reverses the winding order of every triangle, which
+// would otherwise leave every face pointing the wrong way -- invisible
+// with a DoubleSide material, but it inverts the normals, so calibration
+// shading would light the relief exactly backwards (peaks reading as
+// hollows). Swapping two corners of each triangle puts the winding back.
+function reverseWinding(geometry) {
+  const index = geometry.getIndex();
+  if (index) {
+    const arr = index.array;
+    for (let i = 0; i < arr.length; i += 3) {
+      const tmp = arr[i + 1];
+      arr[i + 1] = arr[i + 2];
+      arr[i + 2] = tmp;
+    }
+    index.needsUpdate = true;
+    return;
+  }
+  // Non-indexed (what OBJLoader normally produces): swap the 2nd and 3rd
+  // vertex of every triangle across each attribute in lockstep.
+  for (const attribute of Object.values(geometry.attributes)) {
+    const { array, itemSize } = attribute;
+    for (let i = 0; i < array.length; i += itemSize * 3) {
+      for (let k = 0; k < itemSize; k++) {
+        const a = i + itemSize + k;
+        const b = i + itemSize * 2 + k;
+        const tmp = array[a];
+        array[a] = array[b];
+        array[b] = tmp;
+      }
+    }
+    attribute.needsUpdate = true;
+  }
+}
+
+// The print's relief comes out of the OBJ inverted -- what should stand
+// proud sits sunken instead -- so mirror the model's height axis (leaving
+// its footprint untouched, unlike a 180-degree flip, which would also
+// swap the model end-for-end).
+function mirrorAlongUpAxis(geometry, axis) {
+  if (axis === "y") geometry.scale(1, -1, 1);
+  else if (axis === "z") geometry.scale(1, 1, -1);
+  else geometry.scale(-1, 1, 1);
+  reverseWinding(geometry);
+  geometry.computeVertexNormals();
+}
+
 // Projects the video onto the mesh top-down (like sunlight) using its
 // world-footprint position, not whatever UVs the OBJ export happened to
 // carry (raw scan/print exports often have none, or ones meant for a
@@ -142,8 +195,12 @@ function buildMaterials() {
 
 function placeMesh(geometry) {
   geometry.computeBoundingBox();
+  upAxis = detectUpAxis(geometry.boundingBox);
+  if (INVERT_RELIEF) {
+    mirrorAlongUpAxis(geometry, upAxis);
+    geometry.computeBoundingBox(); // the mirrored axis' min/max just swapped
+  }
   const box = geometry.boundingBox;
-  upAxis = detectUpAxis(box);
   applyPlanarUVs(geometry, box);
   const material = buildMaterials();
   // Lambert shading needs normals; an OBJ exported without them (or with
