@@ -663,6 +663,26 @@ function paintAdminMode() {
   paintSetHeroBtn();
 }
 
+// Auto-relocks admin mode after 5 minutes with no interaction anywhere on
+// the page, so it doesn't stay unlocked indefinitely on a shared/kiosk
+// screen. Any click or keypress resets the clock while admin mode is on;
+// the listeners themselves are always active but are no-ops (clear a timer
+// that's never set) while it's off.
+const ADMIN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+let adminIdleTimer = null;
+
+function relockAdminMode() {
+  adminPin = null;
+  paintAdminMode();
+}
+
+function resetAdminIdleTimer() {
+  if (adminIdleTimer) clearTimeout(adminIdleTimer);
+  adminIdleTimer = adminPin ? setTimeout(relockAdminMode, ADMIN_IDLE_TIMEOUT_MS) : null;
+}
+document.addEventListener("pointerdown", resetAdminIdleTimer);
+document.addEventListener("keydown", resetAdminIdleTimer);
+
 async function verifyAdminPin(candidate) {
   const res = await fetch("/api/admin/unlock", {
     method: "POST",
@@ -678,14 +698,15 @@ async function verifyAdminPin(candidate) {
 
 adminModeBtn.addEventListener("click", async () => {
   if (adminPin) {
-    adminPin = null;
-    paintAdminMode();
+    relockAdminMode();
+    resetAdminIdleTimer();
     return;
   }
   const pin = await openPinPad("Enter Admin PIN", verifyAdminPin);
   if (pin) {
     adminPin = pin;
     paintAdminMode();
+    resetAdminIdleTimer();
   }
 });
 
