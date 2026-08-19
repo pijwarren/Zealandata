@@ -693,6 +693,10 @@ int main(void) {
     CHECK(mpv_render_context_create(&mpv_gl, mpv, params) >= 0, "mpv_render_context_create");
     mpv_observe_property(mpv, 0, "dwidth", MPV_FORMAT_INT64);
     mpv_observe_property(mpv, 0, "dheight", MPV_FORMAT_INT64);
+    /* libmpv suppresses its own log output by default -- without this,
+       nothing reaches stderr no matter what msg-level is set to, which
+       makes diagnosing a decoder/hwdec problem impossible from outside. */
+    mpv_request_log_messages(mpv, getenv("ZEALANDATA_MPV_LOG") ? getenv("ZEALANDATA_MPV_LOG") : "warn");
     printf("[mpv] ready, ipc socket %s\n", sockpath);
 
     if (idleimg && *idleimg) {
@@ -723,6 +727,10 @@ int main(void) {
             mpv_event *ev = mpv_wait_event(mpv, 0);
             if (ev->event_id == MPV_EVENT_NONE) break;
             if (ev->event_id == MPV_EVENT_SHUTDOWN) running = 0;
+            if (ev->event_id == MPV_EVENT_LOG_MESSAGE) {
+                mpv_event_log_message *lm = ev->data;
+                fprintf(stderr, "[mpv:%s] %s", lm->prefix, lm->text);
+            }
             if (ev->event_id == MPV_EVENT_PROPERTY_CHANGE) {
                 mpv_event_property *pr = ev->data;
                 if (pr->format == MPV_FORMAT_INT64) {
