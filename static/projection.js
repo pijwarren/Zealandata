@@ -59,6 +59,7 @@ let upAxis = "z"; // whichever axis turns out to have the smallest extent
 let videoTexture = null;
 let flatMaterial = null;
 let shadedMaterial = null;
+let appliedRenderScale = 1;
 
 // Only ever lights the Lambert (calibration) material -- the unlit
 // projection material ignores them entirely, so these can just stay in
@@ -276,8 +277,20 @@ async function loadModel() {
   }
 }
 
+function applyRenderScale(requested) {
+  // Clamped rather than trusted: 0 would produce a zero-sized drawing
+  // buffer (a black screen with no obvious cause), and anything above 1
+  // supersamples, which is the opposite of what this knob is for.
+  const next = Math.min(Math.max(Number(requested) || 1, 0.25), 1);
+  if (next === appliedRenderScale) return;
+  appliedRenderScale = next;
+  renderer.setPixelRatio((window.devicePixelRatio || 1) * next);
+  renderer.setSize(window.innerWidth, window.innerHeight);
+}
+
 function applyMapping(mapping) {
   if (!mapping) return;
+  applyRenderScale(mapping.render_scale);
   const scale = Number(mapping.scale) || 1;
   const rotX = Number(mapping.rotation_x) || 0;
   const rotY = Number(mapping.rotation_y) || 0;

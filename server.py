@@ -82,6 +82,12 @@ MAPPING_NUMERIC = {
     "rotation_z": 0.0,
     "offset_x": 0.0,
     "offset_y": 0.0,
+    # Fraction of the display's native resolution the WebGL canvas is
+    # actually drawn at (it's scaled back up to fill the screen). The Pi's
+    # GPU is fill-rate bound at 1080p, so dropping this is the main lever
+    # for a smoother picture -- and softness costs little here, since the
+    # image lands on a physical relief model rather than a flat screen.
+    "render_scale": 1.0,
 }
 # Calibration aid only: lights the model from an angle so its relief is
 # actually readable while lining it up. Deliberately off by default and
