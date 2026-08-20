@@ -8,6 +8,9 @@ const settingsScrim = document.getElementById("settingsScrim");
 const settingsDrawer = document.getElementById("settingsDrawer");
 const rescanBtn = document.getElementById("rescanBtn");
 const adminModeBtn = document.getElementById("adminModeBtn");
+const changePinField = document.getElementById("changePinField");
+const changePinBtn = document.getElementById("changePinBtn");
+const changePinStatus = document.getElementById("changePinStatus");
 const uploadField = document.getElementById("uploadField");
 const uploadCategorySelect = document.getElementById("uploadCategorySelect");
 const uploadNewCategory = document.getElementById("uploadNewCategory");
@@ -660,11 +663,13 @@ let adminPin = null;
 function paintAdminMode() {
   document.body.classList.toggle("admin-mode", !!adminPin);
   adminModeBtn.textContent = adminPin ? "Lock admin mode" : "Unlock admin mode";
+  changePinField.classList.toggle("hidden", !adminPin);
   uploadField.classList.toggle("hidden", !adminPin);
   playTrackingField.classList.toggle("hidden", !adminPin);
   popularVisibilityField.classList.toggle("hidden", !adminPin);
   mappingField.classList.toggle("hidden", !adminPin);
   if (adminPin) paintUploadCategories();
+  else changePinStatus.textContent = "";
   paintSetHeroBtn();
 }
 
@@ -713,6 +718,30 @@ adminModeBtn.addEventListener("click", async () => {
     paintAdminMode();
     resetAdminIdleTimer();
   }
+});
+
+changePinBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  changePinStatus.textContent = "";
+  const newPin = await openPinPad("Enter New PIN", async () => ({ ok: true }));
+  if (!newPin) return;
+  const confirmPin = await openPinPad("Confirm New PIN", async (candidate) => (
+    candidate === newPin ? { ok: true } : { ok: false, message: "Doesn't match — try again" }
+  ));
+  if (!confirmPin) return;
+  const res = await fetch("/api/admin/change-pin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, new_pin: confirmPin }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.error) {
+    changePinStatus.textContent = data.error;
+    return;
+  }
+  adminPin = confirmPin;
+  resetAdminIdleTimer();
+  changePinStatus.textContent = "PIN changed.";
 });
 
 // Off by default and left running server-side (not tied to any one

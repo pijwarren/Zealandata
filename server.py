@@ -48,6 +48,7 @@ PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
 HERO_FILE = os.path.join(BASE_DIR, "hero.json")
 TITLES_FILE = os.path.join(BASE_DIR, "titles.json")
 PLAY_COUNTS_FILE = os.path.join(BASE_DIR, "play_counts.json")
+ADMIN_PIN_FILE = os.path.join(BASE_DIR, "admin_pin.json")
 
 MPV_SOCKET = "/tmp/zealandata-mpv.sock"
 
@@ -183,8 +184,23 @@ LOADING_IMAGE_PATH = os.environ.get("ZEALANDATA_LOADING_IMAGE", "").strip() or N
 
 # Optional: a 4-digit PIN that gates "admin mode" in the web UI (currently
 # just renaming videos). Unset by default -- the admin-mode UI and its
-# endpoints are simply unavailable until you set one.
-ADMIN_PIN = os.environ.get("ZEALANDATA_ADMIN_PIN", "").strip() or None
+# endpoints are simply unavailable until you set one. Changeable at runtime
+# from the settings panel (see api_admin_change_pin) -- once changed, the
+# saved file below wins over the env var on every future startup, so the
+# env var only really matters for setting the *first* PIN.
+def _load_admin_pin():
+    if os.path.exists(ADMIN_PIN_FILE):
+        try:
+            with open(ADMIN_PIN_FILE, "r") as f:
+                saved = json.load(f).get("pin")
+            if saved:
+                return saved
+        except (json.JSONDecodeError, OSError):
+            pass
+    return os.environ.get("ZEALANDATA_ADMIN_PIN", "").strip() or None
+
+
+ADMIN_PIN = _load_admin_pin()
 ADMIN_MAX_ATTEMPTS = 5
 ADMIN_LOCKOUT_SECONDS = 120
 UPLOAD_MAX_MB = int(os.environ.get("ZEALANDATA_UPLOAD_MAX_MB", "8192"))
@@ -1632,6 +1648,16 @@ def check_admin_pin(candidate):
         return False, 0
 
 
+def set_admin_pin(new_pin):
+    global ADMIN_PIN
+    with admin_lock:
+        ADMIN_PIN = new_pin
+        tmp = ADMIN_PIN_FILE + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump({"pin": new_pin}, f)
+        os.replace(tmp, ADMIN_PIN_FILE)
+
+
 @app.route("/api/admin/unlock", methods=["POST"])
 def api_admin_unlock():
     if not ADMIN_PIN:
@@ -1641,6 +1667,26 @@ def api_admin_unlock():
     if locked_seconds:
         return jsonify({"ok": False, "locked_seconds": locked_seconds}), 429
     return jsonify({"ok": ok})
+
+
+@app.route("/api/admin/change-pin", methods=["POST"])
+def api_admin_change_pin():
+    """Requires the current PIN, same as every other admin action -- there's
+    deliberately no separate recovery path, matching how a PIN pad normally
+    works. Persists to ADMIN_PIN_FILE so the new PIN survives a restart."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+    new_pin = str(body.get("new_pin", ""))
+    if len(new_pin) != 4 or not new_pin.isdigit():
+        return jsonify({"error": "new PIN must be exactly 4 digits"}), 400
+    set_admin_pin(new_pin)
+    return jsonify({"ok": True})
 
 
 @app.route("/api/play-tracking", methods=["GET"])
