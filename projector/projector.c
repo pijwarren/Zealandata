@@ -79,8 +79,12 @@ struct mapping {
     bool shading;
 };
 static struct mapping map_cur = { 1, 0, 0, 0, 0, 0, 1, false };
-static const char *mapping_path = "/home/pj/zealandata-warped/mapping.json";
-static time_t mapping_mtime;
+static const char *mapping_path = "/home/pj/zealandata/mapping.json";
+/* Sub-second resolution matters here: st_mtime alone is whole seconds, so
+   several slider-drag writes landing in the same wall-clock second would
+   collapse into a single detected change and stall updates for up to a
+   second. */
+static struct timespec mapping_mtim;
 
 /* Deliberately not a real JSON parser: the file is written by one known
    producer with a flat numeric/boolean schema, so scanning for each key is
@@ -111,8 +115,8 @@ static bool json_bool(const char *buf, const char *key, bool *out) {
 static void mapping_reload(void) {
     struct stat st;
     if (stat(mapping_path, &st) != 0) return;
-    if (st.st_mtime == mapping_mtime) return;
-    mapping_mtime = st.st_mtime;
+    if (st.st_mtim.tv_sec == mapping_mtim.tv_sec && st.st_mtim.tv_nsec == mapping_mtim.tv_nsec) return;
+    mapping_mtim = st.st_mtim;
 
     FILE *f = fopen(mapping_path, "r");
     if (!f) return;
@@ -1061,7 +1065,7 @@ int main(void) {
     const char *mapfile = getenv("ZEALANDATA_MAPPING_FILE");
     const char *idleimg = getenv("ZEALANDATA_LOADING_IMAGE");
     if (!card)     card = "/dev/dri/card1";
-    if (!objpath)  objpath = "/home/pj/zealandata-warped/static/3dPrint_210kFaces.obj";
+    if (!objpath)  objpath = "/home/pj/zealandata/static/3dPrint_210kFaces.obj";
     if (!sockpath) sockpath = "/tmp/zealandata-mpv.sock";
     if (mapfile)   mapping_path = mapfile;
 
