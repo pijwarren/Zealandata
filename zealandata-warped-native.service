@@ -1,12 +1,22 @@
 [Unit]
 Description=Zealandata projector (native DRM/GBM/EGL + GStreamer hardware decode, owns HDMI)
-After=network.target
+After=network.target zealandata-splash.service
 
 [Service]
 # No TTY binding needed here, unlike the old cage/Chromium kiosk: this talks
 # to /dev/dri/card1 directly via DRM/KMS, and getty@tty1 is already disabled
 # (see zealandata-warped-kiosk.service's own note on that) so nothing else
-# is contending for DRM master or a controlling tty.
+# is contending for a controlling tty. DRM master is a separate story: the
+# boot splash (zealandata-splash.service) holds it via its own mpv instance
+# until something stops it -- previously the kiosk's own ExecStartPre did
+# that. Without this, drmModeSetCrtc fails with EPERM on a cold boot (the
+# splash is still running at that point) even though the exact same binary
+# works fine when started interactively later, once the splash is gone.
+# Routed through sudo: this whole [Service] runs as pj (see User= below),
+# and stopping a system unit needs polkit authorization pj doesn't have
+# non-interactively -- "systemctl stop" alone here fails with "Interactive
+# authentication required" rather than actually stopping anything.
+ExecStartPre=-/usr/bin/sudo /usr/bin/systemctl stop zealandata-splash.service
 User=pj
 WorkingDirectory=/home/pj/zealandata-warped
 Environment=ZEALANDATA_DRM_CARD=/dev/dri/card1
