@@ -66,6 +66,13 @@
 
 *{ box-sizing:border-box; }
 
+html{
+  /* .row__scroller intentionally bleeds a bit past the viewport edge
+     (negative margin, for hover-shadow room) -- clip that here so it
+     can't create a page-level horizontal scrollbar. Doesn't affect the
+     scroller's own overflow-x:auto, which is a separate element. */
+  overflow-x:hidden;
+}
 html,body{
   --hero-h: clamp(380px, 64vh, 640px);
   margin:0;
