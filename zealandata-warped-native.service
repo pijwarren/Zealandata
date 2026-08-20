@@ -1,0 +1,30 @@
+[Unit]
+Description=Zealandata projector (native DRM/GBM/EGL + GStreamer hardware decode, owns HDMI)
+After=network.target
+
+[Service]
+# No TTY binding needed here, unlike the old cage/Chromium kiosk: this talks
+# to /dev/dri/card1 directly via DRM/KMS, and getty@tty1 is already disabled
+# (see zealandata-warped-kiosk.service's own note on that) so nothing else
+# is contending for DRM master or a controlling tty.
+User=pj
+WorkingDirectory=/home/pj/zealandata-warped
+Environment=ZEALANDATA_DRM_CARD=/dev/dri/card1
+Environment=ZEALANDATA_PROJECTION_OBJ=/home/pj/zealandata-warped/static/3dPrint_210kFaces.obj
+Environment=ZEALANDATA_MPV_SOCKET=/tmp/zealandata-mpv.sock
+Environment=ZEALANDATA_MAPPING_FILE=/home/pj/zealandata-warped/mapping.json
+Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata-warped/loading.png
+# This process creates the IPC socket (server.py just connects to it, in
+# ZEALANDATA_MPV_EXTERNAL=1 mode) -- clear any stale one from a previous
+# run before binding, since a leftover file with the wrong owner would
+# otherwise fail the bind with EADDRINUSE.
+# Leading "-": non-fatal if this can't remove a stale file owned by
+# someone else (e.g. left over from manual root-run testing) -- better to
+# let the bind itself fail loudly than block startup on a cleanup step.
+ExecStartPre=-/bin/sh -c 'rm -f /tmp/zealandata-mpv.sock'
+ExecStart=/home/pj/zealandata-warped/projector/projector
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

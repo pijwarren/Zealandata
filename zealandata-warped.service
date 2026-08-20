@@ -1,15 +1,16 @@
 [Unit]
-Description=Zealandata projection server (WebGL backend)
-After=network.target sound.target
+Description=Zealandata projection server (native GStreamer backend)
+After=network.target sound.target zealandata-warped-native.service
+Wants=zealandata-warped-native.service
 
 [Service]
-# Unlike the mpv backend's zealandata.service, this one needs no TTY
-# binding: it never touches the display itself. The HDMI output is owned
-# entirely by zealandata-warped-kiosk.service, which points a browser at
-# this server's /projection page.
+# This one needs no TTY binding either: HDMI is owned entirely by
+# zealandata-warped-native.service (DRM/GBM/EGL + GStreamer hardware
+# decode), which also creates the IPC socket this connects to as an
+# external mpv-compatible endpoint -- see ZEALANDATA_MPV_EXTERNAL below.
 User=pj
 WorkingDirectory=/home/pj/zealandata-warped
-Environment=ZEALANDATA_RENDER_BACKEND=webgl
+Environment=ZEALANDATA_MPV_EXTERNAL=1
 Environment=ZEALANDATA_PROJECTION_OBJ=/home/pj/zealandata-warped/static/3dPrint_210kFaces.obj
 Environment=ZEALANDATA_MEDIA_DIR=/home/pj/media
 Environment=ZEALANDATA_PORT=8008

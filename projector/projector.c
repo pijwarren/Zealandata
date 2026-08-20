@@ -12,19 +12,24 @@
  *
  * Display  : DRM/KMS + GBM + EGL + GLES3, the same route mpv's --vo=gpu
  *            --gpu-context=drm takes. No compositor involved.
- * Video    : libmpv's render API decodes (hardware, via the Pi's V4L2 H.264
- *            decoder) straight into a GL texture we own, so playback logic
- *            doesn't have to be reinvented here.
- * Control  : the embedded mpv exposes the same IPC socket path the server
- *            already speaks, so server.py drives this exactly as it drove a
- *            standalone mpv -- screensaver, spinner, resume and progress all
- *            keep working untouched. Run the server with
+ * Video    : GStreamer's v4l2h264dec decodes on the Pi's V4L2 H.264 hardware
+ *            block straight into a DMA-BUF, imported as a GL texture we
+ *            sample directly -- no libmpv, no CPU copy. This replaces an
+ *            earlier libmpv render-API path that measured ~20-23fps because
+ *            this build's mpv/ffmpeg had no working hwdec route to the same
+ *            decoder (see git history for that investigation).
+ * Control  : a small IPC socket server here speaks a compatible subset of
+ *            mpv's own JSON-line protocol (get_property/set_property/
+ *            loadfile/seek/cycle/...), so server.py drives this exactly as
+ *            it drove a standalone mpv -- screensaver, spinner, resume and
+ *            progress all keep working untouched. Run the server with
  *            ZEALANDATA_MPV_EXTERNAL=1 so it talks to this socket instead of
  *            spawning an mpv of its own.
  * Calibration: mapping.json is polled and applied live, matching the admin
  *            panel's sliders.
  */
 #define _GNU_SOURCE
+#define GST_USE_UNSTABLE_API
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +40,10 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <signal.h>
+#include <pthread.h>
 #include <sys/stat.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 
 #include <xf86drm.h>
 #include <xf86drmMode.h>
@@ -44,8 +52,11 @@
 #include <EGL/eglext.h>
 #include <GLES3/gl3.h>
 
-#include <mpv/client.h>
-#include <mpv/render_gl.h>
+#include <gst/gst.h>
+#include <gst/app/gstappsink.h>
+#include <gst/video/video.h>
+#include <gst/gl/gl.h>
+#include <gst/gl/egl/gstgldisplay_egl.h>
 
 #define CHECK(cond, msg) do { if (!(cond)) { fprintf(stderr, "fatal: %s (%s)\n", msg, strerror(errno)); exit(1); } } while (0)
 
@@ -564,19 +575,412 @@ static GLuint compile_shader(GLenum type, const char *src) {
     return s;
 }
 
-/* ================================================================= main == */
+/* ============================================================ playback == */
 
-static mpv_handle *mpv;
-static mpv_render_context *mpv_gl;
+/* GStreamer objects are internally thread-safe (their own GLib locking), so
+   playbin/appsink calls are made directly from whichever thread receives
+   the IPC command -- only our own small bits of state below need the
+   mutex. */
+static pthread_mutex_t play_lock = PTHREAD_MUTEX_INITIALIZER;
+static GstElement *playbin;
+static GstElement *appsink;
+static GstGLDisplay *gst_display;
+static GstGLContext *gst_app_ctx;
 
-/* mpv calls this as get_proc_address(ctx, name) -- passing eglGetProcAddress
-   directly looks like it should work and compiles with a cast, but it then
-   receives the context pointer as its name argument and dereferences it as a
-   string. Hence the wrapper. */
-static void *get_proc_address_egl(void *ctx, const char *name) {
-    (void)ctx;
-    return (void *)eglGetProcAddress(name);
+static bool   idle_active = true;    /* true only when nothing is loaded */
+static bool   loop_enabled = false;
+static double volume_pct = 100.0;
+static double pending_start = 0.0;   /* seconds to seek to once loaded */
+static bool   have_pending_start = false;
+static double last_known_fps = 24.0;
+
+/* Latest decoded frame, as a GL texture already in our EGL share group --
+   glupload/glcolorconvert did the DMA-BUF import and YUV->RGBA conversion
+   on GStreamer's own thread; this is a plain shared GL name by the time we
+   see it, same as the old mpv-render-API video FBO texture was. */
+static GstSample *cur_sample;
+static GLuint cur_tex;
+static int cur_tex_w = 1, cur_tex_h = 1;
+
+static GstBusSyncReply bus_sync_handler(GstBus *bus, GstMessage *msg, gpointer data) {
+    (void)bus; (void)data;
+    if (GST_MESSAGE_TYPE(msg) != GST_MESSAGE_NEED_CONTEXT) return GST_BUS_PASS;
+    const gchar *type = NULL;
+    gst_message_parse_context_type(msg, &type);
+    GstElement *src = GST_ELEMENT(GST_MESSAGE_SRC(msg));
+    if (!g_strcmp0(type, GST_GL_DISPLAY_CONTEXT_TYPE)) {
+        GstContext *ctx = gst_context_new(GST_GL_DISPLAY_CONTEXT_TYPE, TRUE);
+        gst_context_set_gl_display(ctx, gst_display);
+        gst_element_set_context(src, ctx);
+        gst_context_unref(ctx);
+        gst_message_unref(msg);
+        return GST_BUS_DROP;
+    }
+    if (!g_strcmp0(type, "gst.gl.app_context")) {
+        GstContext *ctx = gst_context_new("gst.gl.app_context", TRUE);
+        GstStructure *s = gst_context_writable_structure(ctx);
+        gst_structure_set(s, "context", GST_TYPE_GL_CONTEXT, gst_app_ctx, NULL);
+        gst_element_set_context(src, ctx);
+        gst_context_unref(ctx);
+        gst_message_unref(msg);
+        return GST_BUS_DROP;
+    }
+    return GST_BUS_PASS;
 }
+
+/* Pulls whatever the appsink has ready, non-blocking -- called once per
+   render frame, same spot mpv_render_context_render used to occupy. */
+static void video_pump(void) {
+    if (!appsink) return;
+    GstSample *s = gst_app_sink_try_pull_sample(GST_APP_SINK(appsink), 0);
+    if (!s) return;
+    if (cur_sample) gst_sample_unref(cur_sample);
+    cur_sample = s;
+
+    GstBuffer *buf = gst_sample_get_buffer(s);
+    GstMemory *mem = buf ? gst_buffer_peek_memory(buf, 0) : NULL;
+    if (mem && gst_is_gl_memory(mem)) {
+        cur_tex = ((GstGLMemory *)mem)->tex_id;
+    }
+    GstCaps *caps = gst_sample_get_caps(s);
+    GstVideoInfo vinfo;
+    if (caps && gst_video_info_from_caps(&vinfo, caps)) {
+        cur_tex_w = vinfo.width;
+        cur_tex_h = vinfo.height;
+        if (vinfo.fps_n > 0 && vinfo.fps_d > 0)
+            last_known_fps = (double)vinfo.fps_n / vinfo.fps_d;
+    }
+}
+
+/* Bus messages that affect playback state, drained alongside video_pump().
+   EOS is where loop-file is actually implemented: mpv's own "loop-file=inf"
+   restarts the same file internally, so we replicate that with a seek back
+   to zero rather than a fresh loadfile. */
+static void bus_pump(void) {
+    GstBus *bus = gst_element_get_bus(playbin);
+    GstMessage *msg;
+    while ((msg = gst_bus_pop_filtered(bus, GST_MESSAGE_EOS | GST_MESSAGE_ERROR | GST_MESSAGE_WARNING))) {
+        if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_EOS) {
+            pthread_mutex_lock(&play_lock);
+            bool loop = loop_enabled;
+            pthread_mutex_unlock(&play_lock);
+            if (loop) {
+                gst_element_seek_simple(playbin, GST_FORMAT_TIME,
+                                         GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, 0);
+                gst_element_set_state(playbin, GST_STATE_PLAYING);
+            } else {
+                /* mirrors mpv's keep-open=yes: pause on the last frame
+                   rather than going idle */
+                gst_element_set_state(playbin, GST_STATE_PAUSED);
+            }
+        } else if (GST_MESSAGE_TYPE(msg) == GST_MESSAGE_ERROR) {
+            GError *err = NULL; gchar *dbg = NULL;
+            gst_message_parse_error(msg, &err, &dbg);
+            fprintf(stderr, "[gst:error] %s (%s)\n", err ? err->message : "?", dbg ? dbg : "");
+            if (err) g_error_free(err);
+            g_free(dbg);
+        } else {
+            GError *err = NULL; gchar *dbg = NULL;
+            gst_message_parse_warning(msg, &err, &dbg);
+            fprintf(stderr, "[gst:warn] %s (%s)\n", err ? err->message : "?", dbg ? dbg : "");
+            if (err) g_error_free(err);
+            g_free(dbg);
+        }
+        gst_message_unref(msg);
+    }
+    gst_object_unref(bus);
+}
+
+static void video_pipeline_init(void) {
+    gst_display = GST_GL_DISPLAY(gst_gl_display_egl_new_with_egl_display(egl_dpy));
+    gst_app_ctx = gst_gl_context_new_wrapped(gst_display, (guintptr)egl_ctx,
+                                              GST_GL_PLATFORM_EGL, GST_GL_API_GLES2);
+
+    playbin = gst_element_factory_make("playbin3", "playbin");
+    if (!playbin) playbin = gst_element_factory_make("playbin", "playbin");
+    CHECK(playbin, "gst playbin");
+
+    GstElement *sinkbin = gst_element_factory_make("glsinkbin", "glsink");
+    CHECK(sinkbin, "gst glsinkbin");
+    appsink = gst_element_factory_make("appsink", "vsink");
+    CHECK(appsink, "gst appsink");
+    GstCaps *caps = gst_caps_from_string("video/x-raw(memory:GLMemory),format=RGBA");
+    g_object_set(appsink, "caps", caps, "sync", TRUE, "max-buffers", 2, "drop", TRUE, NULL);
+    gst_caps_unref(caps);
+    g_object_set(sinkbin, "sink", appsink, NULL);
+
+    g_object_set(playbin, "video-sink", sinkbin, NULL);
+
+    GstBus *bus = gst_element_get_bus(playbin);
+    gst_bus_set_sync_handler(bus, bus_sync_handler, NULL, NULL);
+    gst_object_unref(bus);
+}
+
+static void video_load(const char *path, double start_sec) {
+    char uri[2048];
+    if (strstr(path, "://")) snprintf(uri, sizeof uri, "%s", path);
+    else {
+        gchar *u = gst_filename_to_uri(path, NULL);
+        snprintf(uri, sizeof uri, "%s", u ? u : path);
+        g_free(u);
+    }
+    gst_element_set_state(playbin, GST_STATE_NULL);
+    g_object_set(playbin, "uri", uri, NULL);
+    g_object_set(playbin, "mute", FALSE, "volume", volume_pct / 100.0, NULL);
+    pthread_mutex_lock(&play_lock);
+    pending_start = start_sec;
+    have_pending_start = start_sec > 0;
+    idle_active = false;
+    pthread_mutex_unlock(&play_lock);
+    gst_element_set_state(playbin, GST_STATE_PLAYING);
+    printf("[gst] loadfile %s (start=%.2f)\n", path, start_sec);
+}
+
+static void video_apply_pending_start(void) {
+    bool pending;
+    double start;
+    pthread_mutex_lock(&play_lock);
+    pending = have_pending_start;
+    start = pending_start;
+    if (pending) have_pending_start = false;
+    pthread_mutex_unlock(&play_lock);
+    if (!pending) return;
+    GstState state;
+    gst_element_get_state(playbin, &state, NULL, 0);
+    if (state >= GST_STATE_PAUSED)
+        gst_element_seek_simple(playbin, GST_FORMAT_TIME,
+                                 GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
+                                 (gint64)(start * GST_SECOND));
+}
+
+static bool video_get_pause(void) {
+    GstState state;
+    gst_element_get_state(playbin, &state, NULL, 0);
+    return state == GST_STATE_PAUSED;
+}
+
+static void video_set_pause(bool pause) {
+    gst_element_set_state(playbin, pause ? GST_STATE_PAUSED : GST_STATE_PLAYING);
+}
+
+static double video_get_position(void) {
+    gint64 pos = 0;
+    if (!gst_element_query_position(playbin, GST_FORMAT_TIME, &pos)) return 0;
+    return (double)pos / GST_SECOND;
+}
+
+static double video_get_duration(void) {
+    gint64 dur = 0;
+    if (!gst_element_query_duration(playbin, GST_FORMAT_TIME, &dur)) return 0;
+    return (double)dur / GST_SECOND;
+}
+
+static void video_seek(double sec) {
+    gst_element_seek_simple(playbin, GST_FORMAT_TIME,
+                             GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
+                             (gint64)(sec * GST_SECOND));
+}
+
+static void video_stop(void) {
+    gst_element_set_state(playbin, GST_STATE_READY);
+    pthread_mutex_lock(&play_lock);
+    idle_active = true;
+    pthread_mutex_unlock(&play_lock);
+}
+
+/* Exact single-frame stepping (forward) is a real GStreamer primitive.
+   Backward isn't -- there's no equivalent "step -1" for a hardware decoder
+   pulling from a compressed stream, so this approximates it with a seek to
+   one nominal frame duration earlier while paused. Good enough for the
+   scrub-by-frame UI this backs; not frame-exact on every codec/GOP. */
+static void video_frame_step(void) {
+    gst_element_set_state(playbin, GST_STATE_PAUSED);
+    gst_element_get_state(playbin, NULL, NULL, GST_CLOCK_TIME_NONE);
+    gst_element_send_event(playbin, gst_event_new_step(GST_FORMAT_BUFFERS, 1, 1.0, TRUE, FALSE));
+}
+
+static void video_frame_back_step(void) {
+    gst_element_set_state(playbin, GST_STATE_PAUSED);
+    gst_element_get_state(playbin, NULL, NULL, GST_CLOCK_TIME_NONE);
+    double pos = video_get_position();
+    double step = last_known_fps > 0 ? 1.0 / last_known_fps : 1.0 / 24.0;
+    video_seek(pos - step > 0 ? pos - step : 0);
+}
+
+static double video_estimated_frame_number(void) {
+    return video_get_position() * (last_known_fps > 0 ? last_known_fps : 24.0);
+}
+
+/* ================================================================ IPC == */
+
+/* Speaks a compatible subset of mpv's JSON-line IPC protocol -- just enough
+   for server.py's mpv_send(): one command object per line, one JSON-line
+   reply, connection then closed by the client. No request_id matching or
+   event stream is needed because server.py never asks for either. */
+
+static void ipc_reply(int fd, const char *data_json /* NULL = null */) {
+    char buf[256];
+    int n = snprintf(buf, sizeof buf, "{\"data\":%s,\"error\":\"success\"}\n",
+                      data_json ? data_json : "null");
+    write(fd, buf, n);
+}
+
+static int parse_command_args(const char *line, char *tokens[8], int max) {
+    const char *p = strstr(line, "\"command\"");
+    if (!p) return 0;
+    p = strchr(p, '[');
+    if (!p) return 0;
+    p++;
+    int n = 0;
+    while (*p && *p != ']' && n < max) {
+        while (*p == ' ' || *p == ',') p++;
+        if (*p == '"') {
+            p++;
+            const char *start = p;
+            while (*p && *p != '"') p++;
+            tokens[n++] = strndup(start, (size_t)(p - start));
+            if (*p == '"') p++;
+        } else if (*p != ']' && *p) {
+            const char *start = p;
+            while (*p && *p != ',' && *p != ']') p++;
+            tokens[n++] = strndup(start, (size_t)(p - start));
+        } else break;
+    }
+    return n;
+}
+
+static bool truthy(const char *s) {
+    return s && (!strcmp(s, "yes") || !strcmp(s, "true") || !strcmp(s, "1"));
+}
+
+static void *ipc_client_thread(void *arg) {
+    int fd = (int)(intptr_t)arg;
+    char buf[4096];
+    ssize_t n = read(fd, buf, sizeof buf - 1);
+    if (n <= 0) { close(fd); return NULL; }
+    buf[n] = 0;
+    char *nl = strchr(buf, '\n');
+    if (nl) *nl = 0;
+
+    char *tok[8] = {0};
+    int argc = parse_command_args(buf, tok, 8);
+    if (argc == 0) { ipc_reply(fd, NULL); close(fd); goto done; }
+
+    char out[128];
+    if (!strcmp(tok[0], "get_property") && argc >= 2) {
+        const char *name = tok[1];
+        if (!strcmp(name, "time-pos")) {
+            snprintf(out, sizeof out, "%.3f", video_get_position());
+            ipc_reply(fd, out);
+        } else if (!strcmp(name, "duration")) {
+            snprintf(out, sizeof out, "%.3f", video_get_duration());
+            ipc_reply(fd, out);
+        } else if (!strcmp(name, "pause")) {
+            ipc_reply(fd, video_get_pause() ? "true" : "false");
+        } else if (!strcmp(name, "idle-active")) {
+            pthread_mutex_lock(&play_lock);
+            bool ia = idle_active;
+            pthread_mutex_unlock(&play_lock);
+            ipc_reply(fd, ia ? "true" : "false");
+        } else if (!strcmp(name, "loop-file")) {
+            pthread_mutex_lock(&play_lock);
+            bool lp = loop_enabled;
+            pthread_mutex_unlock(&play_lock);
+            ipc_reply(fd, lp ? "\"inf\"" : "\"no\"");
+        } else if (!strcmp(name, "estimated-frame-number")) {
+            snprintf(out, sizeof out, "%.0f", video_estimated_frame_number());
+            ipc_reply(fd, out);
+        } else {
+            ipc_reply(fd, NULL);
+        }
+    } else if (!strcmp(tok[0], "set_property") && argc >= 3) {
+        const char *name = tok[1], *val = tok[2];
+        if (!strcmp(name, "loop-file")) {
+            pthread_mutex_lock(&play_lock);
+            loop_enabled = !strcmp(val, "inf");
+            pthread_mutex_unlock(&play_lock);
+        } else if (!strcmp(name, "mute")) {
+            g_object_set(playbin, "mute", truthy(val), NULL);
+        } else if (!strcmp(name, "pause")) {
+            video_set_pause(truthy(val));
+        } else if (!strcmp(name, "start")) {
+            pthread_mutex_lock(&play_lock);
+            pending_start = atof(val);
+            have_pending_start = pending_start > 0;
+            pthread_mutex_unlock(&play_lock);
+        }
+        /* image-display-duration / keep-open: no native GStreamer/playbin
+           equivalent is needed -- keep-open's "pause on end" behaviour is
+           already how bus_pump() handles EOS unconditionally. */
+        ipc_reply(fd, NULL);
+    } else if (!strcmp(tok[0], "loadfile") && argc >= 2) {
+        pthread_mutex_lock(&play_lock);
+        double start = pending_start;
+        pthread_mutex_unlock(&play_lock);
+        video_load(tok[1], start);
+        ipc_reply(fd, NULL);
+    } else if (!strcmp(tok[0], "cycle") && argc >= 2 && !strcmp(tok[1], "pause")) {
+        video_set_pause(!video_get_pause());
+        ipc_reply(fd, NULL);
+    } else if (!strcmp(tok[0], "stop")) {
+        video_stop();
+        ipc_reply(fd, NULL);
+    } else if (!strcmp(tok[0], "seek") && argc >= 2) {
+        video_seek(atof(tok[1]));
+        ipc_reply(fd, NULL);
+    } else if (!strcmp(tok[0], "frame-step")) {
+        video_frame_step();
+        ipc_reply(fd, NULL);
+    } else if (!strcmp(tok[0], "frame-back-step")) {
+        video_frame_back_step();
+        ipc_reply(fd, NULL);
+    } else if (!strcmp(tok[0], "cycle-values") && argc >= 2 && !strcmp(tok[1], "loop-file")) {
+        pthread_mutex_lock(&play_lock);
+        loop_enabled = !loop_enabled;
+        pthread_mutex_unlock(&play_lock);
+        ipc_reply(fd, NULL);
+    } else if (!strcmp(tok[0], "add") && argc >= 3 && !strcmp(tok[1], "volume")) {
+        pthread_mutex_lock(&play_lock);
+        volume_pct += atof(tok[2]);
+        if (volume_pct < 0) volume_pct = 0;
+        if (volume_pct > 100) volume_pct = 100;
+        double v = volume_pct;
+        pthread_mutex_unlock(&play_lock);
+        g_object_set(playbin, "volume", v / 100.0, NULL);
+        ipc_reply(fd, NULL);
+    } else {
+        ipc_reply(fd, NULL);
+    }
+
+    for (int i = 0; i < argc; i++) free(tok[i]);
+done:
+    close(fd);
+    return NULL;
+}
+
+static void *ipc_server_thread(void *arg) {
+    const char *sockpath = arg;
+    unlink(sockpath);
+    int srv = socket(AF_UNIX, SOCK_STREAM, 0);
+    CHECK(srv >= 0, "ipc socket");
+    struct sockaddr_un addr = { .sun_family = AF_UNIX };
+    snprintf(addr.sun_path, sizeof addr.sun_path, "%s", sockpath);
+    CHECK(bind(srv, (struct sockaddr *)&addr, sizeof addr) == 0, "ipc bind");
+    CHECK(listen(srv, 16) == 0, "ipc listen");
+    chmod(sockpath, 0777);
+    printf("[ipc] ready, socket %s\n", sockpath);
+    while (running) {
+        int fd = accept(srv, NULL, NULL);
+        if (fd < 0) { if (errno == EINTR) continue; break; }
+        pthread_t th;
+        pthread_create(&th, NULL, ipc_client_thread, (void *)(intptr_t)fd);
+        pthread_detach(th);
+    }
+    close(srv);
+    return NULL;
+}
+
+/* ================================================================= main == */
 
 int main(void) {
     const char *card    = getenv("ZEALANDATA_DRM_CARD");
@@ -584,14 +988,6 @@ int main(void) {
     const char *sockpath= getenv("ZEALANDATA_MPV_SOCKET");
     const char *mapfile = getenv("ZEALANDATA_MAPPING_FILE");
     const char *idleimg = getenv("ZEALANDATA_LOADING_IMAGE");
-    /* Cap for the texture mpv renders into. Every frame mpv does a full
-       colour-convert/scale pass into this, so its size is a direct per-frame
-       cost -- and the mesh never samples it at 1:1 anyway, since the model
-       covers only part of the screen and is tilted. Capping it is far more
-       effective than shrinking the mesh. */
-    const char *vmaxs = getenv("ZEALANDATA_VIDEO_MAX_WIDTH");
-    int video_max_w = vmaxs ? atoi(vmaxs) : 1280;
-    if (video_max_w < 160) video_max_w = 160;
     if (!card)     card = "/dev/dri/card1";
     if (!objpath)  objpath = "/home/pj/zealandata-warped/static/3dPrint_210kFaces.obj";
     if (!sockpath) sockpath = "/tmp/zealandata-mpv.sock";
@@ -633,145 +1029,39 @@ int main(void) {
     GLint uShading = glGetUniformLocation(prog, "uShading");
     glUniform1i(glGetUniformLocation(prog, "uTex"), 0);
 
-    /* ---- video target: mpv renders here, the mesh samples it ---- */
-    int vidW = 1920, vidH = 1080;
-    GLuint videoTex, videoFbo;
-    glGenTextures(1, &videoTex);
-    glBindTexture(GL_TEXTURE_2D, videoTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vidW, vidH, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glGenFramebuffers(1, &videoFbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, videoFbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, videoTex, 0);
-    CHECK(glCheckFramebufferStatus(GL_FRAMEBUFFER) == GL_FRAMEBUFFER_COMPLETE, "video FBO");
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
     /* ---- scene target, for render_scale < 1 ---- */
     GLuint sceneFbo = 0, sceneTex = 0, sceneDepth = 0;
     int sceneW = 0, sceneH = 0;
 
-    /* ---- mpv ---- */
-    mpv = mpv_create();
-    CHECK(mpv, "mpv_create");
-    mpv_set_option_string(mpv, "input-ipc-server", sockpath);
-    mpv_set_option_string(mpv, "idle", "yes");
-    /* "auto" silently accepted a software-decode fallback here: hwdec-current
-       read back as "no" even though hwdec-interop reported drmprime as
-       available, and every decoded frame was costing ~54ms as a result --
-       almost the entire per-frame budget. DRM-PRIME zero-copy interop under
-       the render API (as opposed to mpv's own standalone --gpu-context=drm)
-       needs the DRM fd/crtc/connector handed over explicitly via
-       MPV_RENDER_PARAM_DRM_DISPLAY_V2 below, or it has nothing to import
-       the decoded buffer into and falls back rather than erroring. */
-    mpv_set_option_string(mpv, "hwdec", "drmprime");
-    mpv_set_option_string(mpv, "keep-open", "yes");
-    mpv_set_option_string(mpv, "osc", "no");
-    mpv_set_option_string(mpv, "osd-level", "0");
-    mpv_set_option_string(mpv, "msg-level", "all=error");
-    /* Required for the render API: mpv hands frames to us rather than
-       driving a window of its own. */
-    mpv_set_option_string(mpv, "vo", "libmpv");
-    CHECK(mpv_initialize(mpv) >= 0, "mpv_initialize");
+    /* ---- GStreamer ---- */
+    gst_init(NULL, NULL);
+    video_pipeline_init();
+    printf("[gst] ready\n");
 
-    mpv_opengl_init_params gl_init = { .get_proc_address = get_proc_address_egl };
-    int advanced = 1;
-    mpv_opengl_drm_params_v2 drm_params = {
-        .fd = drm.fd, .crtc_id = (int)drm.crtc_id, .connector_id = (int)drm.connector_id,
-        .atomic_request_ptr = NULL,  /* legacy (non-atomic) modesetting, as present() uses */
-        .render_fd = -1,             /* only needed for VAAPI interop, not V3D/drmprime */
-    };
-    mpv_render_param params[] = {
-        { MPV_RENDER_PARAM_API_TYPE, (void *)MPV_RENDER_API_TYPE_OPENGL },
-        { MPV_RENDER_PARAM_OPENGL_INIT_PARAMS, &gl_init },
-        { MPV_RENDER_PARAM_ADVANCED_CONTROL, &advanced },
-        { MPV_RENDER_PARAM_DRM_DISPLAY_V2, &drm_params },
-        { 0 }
-    };
-    CHECK(mpv_render_context_create(&mpv_gl, mpv, params) >= 0, "mpv_render_context_create");
-    mpv_observe_property(mpv, 0, "dwidth", MPV_FORMAT_INT64);
-    mpv_observe_property(mpv, 0, "dheight", MPV_FORMAT_INT64);
-    /* libmpv suppresses its own log output by default -- without this,
-       nothing reaches stderr no matter what msg-level is set to, which
-       makes diagnosing a decoder/hwdec problem impossible from outside. */
-    mpv_request_log_messages(mpv, getenv("ZEALANDATA_MPV_LOG") ? getenv("ZEALANDATA_MPV_LOG") : "warn");
-    printf("[mpv] ready, ipc socket %s\n", sockpath);
+    pthread_t ipc_th;
+    pthread_create(&ipc_th, NULL, ipc_server_thread, (void *)sockpath);
 
-    if (idleimg && *idleimg) {
-        const char *cmd[] = { "loadfile", idleimg, "replace", NULL };
-        mpv_command(mpv, cmd);
-        mpv_set_option_string(mpv, "image-display-duration", "inf");
-    }
+    if (idleimg && *idleimg) video_load(idleimg, 0);
 
     /* ---- render loop ---- */
     double last_cal = 0, last_fps = now_sec();
     int frames = 0;
-    int pending_w = 0, pending_h = 0;
     /* Per-phase timing: with a vsync-locked flip it's otherwise impossible
        to tell "the GPU is busy" from "we're being paced", and those want
        opposite fixes. */
-    double acc_mpv = 0, acc_draw = 0, acc_present = 0;
+    double acc_video = 0, acc_draw = 0, acc_present = 0;
     while (running) {
         /* calibration is polled rather than watched: one stat() per 100ms is
            nothing next to a frame, and it avoids an inotify dependency */
         double t = now_sec();
         if (t - last_cal > 0.1) { mapping_reload(); last_cal = t; }
 
-        /* Drain mpv events. The video size arrives here rather than being
-           polled with mpv_get_property each frame: those are synchronous
-           calls into the mpv core, and doing two of them per frame was
-           enough on its own to halve the render rate. */
-        while (1) {
-            mpv_event *ev = mpv_wait_event(mpv, 0);
-            if (ev->event_id == MPV_EVENT_NONE) break;
-            if (ev->event_id == MPV_EVENT_SHUTDOWN) running = 0;
-            if (ev->event_id == MPV_EVENT_LOG_MESSAGE) {
-                mpv_event_log_message *lm = ev->data;
-                fprintf(stderr, "[mpv:%s] %s", lm->prefix, lm->text);
-            }
-            if (ev->event_id == MPV_EVENT_PROPERTY_CHANGE) {
-                mpv_event_property *pr = ev->data;
-                if (pr->format == MPV_FORMAT_INT64) {
-                    int64_t v = *(int64_t *)pr->data;
-                    if (!strcmp(pr->name, "dwidth")) pending_w = (int)v;
-                    else if (!strcmp(pr->name, "dheight")) pending_h = (int)v;
-                }
-            }
-        }
-
-        /* keep the video FBO matched to the actual decoded size, so the
-           texture isn't up- or down-scaled twice on its way to the mesh */
-        int tgtW = pending_w, tgtH = pending_h;
-        if (tgtW > video_max_w) {          /* keep aspect while capping */
-            tgtH = (int)((float)tgtH * video_max_w / (float)tgtW);
-            tgtW = video_max_w;
-        }
-        if (tgtW > 0 && tgtH > 0 && (tgtW != vidW || tgtH != vidH)) {
-            vidW = tgtW; vidH = tgtH;
-            glBindTexture(GL_TEXTURE_2D, videoTex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vidW, vidH, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-            printf("[mpv] video %dx%d\n", vidW, vidH);
-        }
-
         double tA = now_sec();
-        uint64_t flags = mpv_render_context_update(mpv_gl);
-        if (flags & MPV_RENDER_UPDATE_FRAME) {
-            mpv_opengl_fbo fbo = { .fbo = (int)videoFbo, .w = vidW, .h = vidH, .internal_format = 0 };
-            int flip = 0;
-            mpv_render_param rp[] = {
-                { MPV_RENDER_PARAM_OPENGL_FBO, &fbo },
-                { MPV_RENDER_PARAM_FLIP_Y, &flip },
-                { 0 }
-            };
-            mpv_render_context_render(mpv_gl, rp);
-        }
-        glFinish();  /* GPU work is async -- without this, mpv's actual cost
-                        bleeds into whichever bucket next blocks on the GPU,
-                        which made these numbers untrustworthy. */
+        bus_pump();
+        video_apply_pending_start();
+        video_pump();
+        acc_video += now_sec() - tA;
 
-        acc_mpv += now_sec() - tA;
 
         /* Scene target sized by render_scale. At full scale the mesh is drawn
            straight to the display instead: the intermediate FBO exists only
@@ -831,7 +1121,7 @@ int main(void) {
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, videoTex);
+        glBindTexture(GL_TEXTURE_2D, cur_tex);
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 
@@ -850,24 +1140,22 @@ int main(void) {
 
         double tC = now_sec();
         present();
-        mpv_render_context_report_swap(mpv_gl);
         acc_present += now_sec() - tC;
 
         frames++;
         if (now_sec() - last_fps >= 5.0) {
             double el = now_sec() - last_fps;
-            printf("[fps] %.1f  (per frame: mpv %.1fms, draw %.1fms, present %.1fms)\n",
-                   frames / el, 1000 * acc_mpv / frames,
+            printf("[fps] %.1f  (per frame: video %.1fms, draw %.1fms, present %.1fms)\n",
+                   frames / el, 1000 * acc_video / frames,
                    1000 * acc_draw / frames, 1000 * acc_present / frames);
             frames = 0;
-            acc_mpv = acc_draw = acc_present = 0;
+            acc_video = acc_draw = acc_present = 0;
             last_fps = now_sec();
         }
     }
 
     printf("[   ] shutting down\n");
-    if (mpv_gl) mpv_render_context_free(mpv_gl);
-    if (mpv) mpv_terminate_destroy(mpv);
+    if (playbin) { gst_element_set_state(playbin, GST_STATE_NULL); gst_object_unref(playbin); }
     drm_restore();
     return 0;
 }
