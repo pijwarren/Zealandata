@@ -125,7 +125,7 @@ ATTACHMENTS_DIR_SUFFIX = ".attachments"
 
 # Screensaver: when nothing's been chosen, shuffle through random videos
 # from the library itself.
-SCREENSAVER_ENABLED = os.environ.get("ZEALANDATA_SCREENSAVER_ENABLED", "1") == "1"
+SCREENSAVER_ENABLED = os.environ.get("ZEALANDATA_SCREENSAVER_ENABLED", "0") == "1"
 SCREENSAVER_MUTED = os.environ.get("ZEALANDATA_SCREENSAVER_MUTED", "1") == "1"
 
 # Play-count tracking (drives the "Most Popular" row): off by default and

@@ -22,18 +22,6 @@ const playTrackingBtn = document.getElementById("playTrackingBtn");
 const popularVisibilityField = document.getElementById("popularVisibilityField");
 const popularVisibilityBtn = document.getElementById("popularVisibilityBtn");
 const mappingField = document.getElementById("mappingField");
-const mappingScale = document.getElementById("mappingScale");
-const mappingScaleValue = document.getElementById("mappingScaleValue");
-const mappingRotationX = document.getElementById("mappingRotationX");
-const mappingRotationXValue = document.getElementById("mappingRotationXValue");
-const mappingRotationY = document.getElementById("mappingRotationY");
-const mappingRotationYValue = document.getElementById("mappingRotationYValue");
-const mappingRotationZ = document.getElementById("mappingRotationZ");
-const mappingRotationZValue = document.getElementById("mappingRotationZValue");
-const mappingOffsetX = document.getElementById("mappingOffsetX");
-const mappingOffsetXValue = document.getElementById("mappingOffsetXValue");
-const mappingOffsetY = document.getElementById("mappingOffsetY");
-const mappingOffsetYValue = document.getElementById("mappingOffsetYValue");
 const mappingShadingBtn = document.getElementById("mappingShadingBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
 const pinScrim = document.getElementById("pinScrim");
@@ -789,19 +777,32 @@ popularVisibilityBtn.addEventListener("click", async () => {
 // that simply aren't being rendered against right now.
 let mappingShadingEnabled = false;
 
+// Each slider is paired with a number input (typed entry) and a pair of
+// +/- buttons (nudge by the slider's own step) -- driven off this table
+// instead of six near-identical blocks of listener code.
+const MAPPING_CONTROLS = [
+  { key: "scale", range: "mappingScale", number: "mappingScaleNumber", decimals: 2 },
+  { key: "rotation_x", range: "mappingRotationX", number: "mappingRotationXNumber", decimals: 0 },
+  { key: "rotation_y", range: "mappingRotationY", number: "mappingRotationYNumber", decimals: 0 },
+  { key: "rotation_z", range: "mappingRotationZ", number: "mappingRotationZNumber", decimals: 0 },
+  { key: "offset_x", range: "mappingOffsetX", number: "mappingOffsetXNumber", decimals: 2 },
+  { key: "offset_y", range: "mappingOffsetY", number: "mappingOffsetYNumber", decimals: 2 },
+].map((c) => ({
+  ...c,
+  rangeEl: document.getElementById(c.range),
+  numberEl: document.getElementById(c.number),
+}));
+
+function clamp(value, min, max) {
+  return Math.min(max, Math.max(min, value));
+}
+
 function paintMappingControls(mapping) {
-  mappingScale.value = mapping.scale;
-  mappingScaleValue.textContent = `${Number(mapping.scale).toFixed(2)}×`;
-  mappingRotationX.value = mapping.rotation_x;
-  mappingRotationXValue.textContent = `${Number(mapping.rotation_x).toFixed(0)}°`;
-  mappingRotationY.value = mapping.rotation_y;
-  mappingRotationYValue.textContent = `${Number(mapping.rotation_y).toFixed(0)}°`;
-  mappingRotationZ.value = mapping.rotation_z;
-  mappingRotationZValue.textContent = `${Number(mapping.rotation_z).toFixed(0)}°`;
-  mappingOffsetX.value = mapping.offset_x;
-  mappingOffsetXValue.textContent = Number(mapping.offset_x).toFixed(2);
-  mappingOffsetY.value = mapping.offset_y;
-  mappingOffsetYValue.textContent = Number(mapping.offset_y).toFixed(2);
+  MAPPING_CONTROLS.forEach(({ key, rangeEl, numberEl, decimals }) => {
+    const value = Number(mapping[key]);
+    rangeEl.value = value;
+    numberEl.value = value.toFixed(decimals);
+  });
   mappingShadingEnabled = !!mapping.shading;
   mappingShadingBtn.textContent = mappingShadingEnabled
     ? "Turn off calibration shading"
@@ -835,29 +836,34 @@ function sendMappingUpdate(partial) {
   }, 80);
 }
 
-mappingScale.addEventListener("input", () => {
-  mappingScaleValue.textContent = `${Number(mappingScale.value).toFixed(2)}×`;
-  sendMappingUpdate({ scale: Number(mappingScale.value) });
+MAPPING_CONTROLS.forEach(({ key, rangeEl, numberEl, decimals }) => {
+  rangeEl.addEventListener("input", () => {
+    numberEl.value = Number(rangeEl.value).toFixed(decimals);
+    sendMappingUpdate({ [key]: Number(rangeEl.value) });
+  });
+  numberEl.addEventListener("change", () => {
+    const min = Number(rangeEl.min);
+    const max = Number(rangeEl.max);
+    const value = clamp(Number(numberEl.value) || 0, min, max);
+    numberEl.value = value.toFixed(decimals);
+    rangeEl.value = value;
+    sendMappingUpdate({ [key]: value });
+  });
 });
-mappingRotationX.addEventListener("input", () => {
-  mappingRotationXValue.textContent = `${Number(mappingRotationX.value).toFixed(0)}°`;
-  sendMappingUpdate({ rotation_x: Number(mappingRotationX.value) });
-});
-mappingRotationY.addEventListener("input", () => {
-  mappingRotationYValue.textContent = `${Number(mappingRotationY.value).toFixed(0)}°`;
-  sendMappingUpdate({ rotation_y: Number(mappingRotationY.value) });
-});
-mappingRotationZ.addEventListener("input", () => {
-  mappingRotationZValue.textContent = `${Number(mappingRotationZ.value).toFixed(0)}°`;
-  sendMappingUpdate({ rotation_z: Number(mappingRotationZ.value) });
-});
-mappingOffsetX.addEventListener("input", () => {
-  mappingOffsetXValue.textContent = Number(mappingOffsetX.value).toFixed(2);
-  sendMappingUpdate({ offset_x: Number(mappingOffsetX.value) });
-});
-mappingOffsetY.addEventListener("input", () => {
-  mappingOffsetYValue.textContent = Number(mappingOffsetY.value).toFixed(2);
-  sendMappingUpdate({ offset_y: Number(mappingOffsetY.value) });
+document.querySelectorAll(".mapping-row__step").forEach((btn) => {
+  const control = MAPPING_CONTROLS.find((c) => c.range === btn.dataset.target);
+  if (!control) return;
+  const { key, rangeEl, numberEl, decimals } = control;
+  btn.addEventListener("click", () => {
+    const step = Number(rangeEl.step) || 1;
+    const dir = Number(btn.dataset.dir);
+    const min = Number(rangeEl.min);
+    const max = Number(rangeEl.max);
+    const value = clamp(Number(rangeEl.value) + dir * step, min, max);
+    rangeEl.value = value;
+    numberEl.value = value.toFixed(decimals);
+    sendMappingUpdate({ [key]: value });
+  });
 });
 mappingShadingBtn.addEventListener("click", async () => {
   if (!adminPin) return;

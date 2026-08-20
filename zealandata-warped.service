@@ -16,7 +16,7 @@ Environment=ZEALANDATA_MEDIA_DIR=/home/pj/media
 Environment=ZEALANDATA_PORT=8008
 # Runs alongside the original mpv-based zealandata.service (port 8000), so
 # both can be installed at once even though only one owns HDMI at a time.
-Environment=ZEALANDATA_SCREENSAVER_ENABLED=1
+Environment=ZEALANDATA_SCREENSAVER_ENABLED=0
 Environment=ZEALANDATA_IDLE_TIMEOUT_ENABLED=1
 Environment=ZEALANDATA_IDLE_TIMEOUT_SECONDS=300
 Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3

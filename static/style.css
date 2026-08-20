@@ -378,9 +378,9 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   display:flex; flex-direction:column; gap:var(--space-6);
   overflow-y:auto;
 }
-.drawer__header{ display:flex; align-items:center; justify-content:space-between; flex:0 0 auto; }
+.drawer__header{ display:flex; align-items:center; justify-content:space-between; flex:0 0 auto; width:100%; max-width:640px; margin:0 auto; }
 .drawer__header h2{ font-family:var(--font-heading); font-weight:500; font-size:20px; margin:0; }
-.field{ max-width:480px; }
+.field{ width:100%; max-width:480px; margin:0 auto; }
 .field label{ display:block; font-size:12px; font-weight:500; color:var(--color-neutral-300); margin-bottom:9px; }
 .field__hint{ font-size:12px; color:var(--color-neutral-400); margin:9px 2px 0; line-height:1.5; }
 #uploadField{ display:flex; flex-direction:column; gap:9px; }
@@ -402,12 +402,30 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 }
 .select-block:focus, .field input[type="text"]:focus{ outline:none; border-color:var(--color-accent); }
 
-#mappingField{ display:flex; flex-direction:column; gap:14px; max-width:none; }
+#mappingField{ display:flex; flex-direction:column; gap:14px; width:100%; max-width:640px; margin:0 auto; }
 #mappingField label{ margin-bottom:0; }
 #mappingField .field__hint{ margin-top:0; }
 .mapping-row{ display:flex; align-items:center; gap:16px; }
 .mapping-row__label{ flex:0 0 80px; font-size:13px; color:var(--color-neutral-300); }
-.mapping-row__value{ flex:0 0 64px; text-align:right; font-size:13px; color:var(--color-neutral-400); font-variant-numeric:tabular-nums; }
+.mapping-row__stepper{ flex:0 0 auto; display:flex; align-items:center; gap:6px; }
+.mapping-row__step{
+  width:28px; height:28px; flex:0 0 auto; border-radius:50%;
+  border:1px solid var(--color-divider); background:rgba(233,233,237,0.05);
+  color:var(--color-text); font-size:16px; line-height:1; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  transition:background-color .1s ease, border-color .1s ease;
+}
+.mapping-row__step:hover{ border-color:var(--color-accent); color:var(--color-accent); }
+.mapping-row__number{
+  width:68px; flex:0 0 auto; box-sizing:border-box; text-align:center;
+  font:inherit; font-size:13px; font-variant-numeric:tabular-nums;
+  background:var(--color-neutral-900); color:var(--color-text);
+  border:1px solid var(--color-divider); border-radius:980px; padding:6px 4px;
+  appearance:textfield; -moz-appearance:textfield;
+}
+.mapping-row__number::-webkit-outer-spin-button,
+.mapping-row__number::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
+.mapping-row__number:focus{ outline:none; border-color:var(--color-accent); }
 .mapping-row input[type="range"]{
   flex:1 1 auto; appearance:none; -webkit-appearance:none;
   height:6px; border-radius:3px; background:var(--color-neutral-700);

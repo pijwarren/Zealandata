@@ -519,11 +519,11 @@ have that failure mode.)
 When nothing's been chosen, the Pi can shuffle through random videos from
 your own library — muted by default — instead of sitting on a blank
 screen. It's not a separate file you need to prepare; it just picks
-randomly from whatever's already in your media folder. On by default —
+randomly from whatever's already in your media folder. Off by default —
 toggle it live from the "Screensaver on/off" pill in the top bar, or set
 its startup default here:
 ```
-Environment=ZEALANDATA_SCREENSAVER_ENABLED=1
+Environment=ZEALANDATA_SCREENSAVER_ENABLED=0
 # Environment=ZEALANDATA_SCREENSAVER_MUTED=1
 ```
 
