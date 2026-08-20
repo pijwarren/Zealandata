@@ -465,13 +465,24 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 
 .pinpad{
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:71;
-  background:var(--color-neutral-900);
-  border:1px solid var(--color-neutral-700);
+  background:rgba(43,39,65,0.5);
+  backdrop-filter:blur(28px) saturate(180%);
+  -webkit-backdrop-filter:blur(28px) saturate(180%);
+  border:1px solid rgba(255,255,255,0.16);
   border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.05),
+    var(--shadow-lg);
   padding:var(--space-8) var(--space-6);
   width:min(280px, 88vw);
   display:flex; flex-direction:column; align-items:center; gap:var(--space-6);
+}
+.pinpad::before{
+  content:"";
+  position:absolute; inset:0; z-index:-1;
+  border-radius:inherit; pointer-events:none;
+  background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
 }
 .pinpad--shake{ animation:pinpad-shake .4s ease; }
 @keyframes pinpad-shake{
@@ -517,6 +528,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 }
 
 .dock{
+  position:relative; isolation:isolate;
   display:grid;
   grid-template-columns:auto 1fr auto;
   grid-template-areas:
@@ -526,12 +538,21 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   align-items:center;
   column-gap:18px;
   padding:14px 22px;
-  background:rgba(35,37,50,0.78);
-  backdrop-filter:blur(24px) saturate(1.5);
-  -webkit-backdrop-filter:blur(24px) saturate(1.5);
-  border:1px solid var(--color-divider);
+  background:rgba(43,39,65,0.5);
+  backdrop-filter:blur(28px) saturate(180%);
+  -webkit-backdrop-filter:blur(28px) saturate(180%);
+  border:1px solid rgba(255,255,255,0.16);
   border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.05),
+    var(--shadow-lg);
+}
+.dock::before{
+  content:"";
+  position:absolute; inset:0; z-index:-1;
+  border-radius:inherit; pointer-events:none;
+  background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
 }
 
 .dock__preview{
@@ -563,12 +584,22 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 
 .dock__docs-panel.hidden{ display:none; }
 .dock__docs-panel{
+  position:relative; isolation:isolate;
   padding:12px 16px 14px;
-  background:rgba(22,24,38,0.55);
-  backdrop-filter:blur(12px);
-  -webkit-backdrop-filter:blur(12px);
-  border:1px solid var(--color-divider);
+  background:rgba(43,39,65,0.5);
+  backdrop-filter:blur(28px) saturate(180%);
+  -webkit-backdrop-filter:blur(28px) saturate(180%);
+  border:1px solid rgba(255,255,255,0.16);
   border-radius:var(--radius-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.05);
+}
+.dock__docs-panel::before{
+  content:"";
+  position:absolute; inset:0; z-index:-1;
+  border-radius:inherit; pointer-events:none;
+  background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
 }
 .dock__docs-label{
   font-family:var(--font-heading); font-size:11px; font-weight:500;
@@ -611,12 +642,18 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 }
 .doc-viewer__close{
   position:absolute; top:20px; right:20px;
-  background:rgba(35,37,50,0.85); border-color:var(--color-divider);
+  background:rgba(43,39,65,0.5);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-color:rgba(255,255,255,0.16);
 }
 .doc-viewer__nav{
   position:absolute; top:50%; transform:translateY(-50%);
   width:44px; height:44px;
-  background:rgba(35,37,50,0.85); border-color:var(--color-divider);
+  background:rgba(43,39,65,0.5);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-color:rgba(255,255,255,0.16);
   z-index:1;
 }
 .doc-viewer__nav:hover{ border-color:var(--color-accent); }
