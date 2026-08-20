@@ -382,9 +382,12 @@ static const float BASE_ORIENTATION_Z_DEG = 90.f;
 static const float BASE_ORIENTATION_X_DEG = 180.f;
 
 /* How the video needs turning to land the right way up on the print.
-   Clockwise degrees as seen on the projector, then a flip across the
-   horizontal axis. */
-static const int VIDEO_ROTATION_CW_DEG = 180;
+   Named "clockwise" for continuity with the name orient_uv()'s switch
+   cases use, but confirmed live against the physical print: increasing
+   this value turns the displayed image counter-clockwise as actually
+   seen on the projector, not clockwise -- a flip across the horizontal
+   axis (if enabled) applies on top of that. */
+static const int VIDEO_ROTATION_CW_DEG = 90;
 static const bool VIDEO_FLIP_ACROSS_HORIZONTAL = false;
 
 static void orient_uv(float *u, float *v) {
