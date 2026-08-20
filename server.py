@@ -62,8 +62,8 @@ USE_DRM = os.environ.get("ZEALANDATA_USE_DRM", "0") == "1"
 # renders the same video content texture-mapped onto a 3D model (see
 # PROJECTION_OBJ_PATH) for physical projection-mapping setups, with its pose
 # (scale/rotation/offset) calibrated via /api/mapping. All the higher-level
-# orchestration (screensaver shuffling, spinner transitions, idle timeout,
-# progress tracking) is shared between both backends -- only the low-level
+# orchestration (screensaver shuffling, idle timeout, progress tracking) is
+# shared between both backends -- only the low-level
 # "load this file" / "get playback position" / "pause, seek, stop" primitives
 # differ, behind the backend_* functions below.
 RENDER_BACKEND = os.environ.get("ZEALANDATA_RENDER_BACKEND", "mpv").strip().lower()
@@ -176,16 +176,8 @@ ADMIN_MAX_ATTEMPTS = 5
 ADMIN_LOCKOUT_SECONDS = 120
 UPLOAD_MAX_MB = int(os.environ.get("ZEALANDATA_UPLOAD_MAX_MB", "8192"))
 
-# A short spinner animation is shown between every HDMI transition (a
-# selected video, a screensaver pick, the idle image) rather than a
-# brightness-based cross-fade -- see SPINNER_VIDEO_PATH/_hdmi_load. Held for
-# this long before the real content loads.
-SPINNER_HOLD_SECONDS = 1.5
-SPINNER_VIDEO_PATH = os.path.join(BASE_DIR, "static", "spinner.mp4")
-
 # A projection-mapping test pattern, played looping/muted on demand from the
-# calibration section -- not a library item, just a fixed asset like the
-# spinner above.
+# calibration section -- not a library item, just a fixed asset.
 GRIDCHECK_VIDEO_PATH = os.path.join(BASE_DIR, "static", "Gridcheck.mp4")
 
 # Resume threshold: only offer/apply "continue watching" if between these
@@ -962,7 +954,7 @@ def _hdmi_supervisor_loop():
             print("[mpv] persistent HDMI process died — restarting")
             _spawn_hdmi_process()
             mpv_generation += 1
-        _enter_idle_state(spinner=False)
+        _enter_idle_state()
 
 
 def _still_current(gen):
@@ -978,9 +970,9 @@ def _still_current(gen):
 def _claim_generation(kind):
     """Bump mpv_generation and set current_kind, atomically, and hand back
     the new generation number -- the one thing that actually needs the
-    lock. Everything after this (the spinner, the loadfile) runs lock-free,
-    so a competing claim can supersede it immediately instead of having to
-    wait for it to finish first."""
+    lock. Everything after this (the loadfile) runs lock-free, so a
+    competing claim can supersede it immediately instead of having to wait
+    for it to finish first."""
     global mpv_generation, current_kind
     with mpv_lock:
         current_kind = kind
@@ -990,8 +982,8 @@ def _claim_generation(kind):
 
 def _backend_set_props_and_load(path, keep_open, loop_file, mute, start, image_duration=None, media_id=None, is_image=False):
     """The one place that actually pushes a file onto whichever backend
-    owns HDMI output -- everything above this (spinner timing, generation
-    checks) is shared between both backends."""
+    owns HDMI output -- everything above this (generation checks) is
+    shared between both backends."""
     if RENDER_BACKEND != "webgl":
         if image_duration is not None:
             mpv_send({"command": ["set_property", "image-display-duration", image_duration]})
@@ -1006,11 +998,9 @@ def _backend_set_props_and_load(path, keep_open, loop_file, mute, start, image_d
     # webgl backend: translate an mpv-style absolute filesystem path into a
     # URL the /projection page's <video> can actually load. media_id (when
     # the caller has one -- a real library item) is the normal case; the
-    # spinner, idle image, and gridcheck pattern are the fixed exceptions.
+    # idle image and gridcheck pattern are the fixed exceptions.
     if media_id:
         url = f"/api/media/{media_id}/stream"
-    elif path == SPINNER_VIDEO_PATH:
-        url = "/static/spinner.mp4"
     elif path == LOADING_IMAGE_PATH:
         url = "/api/loading-image"
     elif path == GRIDCHECK_VIDEO_PATH:
@@ -1033,7 +1023,7 @@ def _backend_set_props_and_load(path, keep_open, loop_file, mute, start, image_d
         })
 
 
-def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, spinner=True, gen=None, media_id=None, is_image=False):
+def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=None, gen=None, media_id=None, is_image=False):
     """Set the playback properties that should apply to the next file, then
     load it. Done as separate set_property calls (rather than loadfile's
     own trailing "options" argument) since that argument's exact position
@@ -1043,36 +1033,19 @@ def _hdmi_load(path, keep_open, loop_file, mute, start="none", image_duration=No
     otherwise leave the *next* thing loaded (a screensaver pick, another
     video) starting paused as well.
 
-    spinner=True briefly cuts to a short spinner animation (an ordinary
-    video, played via the same loadfile mechanism as everything else)
-    before loading the real content -- a cross-fade (an earlier approach)
-    needed mpv's "brightness" equalizer property animated via a rapid
-    sequence of IPC calls, which turned out to be fragile on real hardware
-    and produced a visibly choppy ramp; this needs nothing exotic at all.
-    spinner=False skips it entirely -- used only for the very first
-    idle-image load right after mpv is spawned, since touching mpv that
-    early risks it before its DRM context has actually settled.
-
-    gen, if given, is checked before the spinner, after its hold, and
-    before the real loadfile -- if something newer has already claimed the
-    generation by any of those points, this bails out immediately rather
-    than finishing a transition that's about to be immediately overwritten
-    (e.g. someone picked a video while a screensaver pick's spinner was
-    still showing).
+    gen, if given, is checked before the real loadfile -- if something
+    newer has already claimed the generation by that point, this bails out
+    immediately rather than finishing a transition that's about to be
+    immediately overwritten.
 
     media_id/is_image are only meaningful for the webgl backend -- see
     _backend_set_props_and_load."""
     if not _still_current(gen):
         return
-    if spinner and os.path.exists(SPINNER_VIDEO_PATH):
-        _backend_set_props_and_load(SPINNER_VIDEO_PATH, keep_open="no", loop_file="inf", mute="yes", start="none")
-        time.sleep(SPINNER_HOLD_SECONDS)
-        if not _still_current(gen):
-            return
     _backend_set_props_and_load(path, keep_open, loop_file, mute, start, image_duration=image_duration, media_id=media_id, is_image=is_image)
 
 
-def _go_idle(spinner=True, gen=None):
+def _go_idle(gen=None):
     """Show the loading image, held indefinitely, if one's configured;
     otherwise just unload whatever was playing and sit on mpv's own idle
     black frame."""
@@ -1080,23 +1053,20 @@ def _go_idle(spinner=True, gen=None):
     current_kind = "idle"
     if LOADING_IMAGE_PATH and os.path.exists(LOADING_IMAGE_PATH):
         _hdmi_load(LOADING_IMAGE_PATH, keep_open="yes", loop_file="no",
-                   mute="yes", image_duration="inf", spinner=spinner, gen=gen, is_image=True)
+                   mute="yes", image_duration="inf", gen=gen, is_image=True)
     else:
         backend_stop()
 
 
-def _enter_idle_state(spinner=True):
+def _enter_idle_state():
     """Called whenever HDMI has nothing queued next. Prefers the
     screensaver when it's enabled; otherwise holds the idle image so the
-    console is never what ends up on screen. spinner=False is passed
-    through right after a fresh mpv spawn (startup, or a crash-restart) so
-    the very first load doesn't touch mpv before its DRM context has
-    settled."""
+    console is never what ends up on screen."""
     if SCREENSAVER_ENABLED:
-        start_screensaver(spinner=spinner)
+        start_screensaver()
     else:
         gen = _claim_generation("idle")
-        _go_idle(spinner=spinner, gen=gen)
+        _go_idle(gen=gen)
 
 
 # ------------------------------------------------------------- idle timer ---
@@ -1145,7 +1115,7 @@ def _boot_grace_then_screensaver():
 # --------------------------------------------------------- screensaver ---
 
 
-def start_screensaver(spinner=True):
+def start_screensaver():
     """Kick off a background thread that shuffles through random library
     videos, one after another, until stop_screensaver() is called (i.e.
     someone picks something to watch)."""
@@ -1159,7 +1129,7 @@ def start_screensaver(spinner=True):
         current_kind = "screensaver"
         mpv_generation += 1
         gen = mpv_generation
-    screensaver_thread = threading.Thread(target=_screensaver_loop, args=(gen, spinner), daemon=True)
+    screensaver_thread = threading.Thread(target=_screensaver_loop, args=(gen,), daemon=True)
     screensaver_thread.start()
 
 
@@ -1170,14 +1140,13 @@ def stop_screensaver():
         thread.join(timeout=8)
 
 
-def _screensaver_loop(gen, spinner=True):
+def _screensaver_loop(gen):
     """Runs in its own thread: repeatedly picks a random library video and
     plays it (muted by default) until it ends naturally, then picks another
     — until screensaver_stop_event is set, or something newer (a real
     selection, or a crash-restart of the persistent mpv process) takes
     over. Individual picks are never looped — that's what keeps the
-    shuffle actually shuffling. spinner is only honored for the very first
-    pick — see _enter_idle_state — every pick after that always shows it."""
+    shuffle actually shuffling."""
     last_id = None
     while not screensaver_stop_event.is_set():
         with mpv_lock:
@@ -1203,9 +1172,8 @@ def _screensaver_loop(gen, spinner=True):
         # selection, a crash-restart), instead of finishing this pick's
         # transition first and making the newer thing wait behind it.
         _hdmi_load(pick["path"], keep_open="no", loop_file="no",
-                   mute="yes" if SCREENSAVER_MUTED else "no", spinner=spinner, gen=gen,
+                   mute="yes" if SCREENSAVER_MUTED else "no", gen=gen,
                    media_id=pick["id"])
-        spinner = True
 
         while not screensaver_stop_event.is_set():
             # Sleep before checking, not after -- mpv (or the webgl page)
@@ -1952,7 +1920,7 @@ if __name__ == "__main__":
     else:
         _spawn_hdmi_process()
         threading.Thread(target=_hdmi_supervisor_loop, daemon=True).start()
-    _go_idle(spinner=False)
+    _go_idle()
     threading.Thread(target=_boot_grace_then_screensaver, daemon=True).start()
     threading.Thread(target=_idle_watcher_loop, daemon=True).start()
     # The media cache starts cold on every process restart, and the first

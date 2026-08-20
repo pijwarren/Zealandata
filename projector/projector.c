@@ -21,8 +21,8 @@
  * Control  : a small IPC socket server here speaks a compatible subset of
  *            mpv's own JSON-line protocol (get_property/set_property/
  *            loadfile/seek/cycle/...), so server.py drives this exactly as
- *            it drove a standalone mpv -- screensaver, spinner, resume and
- *            progress all keep working untouched. Run the server with
+ *            it drove a standalone mpv -- screensaver, resume and progress
+ *            all keep working untouched. Run the server with
  *            ZEALANDATA_MPV_EXTERNAL=1 so it talks to this socket instead of
  *            spawning an mpv of its own.
  * Calibration: mapping.json is polled and applied live, matching the admin

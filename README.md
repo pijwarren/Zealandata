@@ -156,9 +156,9 @@ rotation, and X/Y offset are calibrated live from the web UI's admin panel
 sliders while watching the actual projector output until the video lines
 up with the physical print.
 
-Screensaver shuffling, the spinner transition, resume, and progress
-tracking all work identically to the mpv backend — none of that logic
-changed, only where the actual pixels end up.
+Screensaver shuffling, resume, and progress tracking all work identically
+to the mpv backend — none of that logic changed, only where the actual
+pixels end up.
 
 ### Running it on boot
 
@@ -437,53 +437,6 @@ thread notices and restarts it automatically, going back to the idle image
 rather than leaving the console exposed. Check `journalctl -u zealandata`
 if that ever happens repeatedly — it means something's wrong with `mpv`
 itself, not with a particular video file.
-
-## Spinner between transitions
-
-Every HDMI transition — a selected video, each screensaver pick, the idle
-image — briefly cuts to a small spinner animation (`static/spinner.mp4`,
-8 round dots fading around a ring) before the real content loads, rather
-than cutting straight to it. 1.5 seconds by default, tuned via
-`SPINNER_HOLD_SECONDS` near the top of `server.py` (not an env var — edit
-directly if you want it shorter/longer).
-
-An earlier version of this cross-faded to black instead, by animating
-mpv's `brightness` equalizer property. That turned out to be the wrong
-tool for the job — it needed a rapid sequence of IPC property-set calls
-per transition, which was fragile in practice (a stray malformed reply
-from mpv could abort mid-ramp and leave the picture stuck dark) and looked
-visibly choppy even once that was fixed. The spinner instead reuses the
-exact same `loadfile` mechanism already used for the idle image, selected
-videos, and screensaver picks — nothing exotic, no per-file properties
-animated in a loop, so there's nothing new that can leave the display in a
-broken state. Regenerate it any time with:
-```bash
-# 1. a small round dot, alpha-masked so it composites cleanly
-ffmpeg -f lavfi -i color=c=white:s=16x16 -frames:v 1 -update 1 -vf \
-  "format=rgba,geq=r='r(X,Y)':g='g(X,Y)':b='b(X,Y)':a='if(lte(hypot(X-8,Y-8),7),255,0)'" \
-  circle.png
-
-# 2. composite 8 copies of it around a ring, opacity fading like a comet trail
-ffmpeg -f lavfi -i color=c=black:s=240x240 \
-  -i circle.png -i circle.png -i circle.png -i circle.png -i circle.png -i circle.png -i circle.png -i circle.png \
-  -filter_complex \
-  "[1:v]format=rgba,colorchannelmixer=aa=1.0[d0];[2:v]format=rgba,colorchannelmixer=aa=0.863[d1];[3:v]format=rgba,colorchannelmixer=aa=0.745[d2];[4:v]format=rgba,colorchannelmixer=aa=0.627[d3];[5:v]format=rgba,colorchannelmixer=aa=0.510[d4];[6:v]format=rgba,colorchannelmixer=aa=0.392[d5];[7:v]format=rgba,colorchannelmixer=aa=0.275[d6];[8:v]format=rgba,colorchannelmixer=aa=0.176[d7];[0:v][d0]overlay=182:112[t0];[t0][d1]overlay=162:162[t1];[t1][d2]overlay=112:182[t2];[t2][d3]overlay=63:162[t3];[t3][d4]overlay=42:112[t4];[t4][d5]overlay=63:63[t5];[t5][d6]overlay=112:42[t6];[t6][d7]overlay=162:63[t7]" \
-  -map "[t7]" -frames:v 1 -update 1 spinner_dot.png
-
-# 3. spin that ring continuously, composited onto a full-screen black canvas.
-#    rotate=...t/1.5 + exactly 45 frames at 30fps makes one full turn land
-#    precisely at the end of SPINNER_HOLD_SECONDS (1.5s) -- keep these two
-#    in sync if you change SPINNER_HOLD_SECONDS in server.py.
-ffmpeg -f lavfi -i color=c=black:s=1920x1080:r=30 -loop 1 -i spinner_dot.png -filter_complex \
-  "[1:v]format=rgba,rotate=2*PI*t/1.5:c=black@0:ow=240:oh=240[spin];[0:v][spin]overlay=(W-w)/2:(H-h)/2:format=auto,format=yuv420p[out]" \
-  -map "[out]" -frames:v 45 -r 30 -c:v libx264 -pix_fmt yuv420p -movflags +faststart static/spinner.mp4
-
-rm circle.png spinner_dot.png  # build artifacts, not needed once spinner.mp4 exists
-```
-The very first idle-image load right after mpv starts (fresh boot, or a
-crash-restart) skips the spinner outright, since that's the highest-risk
-moment to be touching a brand new mpv process before its DRM context has
-settled.
 
 ## Idle timeout
 
