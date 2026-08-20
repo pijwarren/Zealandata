@@ -833,7 +833,7 @@ function sendMappingUpdate(partial) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
-  }, 80);
+  }, 30);
 }
 
 MAPPING_CONTROLS.forEach(({ key, rangeEl, numberEl, decimals }) => {

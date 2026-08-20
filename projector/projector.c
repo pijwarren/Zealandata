@@ -1150,10 +1150,10 @@ int main(void) {
        opposite fixes. */
     double acc_video = 0, acc_draw = 0, acc_present = 0;
     while (running) {
-        /* calibration is polled rather than watched: one stat() per 100ms is
+        /* calibration is polled rather than watched: one stat() per 30ms is
            nothing next to a frame, and it avoids an inotify dependency */
         double t = now_sec();
-        if (t - last_cal > 0.1) { mapping_reload(); last_cal = t; }
+        if (t - last_cal > 0.03) { mapping_reload(); last_cal = t; }
 
         double tA = now_sec();
         bus_pump();
