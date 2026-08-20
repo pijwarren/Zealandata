@@ -401,12 +401,13 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 .drawer__header h2{ font-family:var(--font-heading); font-weight:500; font-size:20px; margin:0; }
 .drawer__header #settingsCloseBtn{ position:absolute; top:50%; right:0; transform:translateY(-50%); }
 .settings-grid{
-  display:grid; grid-template-columns:1fr 1fr; column-gap:var(--space-8); row-gap:var(--space-6);
+  display:grid; grid-template-columns:1fr 1fr; grid-template-rows:repeat(3, auto);
+  grid-auto-flow:column; column-gap:var(--space-8); row-gap:var(--space-6);
   align-items:start;
 }
 .settings-grid .field{ margin:0; max-width:none; }
 @media (max-width:760px){
-  .settings-grid{ grid-template-columns:1fr; }
+  .settings-grid{ grid-template-columns:1fr; grid-template-rows:none; grid-auto-flow:row; }
 }
 .field{ width:100%; max-width:480px; margin:0 auto; }
 .field label{ display:block; font-size:12px; font-weight:500; color:var(--color-neutral-300); margin-bottom:9px; }
