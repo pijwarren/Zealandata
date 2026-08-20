@@ -370,15 +370,28 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:61;
   width:min(1100px, 94vw);
   max-height:96vh;
-  background:rgba(43,39,65,0.62);
-  backdrop-filter:blur(28px) saturate(150%);
-  -webkit-backdrop-filter:blur(28px) saturate(150%);
-  border:1px solid var(--color-neutral-700);
+  background:rgba(43,39,65,0.5);
+  backdrop-filter:blur(28px) saturate(180%);
+  -webkit-backdrop-filter:blur(28px) saturate(180%);
+  border:1px solid rgba(255,255,255,0.16);
   border-radius:var(--radius-lg);
-  box-shadow:var(--shadow-lg);
+  /* Apple "liquid glass": a bright top rim plus a soft inner sheen on top
+     of the usual drop shadow, standing in for specular highlight on a
+     curved glass surface -- the ::before below adds the sheen gradient
+     itself, this just frames it with light instead of a flat border. */
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.05),
+    var(--shadow-lg);
   padding:var(--space-8);
   display:flex; flex-direction:column; gap:var(--space-6);
   overflow-y:auto;
+}
+.drawer::before{
+  content:"";
+  position:absolute; inset:0; z-index:-1;
+  border-radius:inherit; pointer-events:none;
+  background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
 }
 .drawer__header{ position:relative; flex:0 0 auto; width:100%; text-align:center; }
 .drawer__header h2{ font-family:var(--font-heading); font-weight:500; font-size:20px; margin:0; }
