@@ -28,7 +28,7 @@ User=pj
 # cage refuses to start without this, and a systemd service doesn't get it
 # from a login session the way an interactive shell does.
 Environment=XDG_RUNTIME_DIR=/run/user/1000
-WorkingDirectory=/home/pj/zealandata-warped
+WorkingDirectory=/home/pj/zealandata
 # --autoplay-policy is load-bearing: without it Chromium blocks the page's
 # own unmuted video.play() calls and playback silently sits paused until
 # someone presses play a second time.

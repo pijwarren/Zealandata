@@ -18,12 +18,12 @@ After=network.target zealandata-splash.service
 # authentication required" rather than actually stopping anything.
 ExecStartPre=-/usr/bin/sudo /usr/bin/systemctl stop zealandata-splash.service
 User=pj
-WorkingDirectory=/home/pj/zealandata-warped
+WorkingDirectory=/home/pj/zealandata
 Environment=ZEALANDATA_DRM_CARD=/dev/dri/card1
-Environment=ZEALANDATA_PROJECTION_OBJ=/home/pj/zealandata-warped/static/3dPrint_210kFaces.obj
+Environment=ZEALANDATA_PROJECTION_OBJ=/home/pj/zealandata/static/3dPrint_210kFaces.obj
 Environment=ZEALANDATA_MPV_SOCKET=/tmp/zealandata-mpv.sock
-Environment=ZEALANDATA_MAPPING_FILE=/home/pj/zealandata-warped/mapping.json
-Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata-warped/loading.png
+Environment=ZEALANDATA_MAPPING_FILE=/home/pj/zealandata/mapping.json
+Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata/loading.png
 # This process creates the IPC socket (server.py just connects to it, in
 # ZEALANDATA_MPV_EXTERNAL=1 mode) -- clear any stale one from a previous
 # run before binding, since a leftover file with the wrong owner would
@@ -32,7 +32,7 @@ Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata-warped/loading.png
 # someone else (e.g. left over from manual root-run testing) -- better to
 # let the bind itself fail loudly than block startup on a cleanup step.
 ExecStartPre=-/bin/sh -c 'rm -f /tmp/zealandata-mpv.sock'
-ExecStart=/home/pj/zealandata-warped/projector/projector
+ExecStart=/home/pj/zealandata/projector/projector
 Restart=on-failure
 RestartSec=3
 

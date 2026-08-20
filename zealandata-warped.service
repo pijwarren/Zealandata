@@ -9,9 +9,9 @@ Wants=zealandata-warped-native.service
 # decode), which also creates the IPC socket this connects to as an
 # external mpv-compatible endpoint -- see ZEALANDATA_MPV_EXTERNAL below.
 User=pj
-WorkingDirectory=/home/pj/zealandata-warped
+WorkingDirectory=/home/pj/zealandata
 Environment=ZEALANDATA_MPV_EXTERNAL=1
-Environment=ZEALANDATA_PROJECTION_OBJ=/home/pj/zealandata-warped/static/3dPrint_210kFaces.obj
+Environment=ZEALANDATA_PROJECTION_OBJ=/home/pj/zealandata/static/3dPrint_210kFaces.obj
 Environment=ZEALANDATA_MEDIA_DIR=/home/pj/media
 Environment=ZEALANDATA_PORT=8008
 # Runs alongside the original mpv-based zealandata.service (port 8000), so
@@ -22,8 +22,8 @@ Environment=ZEALANDATA_IDLE_TIMEOUT_SECONDS=300
 Environment=ZEALANDATA_SEQUENCE_MIN_FRAMES=3
 Environment=ZEALANDATA_SEQUENCE_FPS=1
 Environment=ZEALANDATA_ADMIN_PIN=1234
-Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata-warped/loading.png
-ExecStart=/usr/bin/python3 /home/pj/zealandata-warped/server.py
+Environment=ZEALANDATA_LOADING_IMAGE=/home/pj/zealandata/loading.png
+ExecStart=/usr/bin/python3 /home/pj/zealandata/server.py
 Restart=on-failure
 RestartSec=3
 
