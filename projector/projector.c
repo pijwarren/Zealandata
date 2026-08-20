@@ -852,6 +852,21 @@ static void video_seek(double sec) {
                              (gint64)(sec * GST_SECOND));
 }
 
+/* KEY_UNIT above snaps to "the keyframe at or before" the target -- fine
+   (and fast) for scrub-bar dragging, but its notion of "nearest" comes from
+   the demuxer's own seek index, which isn't guaranteed to be frame-exact,
+   and compounds badly across repeated single-frame nudges. ACCURATE instead
+   decodes forward from the preceding keyframe to land exactly on the
+   requested time -- normally too expensive to use for every seek on a
+   long-GOP file, but a single-frame nudge is only ever at most one GOP away
+   regardless, so the cost is the same as KEY_UNIT in practice. Used only by
+   video_frame_back_step. */
+static void video_seek_accurate(double sec) {
+    gst_element_seek_simple(playbin, GST_FORMAT_TIME,
+                             GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
+                             (gint64)(sec * GST_SECOND));
+}
+
 static void video_stop(void) {
     gst_element_set_state(playbin, GST_STATE_READY);
     pthread_mutex_lock(&play_lock);
@@ -874,8 +889,14 @@ static void video_frame_back_step(void) {
     gst_element_set_state(playbin, GST_STATE_PAUSED);
     gst_element_get_state(playbin, NULL, NULL, GST_CLOCK_TIME_NONE);
     double pos = video_get_position();
-    double step = last_known_fps > 0 ? 1.0 / last_known_fps : 1.0 / 24.0;
-    video_seek(pos - step > 0 ? pos - step : 0);
+    double fps = last_known_fps > 0 ? last_known_fps : 24.0;
+    /* Round to the nearest frame boundary before stepping back, not just
+       pos - 1/fps -- pos itself is a queried float that can sit a hair off
+       true frame boundaries, and that error would otherwise compound with
+       every repeated press. */
+    double frame_idx = round(pos * fps);
+    double target = (frame_idx > 0 ? frame_idx - 1 : 0) / fps;
+    video_seek_accurate(target);
 }
 
 static double video_estimated_frame_number(void) {
