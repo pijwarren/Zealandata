@@ -62,6 +62,7 @@
 *{ box-sizing:border-box; }
 
 html,body{
+  --hero-h: clamp(380px, 64vh, 640px);
   margin:0;
   min-height:100vh;
   background:var(--color-bg);
@@ -177,7 +178,7 @@ button:focus-visible, .card:focus-visible{
 .hero{
   position:sticky; top:0; z-index:2;
   display:flex; flex-direction:column;
-  height:64vh; min-height:380px; max-height:640px;
+  height:var(--hero-h);
 }
 .hero__media{ position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
 .hero__bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
@@ -214,9 +215,12 @@ button:focus-visible, .card:focus-visible{
   font-size:12px; font-weight:500;
   text-transform:uppercase; letter-spacing:.6px;
   color:var(--color-neutral-300);
-  margin:0 0 16px 12px;
+  margin:0 0 8px 12px;
 }
-.row{ margin-bottom:var(--space-8); scroll-margin-top:90px; }
+/* Offset by the full sticky hero+nav height (not just a nominal header
+   size) so a category jump lands with the row heading actually visible
+   below the pinned hero, instead of hidden underneath it. */
+.row{ margin-bottom:var(--space-8); scroll-margin-top:calc(var(--hero-h) + 20px); }
 
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;
@@ -701,7 +705,7 @@ body.admin-mode #setHeroBtn{ display:flex; }
 
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
-  .hero{ height:38vh; min-height:250px; }
+  html,body{ --hero-h: clamp(250px, 38vh, 640px); }
   /* bottom must clear #browseMain's -40px overlap (below) or the hero's
      own content -- particularly the Play button, last in the stack --
      gets visually covered by #browseMain painting on top of it */
