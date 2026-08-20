@@ -267,7 +267,7 @@ button:focus-visible, .card:focus-visible{
      each side from the scale, plus the 4px lift eating into the top). */
   padding:16px 12px 20px; scrollbar-width:thin;
 }
-.row__scroller .card{ flex:0 0 200px; }
+.row__scroller .card{ flex:0 0 300px; }
 
 .row__viewport{ position:relative; }
 .row__arrow{
@@ -720,7 +720,7 @@ body.admin-mode #setHeroBtn{ display:flex; }
     overflow:hidden; margin-bottom:14px;
   }
   #browseMain{ padding:26px 16px 160px; }
-  .row__scroller .card{ flex:0 0 150px; }
+  .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
   .category-nav{ padding:14px 16px 18px; }
   .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; }
