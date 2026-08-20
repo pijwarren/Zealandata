@@ -95,6 +95,19 @@ MAPPING_NUMERIC = {
     # for a smoother picture -- and softness costs little here, since the
     # image lands on a physical relief model rather than a flat screen.
     "render_scale": 1.0,
+    # Keystone: how far each corner of the final rendered picture is nudged
+    # from its default position (+/-1 spans the whole display), correcting
+    # for the projector itself sitting off-axis from the projection
+    # surface -- on top of, not instead of, the scale/rotation/offset above,
+    # which corrects the 3D model's own pose within the frame.
+    "keystone_tl_x": 0.0,
+    "keystone_tl_y": 0.0,
+    "keystone_tr_x": 0.0,
+    "keystone_tr_y": 0.0,
+    "keystone_bl_x": 0.0,
+    "keystone_bl_y": 0.0,
+    "keystone_br_x": 0.0,
+    "keystone_br_y": 0.0,
 }
 # Calibration aid only: lights the model from an angle so its relief is
 # actually readable while lining it up. Deliberately off by default and

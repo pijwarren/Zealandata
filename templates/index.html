@@ -162,12 +162,85 @@
         <button type="button" class="mapping-row__step" data-target="mappingOffsetY" data-dir="1" aria-label="Increase offset Y">+</button>
       </div>
     </div>
+    <label class="mapping-subheading">Keystone correction</label>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Top-left X</span>
+      <input type="range" id="mappingKeystoneTLX" min="-0.3" max="0.3" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTLX" data-dir="-1" aria-label="Decrease top-left X">−</button>
+        <input type="number" class="mapping-row__number" id="mappingKeystoneTLXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTLX" data-dir="1" aria-label="Increase top-left X">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Top-left Y</span>
+      <input type="range" id="mappingKeystoneTLY" min="-0.3" max="0.3" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTLY" data-dir="-1" aria-label="Decrease top-left Y">−</button>
+        <input type="number" class="mapping-row__number" id="mappingKeystoneTLYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTLY" data-dir="1" aria-label="Increase top-left Y">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Top-right X</span>
+      <input type="range" id="mappingKeystoneTRX" min="-0.3" max="0.3" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTRX" data-dir="-1" aria-label="Decrease top-right X">−</button>
+        <input type="number" class="mapping-row__number" id="mappingKeystoneTRXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTRX" data-dir="1" aria-label="Increase top-right X">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Top-right Y</span>
+      <input type="range" id="mappingKeystoneTRY" min="-0.3" max="0.3" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTRY" data-dir="-1" aria-label="Decrease top-right Y">−</button>
+        <input type="number" class="mapping-row__number" id="mappingKeystoneTRYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTRY" data-dir="1" aria-label="Increase top-right Y">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Bottom-left X</span>
+      <input type="range" id="mappingKeystoneBLX" min="-0.3" max="0.3" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBLX" data-dir="-1" aria-label="Decrease bottom-left X">−</button>
+        <input type="number" class="mapping-row__number" id="mappingKeystoneBLXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBLX" data-dir="1" aria-label="Increase bottom-left X">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Bottom-left Y</span>
+      <input type="range" id="mappingKeystoneBLY" min="-0.3" max="0.3" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBLY" data-dir="-1" aria-label="Decrease bottom-left Y">−</button>
+        <input type="number" class="mapping-row__number" id="mappingKeystoneBLYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBLY" data-dir="1" aria-label="Increase bottom-left Y">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Bottom-right X</span>
+      <input type="range" id="mappingKeystoneBRX" min="-0.3" max="0.3" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBRX" data-dir="-1" aria-label="Decrease bottom-right X">−</button>
+        <input type="number" class="mapping-row__number" id="mappingKeystoneBRXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBRX" data-dir="1" aria-label="Increase bottom-right X">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Bottom-right Y</span>
+      <input type="range" id="mappingKeystoneBRY" min="-0.3" max="0.3" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBRY" data-dir="-1" aria-label="Decrease bottom-right Y">−</button>
+        <input type="number" class="mapping-row__number" id="mappingKeystoneBRYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBRY" data-dir="1" aria-label="Increase bottom-right Y">+</button>
+      </div>
+    </div>
     <div class="mapping-actions">
       <button type="button" class="btn btn-secondary" id="mappingShadingBtn">Turn on calibration shading</button>
       <button type="button" class="btn btn-secondary" id="mappingGridcheckBtn">Play grid check (loop)</button>
       <button type="button" class="btn btn-secondary" id="mappingResetBtn">Reset to default</button>
     </div>
-    <p class="field__hint">Adjusts how the video lines up with the physical 3D-printed model on the projection output — reflects live on the projector as you drag. Calibration shading lights the model so its relief is readable while you line it up — turn it back off for real projection. Grid check plays a looping test pattern on the mesh to help line things up; use the player's Stop button below to end it.</p>
+    <p class="field__hint">Adjusts how the video lines up with the physical 3D-printed model on the projection output — reflects live on the projector as you drag. Calibration shading lights the model so its relief is readable while you line it up — turn it back off for real projection. Grid check plays a looping test pattern on the mesh to help line things up; use the player's Stop button below to end it. Keystone correction nudges each corner of the projected image independently, for when the projector itself sits off-axis from the projection surface — this is separate from the scale/rotation/offset sliders above, which position the 3D model within the frame rather than the frame itself.</p>
   </div>
 </div>
 

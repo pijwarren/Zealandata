@@ -77,8 +77,16 @@ static double now_sec(void) {
 struct mapping {
     float scale, rot_x, rot_y, rot_z, off_x, off_y, render_scale;
     bool shading;
+    /* Keystone: how far each corner of the final rendered picture is
+       nudged from its default position, in NDC units (+-1 spans the full
+       display) -- corrects for the projector itself sitting off-axis from
+       the projection surface, on top of (not instead of) the scale/
+       rotation/offset calibration above, which corrects the 3D model's own
+       pose. See the warp pass in the render loop for how these turn into
+       an actual perspective-correct quad warp. */
+    float ks_tl_x, ks_tl_y, ks_tr_x, ks_tr_y, ks_bl_x, ks_bl_y, ks_br_x, ks_br_y;
 };
-static struct mapping map_cur = { 1, 0, 0, 0, 0, 0, 1, false };
+static struct mapping map_cur = { 1, 0, 0, 0, 0, 0, 1, false, 0, 0, 0, 0, 0, 0, 0, 0 };
 static const char *mapping_path = "/home/pj/zealandata/mapping.json";
 /* Sub-second resolution matters here: st_mtime alone is whole seconds, so
    several slider-drag writes landing in the same wall-clock second would
@@ -133,11 +141,22 @@ static void mapping_reload(void) {
     json_num(buf, "offset_y", &map_cur.off_y);
     json_num(buf, "render_scale", &map_cur.render_scale);
     json_bool(buf, "shading", &map_cur.shading);
+    json_num(buf, "keystone_tl_x", &map_cur.ks_tl_x);
+    json_num(buf, "keystone_tl_y", &map_cur.ks_tl_y);
+    json_num(buf, "keystone_tr_x", &map_cur.ks_tr_x);
+    json_num(buf, "keystone_tr_y", &map_cur.ks_tr_y);
+    json_num(buf, "keystone_bl_x", &map_cur.ks_bl_x);
+    json_num(buf, "keystone_bl_y", &map_cur.ks_bl_y);
+    json_num(buf, "keystone_br_x", &map_cur.ks_br_x);
+    json_num(buf, "keystone_br_y", &map_cur.ks_br_y);
     if (map_cur.render_scale < 0.25f) map_cur.render_scale = 0.25f;
     if (map_cur.render_scale > 1.0f) map_cur.render_scale = 1.0f;
-    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f shading=%d\n",
+    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f shading=%d "
+           "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
-           map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.shading);
+           map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.shading,
+           map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
+           map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y);
 }
 
 /* ============================================================ DRM / KMS == */
@@ -360,6 +379,46 @@ static void mat_ortho(mat4 m, float l, float r, float b, float t, float n, float
     mat_identity(m);
     m[0] = 2 / (r - l); m[5] = 2 / (t - b); m[10] = -2 / (f - n);
     m[12] = -(r + l) / (r - l); m[13] = -(t + b) / (t - b); m[14] = -(f + n) / (f - n);
+}
+
+/* Maps the unit square (s,t in [0,1]) onto an arbitrary quad given by its
+   four corners -- the classical "unit square to quad" projective mapping
+   (Heckbert, "Fundamentals of Texture Mapping and Image Warping", 1989).
+   Used for keystone: a plain 2-triangle quad with independently-moved
+   corners would show a visible seam along the diagonal for anything but
+   tiny corrections, since linear interpolation across each triangle isn't
+   the same as a true perspective warp. Feeding this homography's (x,y,w)
+   straight into gl_Position instead (see the warp shader) makes the GPU's
+   own perspective-correct rasterization do the actual warping, which is
+   exactly what real projectors' geometry correction does. Corners are
+   ordered (0,0),(1,0),(1,1),(0,1) matching the source parameterization. */
+static void quad_homography(float x0, float y0, float x1, float y1,
+                             float x2, float y2, float x3, float y3,
+                             float H[9]) {
+    float dx1 = x1 - x2, dx2 = x3 - x2, dx3 = x0 - x1 + x2 - x3;
+    float dy1 = y1 - y2, dy2 = y3 - y2, dy3 = y0 - y1 + y2 - y3;
+    float a, b, c, d, e, f, g, h;
+    if (fabsf(dx3) < 1e-6f && fabsf(dy3) < 1e-6f) {
+        /* Degenerates to a plain affine (parallelogram) map. */
+        a = x1 - x0; b = x2 - x1; c = x0;
+        d = y1 - y0; e = y2 - y1; f = y0;
+        g = 0.f; h = 0.f;
+    } else {
+        float denom = dx1 * dy2 - dx2 * dy1;
+        g = (dx3 * dy2 - dx2 * dy3) / denom;
+        h = (dx1 * dy3 - dx3 * dy1) / denom;
+        a = x1 - x0 + g * x1; b = x3 - x0 + h * x3; c = x0;
+        d = y1 - y0 + g * y1; e = y3 - y0 + h * y3; f = y0;
+    }
+    H[0] = a; H[1] = b; H[2] = c;
+    H[3] = d; H[4] = e; H[5] = f;
+    H[6] = g; H[7] = h; H[8] = 1.f;
+}
+
+static void homography_apply(const float H[9], float s, float t, float *x, float *y, float *w) {
+    *x = H[0] * s + H[1] * t + H[2];
+    *y = H[3] * s + H[4] * t + H[5];
+    *w = H[6] * s + H[7] * t + H[8];
 }
 
 /* ================================================================= mesh == */
@@ -608,6 +667,35 @@ static const char *FS_SRC =
     "    c.rgb *= (0.55 + 1.1 * d);\n"
     "  }\n"
     "  oColor = vec4(c.rgb, 1.0);\n"
+    "}\n";
+
+/* Keystone warp pass: draws the fully-rendered scene (as a texture) onto a
+   quad whose 4 corners are independently positioned per keystone_reload's
+   homography, correcting for the projector itself sitting off-axis from
+   the projection surface. aClipPos.xy/z carry the (x,y,w) the CPU already
+   computed via quad_homography() -- feeding w through to gl_Position.w
+   directly, rather than pre-dividing by it, is what makes the GPU's own
+   rasterizer perspective-correct both the position and the UV
+   interpolation across the quad, avoiding the diagonal seam a naive
+   2-triangle affine warp would show. */
+static const char *WARP_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec3 aClipPos;\n"
+    "layout(location=1) in vec2 aUV;\n"
+    "out vec2 vUV;\n"
+    "void main(){\n"
+    "  vUV = aUV;\n"
+    "  gl_Position = vec4(aClipPos.xy, 0.0, aClipPos.z);\n"
+    "}\n";
+
+static const char *WARP_FS_SRC =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "in vec2 vUV;\n"
+    "uniform sampler2D uSceneTex;\n"
+    "out vec4 oColor;\n"
+    "void main(){\n"
+    "  oColor = texture(uSceneTex, vUV);\n"
     "}\n";
 
 static GLuint compile_shader(GLenum type, const char *src) {
@@ -1155,7 +1243,36 @@ int main(void) {
     GLint uShading = glGetUniformLocation(prog, "uShading");
     glUniform1i(glGetUniformLocation(prog, "uTex"), 0);
 
-    /* ---- scene target, for render_scale < 1 ---- */
+    /* ---- keystone warp pass: scene render target + its own quad ---- */
+    GLuint warpProg = glCreateProgram();
+    glAttachShader(warpProg, compile_shader(GL_VERTEX_SHADER, WARP_VS_SRC));
+    glAttachShader(warpProg, compile_shader(GL_FRAGMENT_SHADER, WARP_FS_SRC));
+    glLinkProgram(warpProg);
+    GLint warpLinked = 0; glGetProgramiv(warpProg, GL_LINK_STATUS, &warpLinked);
+    if (!warpLinked) { char log[2048]; glGetProgramInfoLog(warpProg, sizeof log, NULL, log);
+                        fprintf(stderr, "warp link: %s\n", log); return 1; }
+    glUseProgram(warpProg);
+    glUniform1i(glGetUniformLocation(warpProg, "uSceneTex"), 0);
+    glUseProgram(prog);
+
+    GLuint warpVao, warpVbo, warpIbo;
+    glGenVertexArrays(1, &warpVao); glBindVertexArray(warpVao);
+    glGenBuffers(1, &warpVbo); glBindBuffer(GL_ARRAY_BUFFER, warpVbo);
+    /* 4 corners * (x,y,w, u,v) -- rewritten every frame from the keystone
+       homography, so GL_DYNAMIC_DRAW rather than STATIC. */
+    glBufferData(GL_ARRAY_BUFFER, 4 * 5 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
+    static const unsigned warpIdx[6] = { 0, 1, 2, 0, 2, 3 };
+    glGenBuffers(1, &warpIbo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, warpIbo);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof warpIdx, warpIdx, GL_STATIC_DRAW);
+    glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
+
+    /* Scene is now always rendered off-screen (previously only when
+       render_scale < 1) since the warp pass needs a texture to draw from
+       either way -- direct-to-display is no longer a code path. */
     GLuint sceneFbo = 0, sceneTex = 0, sceneDepth = 0;
     int sceneW = 0, sceneH = 0;
 
@@ -1216,18 +1333,16 @@ int main(void) {
         acc_video += now_sec() - tA;
 
 
-        /* Scene target sized by render_scale. At full scale the mesh is drawn
-           straight to the display instead: the intermediate FBO exists only
-           so a reduced-resolution render can be upscaled, and the blit that
-           does it costs a full 1920x1080 pass every frame no matter how small
-           the scene target is -- which is why lowering render_scale appeared
-           to do nothing at all until this was split out. */
-        bool direct = map_cur.render_scale >= 0.999f;
-        int wantW = direct ? drm.mode.hdisplay : (int)(drm.mode.hdisplay * map_cur.render_scale);
-        int wantH = direct ? drm.mode.vdisplay : (int)(drm.mode.vdisplay * map_cur.render_scale);
+        /* Scene target sized by render_scale, always -- the warp pass below
+           needs a texture to draw from regardless of scale, so unlike
+           before there's no direct-to-display shortcut at scale 1.0
+           anymore (that shortcut existed only to skip an otherwise-
+           pointless full-resolution blit). */
+        int wantW = (int)(drm.mode.hdisplay * map_cur.render_scale);
+        int wantH = (int)(drm.mode.vdisplay * map_cur.render_scale);
         if (wantW < 16) wantW = 16;
         if (wantH < 16) wantH = 16;
-        if (!direct && (wantW != sceneW || wantH != sceneH)) {
+        if (wantW != sceneW || wantH != sceneH) {
             sceneW = wantW; sceneH = wantH;
             if (!sceneFbo) { glGenFramebuffers(1, &sceneFbo); glGenTextures(1, &sceneTex); glGenRenderbuffers(1, &sceneDepth); }
             glBindTexture(GL_TEXTURE_2D, sceneTex);
@@ -1266,7 +1381,7 @@ int main(void) {
         mat_mul(mvp, proj, model);
 
         double tB = now_sec();
-        glBindFramebuffer(GL_FRAMEBUFFER, direct ? 0 : sceneFbo);
+        glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
         glViewport(0, 0, wantW, wantH);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
@@ -1280,15 +1395,34 @@ int main(void) {
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 
-        if (!direct) {   /* upscale the reduced-resolution scene to the display */
-            glBindFramebuffer(GL_READ_FRAMEBUFFER, sceneFbo);
-            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
-            glViewport(0, 0, drm.mode.hdisplay, drm.mode.vdisplay);
-            glBlitFramebuffer(0, 0, sceneW, sceneH,
-                              0, 0, drm.mode.hdisplay, drm.mode.vdisplay,
-                              GL_COLOR_BUFFER_BIT, GL_LINEAR);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        /* ---- keystone warp: draw the scene texture onto a quad whose
+           corners are individually nudged by the calibration sliders ---- */
+        float H[9];
+        quad_homography(-1.f + map_cur.ks_bl_x, -1.f + map_cur.ks_bl_y,
+                          1.f + map_cur.ks_br_x, -1.f + map_cur.ks_br_y,
+                          1.f + map_cur.ks_tr_x,  1.f + map_cur.ks_tr_y,
+                         -1.f + map_cur.ks_tl_x,  1.f + map_cur.ks_tl_y,
+                         H);
+        float corners[4][2] = { {0,0}, {1,0}, {1,1}, {0,1} };  /* s,t; matches quad_homography's source order */
+        float warpVerts[4][5];
+        for (int i = 0; i < 4; i++) {
+            float x, y, w;
+            homography_apply(H, corners[i][0], corners[i][1], &x, &y, &w);
+            warpVerts[i][0] = x; warpVerts[i][1] = y; warpVerts[i][2] = w;
+            warpVerts[i][3] = corners[i][0]; warpVerts[i][4] = corners[i][1];
         }
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, drm.mode.hdisplay, drm.mode.vdisplay);
+        glClear(GL_COLOR_BUFFER_BIT);
+        glDisable(GL_DEPTH_TEST);
+        glUseProgram(warpProg);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, sceneTex);
+        glBindVertexArray(warpVao);
+        glBindBuffer(GL_ARRAY_BUFFER, warpVbo);
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof warpVerts, warpVerts);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(vao);   /* restore, matching pre-warp-pass state */
 
         glFinish();                       /* so the timing splits are real */
         acc_draw += now_sec() - tB;

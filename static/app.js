@@ -788,6 +788,14 @@ const MAPPING_CONTROLS = [
   { key: "rotation_z", range: "mappingRotationZ", number: "mappingRotationZNumber", decimals: 0 },
   { key: "offset_x", range: "mappingOffsetX", number: "mappingOffsetXNumber", decimals: 2 },
   { key: "offset_y", range: "mappingOffsetY", number: "mappingOffsetYNumber", decimals: 2 },
+  { key: "keystone_tl_x", range: "mappingKeystoneTLX", number: "mappingKeystoneTLXNumber", decimals: 3 },
+  { key: "keystone_tl_y", range: "mappingKeystoneTLY", number: "mappingKeystoneTLYNumber", decimals: 3 },
+  { key: "keystone_tr_x", range: "mappingKeystoneTRX", number: "mappingKeystoneTRXNumber", decimals: 3 },
+  { key: "keystone_tr_y", range: "mappingKeystoneTRY", number: "mappingKeystoneTRYNumber", decimals: 3 },
+  { key: "keystone_bl_x", range: "mappingKeystoneBLX", number: "mappingKeystoneBLXNumber", decimals: 3 },
+  { key: "keystone_bl_y", range: "mappingKeystoneBLY", number: "mappingKeystoneBLYNumber", decimals: 3 },
+  { key: "keystone_br_x", range: "mappingKeystoneBRX", number: "mappingKeystoneBRXNumber", decimals: 3 },
+  { key: "keystone_br_y", range: "mappingKeystoneBRY", number: "mappingKeystoneBRYNumber", decimals: 3 },
 ].map((c) => ({
   ...c,
   rangeEl: document.getElementById(c.range),
@@ -902,7 +910,11 @@ mappingGridcheckBtn.addEventListener("click", async () => {
 });
 mappingResetBtn.addEventListener("click", async () => {
   if (!adminPin) return;
-  const defaults = { scale: 1, rotation_x: 0, rotation_y: 0, rotation_z: 0, offset_x: 0, offset_y: 0 };
+  const defaults = {
+    scale: 1, rotation_x: 0, rotation_y: 0, rotation_z: 0, offset_x: 0, offset_y: 0,
+    keystone_tl_x: 0, keystone_tl_y: 0, keystone_tr_x: 0, keystone_tr_y: 0,
+    keystone_bl_x: 0, keystone_bl_y: 0, keystone_br_x: 0, keystone_br_y: 0,
+  };
   const res = await fetch("/api/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
