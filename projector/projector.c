@@ -679,6 +679,17 @@ static GstBusSyncReply bus_sync_handler(GstBus *bus, GstMessage *msg, gpointer d
 static void video_pump(void) {
     if (!appsink) return;
     GstSample *s = gst_app_sink_try_pull_sample(GST_APP_SINK(appsink), 0);
+    if (!s) {
+        /* try_pull_sample only ever delivers *new* samples produced while
+           PLAYING. Completing a paused seek (e.g. every frame-step) instead
+           preroll-decodes exactly one buffer to satisfy the state change,
+           which only shows up through this separate pull -- without it,
+           cur_tex keeps pointing at whatever was on screen before the
+           step: the reported position updates (video_get_position() falls
+           back to the pipeline query while paused) but the picture on the
+           actual projector never does. */
+        s = gst_app_sink_try_pull_preroll(GST_APP_SINK(appsink), 0);
+    }
     if (!s) return;
     if (cur_sample) gst_sample_unref(cur_sample);
     cur_sample = s;
