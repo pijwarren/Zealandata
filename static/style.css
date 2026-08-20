@@ -263,9 +263,10 @@ button:focus-visible, .card:focus-visible{
      box via transform:scale()+translateY() -- so this padding exists
      purely to give that growth room inside the scroller's own box,
      rather than getting clipped at its edges. Sized for the zoom in
-     .card:hover (scale(1.08) translateY(-4px) on a ~200px card: ~8px
-     each side from the scale, plus the 4px lift eating into the top). */
-  padding:16px 12px 20px; scrollbar-width:thin;
+     .card:hover (scale(1.08) translateY(-4px) on a ~300px card: ~12px
+     each side from the scale, plus room for the hover box-shadow's own
+     blur bleeding past that). */
+  padding:16px 24px 20px; scrollbar-width:thin;
 }
 .row__scroller .card{ flex:0 0 300px; }
 
