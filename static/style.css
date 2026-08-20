@@ -370,7 +370,9 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:61;
   width:min(1100px, 94vw);
   max-height:96vh;
-  background:var(--color-neutral-900);
+  background:rgba(43,39,65,0.62);
+  backdrop-filter:blur(28px) saturate(150%);
+  -webkit-backdrop-filter:blur(28px) saturate(150%);
   border:1px solid var(--color-neutral-700);
   border-radius:var(--radius-lg);
   box-shadow:var(--shadow-lg);
