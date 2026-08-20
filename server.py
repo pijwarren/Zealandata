@@ -1257,6 +1257,29 @@ def _watch_mpv_playback(generation, media_id, title):
         _enter_idle_state()
 
 
+def _watch_gridcheck_playback(generation):
+    """Same idle-detection loop as _watch_mpv_playback, minus the progress
+    tracking -- gridcheck isn't a library item, there's nothing to save.
+    Without this, current_kind would stay stuck on "video" after the dock's
+    Stop button actually stops mpv, and /api/status would keep reporting
+    the grid check as playing forever."""
+    while True:
+        time.sleep(2)
+        with mpv_lock:
+            if generation != mpv_generation:
+                return  # superseded by something newer
+        idle_active = backend_get("idle-active")
+        if idle_active is None:
+            continue  # socket hiccup / no heartbeat yet — don't mistake it for "went idle"
+        if idle_active:
+            break
+
+    with mpv_lock:
+        still_current = generation == mpv_generation
+    if still_current:
+        _enter_idle_state()
+
+
 def _start_mpv_playback(match, resume_seconds, loop=None, gen=None):
     if loop is None:
         loop = loop_enabled
@@ -1413,6 +1436,7 @@ def api_mapping_gridcheck():
     gen = _claim_generation("video")
     stop_screensaver()
     _hdmi_load(GRIDCHECK_VIDEO_PATH, keep_open="yes", loop_file="inf", mute="yes", start="none", gen=gen)
+    threading.Thread(target=_watch_gridcheck_playback, args=(gen,), daemon=True).start()
     return jsonify({"status": "playing", "title": "Gridcheck test pattern"})
 
 
