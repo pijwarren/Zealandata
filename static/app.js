@@ -360,7 +360,7 @@ function renderCategories(items) {
 
     const heading = document.createElement("h2");
     heading.className = "row__heading";
-    heading.textContent = onlyFlat ? "Library" : name;
+    heading.textContent = onlyFlat ? "Library" : name.replace(/\band\b/gi, "&");
     section.appendChild(heading);
 
     const scroller = document.createElement("div");

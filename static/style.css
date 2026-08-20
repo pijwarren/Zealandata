@@ -215,7 +215,7 @@ button:focus-visible, .card:focus-visible{
   font-size:15px; font-weight:500;
   text-transform:uppercase; letter-spacing:.6px;
   color:var(--color-neutral-300);
-  margin:0 0 4px 12px;
+  margin:0 0 4px;
 }
 /* Offset by the full sticky hero+nav height (not just a nominal header
    size) so a category jump lands with the row heading actually visible
@@ -260,13 +260,17 @@ button:focus-visible, .card:focus-visible{
   display:flex; gap:20px; overflow-x:auto;
   /* overflow-x:auto forces overflow-y to clip too (can't scroll one axis
      and let the other escape), and a hovered card grows beyond its own
-     box via transform:scale()+translateY() -- so this padding exists
-     purely to give that growth room inside the scroller's own box,
-     rather than getting clipped at its edges. Sized for the zoom in
-     .card:hover (scale(1.08) translateY(-4px) on a ~300px card: ~12px
-     each side from the scale, plus room for the hover box-shadow's own
-     blur bleeding past that). */
-  padding:16px 24px 20px; scrollbar-width:thin;
+     box via transform:scale()+translateY() plus its glow/drop-shadow's
+     own blur -- so this padding exists purely to give that room inside
+     the scroller's own box, rather than getting clipped at its edges
+     (top/bottom need more room than sides: the shadow's own 22px/40px
+     offset+blur reaches further below the card than above it).
+     Left/right padding is offset by a matching negative margin so the
+     scrollport gains bleed room without shifting where the first card
+     actually sits -- otherwise it'd land to the right of the row
+     heading above it instead of flush with it (and with the topbar/
+     category-nav, which all share the same var(--space-6) inset). */
+  padding:36px 32px 64px; margin:0 -32px; scrollbar-width:thin;
 }
 .row__scroller .card{ flex:0 0 300px; }
 
