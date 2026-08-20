@@ -444,7 +444,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   background:var(--color-accent); cursor:pointer;
   box-shadow:0 0 0 1px var(--color-accent);
 }
-#mappingField .field__hint{ max-width:640px; margin-left:auto; margin-right:auto; text-align:center; }
+#mappingField .field__hint{ max-width:640px; margin-left:auto; margin-right:auto; text-align:left; }
 .mapping-actions{ display:flex; justify-content:center; gap:12px; }
 .mapping-actions .btn{ flex:0 1 240px; justify-content:center; }
 
