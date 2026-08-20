@@ -225,7 +225,7 @@ screensaver_stop_event = threading.Event()
 # Metadata for whatever's currently playing — mainly so /api/status can
 # report a description without mpv needing to know what one is.
 meta_lock = threading.Lock()
-current_media_meta = {"id": None, "title": None, "description": None, "is_sequence": False, "frame_count": None, "thumbnail": None}
+current_media_meta = {"id": None, "title": None, "description": None, "is_sequence": False, "frame_count": None, "thumbnail": None, "is_gridcheck": False}
 
 # Title of whatever the screensaver is currently showing -- separate from
 # current_media_meta above, which is only for a deliberate selection, so the
@@ -1432,6 +1432,7 @@ def api_mapping_gridcheck():
             "id": None, "title": "Gridcheck test pattern",
             "description": None, "is_sequence": False,
             "frame_count": None, "thumbnail": None,
+            "is_gridcheck": True,
         })
     gen = _claim_generation("video")
     stop_screensaver()
@@ -1832,6 +1833,7 @@ def api_play(media_id):
             "is_sequence": match.get("is_sequence", False),
             "frame_count": match.get("frame_count"),
             "thumbnail": match.get("thumbnail"),
+            "is_gridcheck": False,
         })
 
     # Claim the generation *before* stopping the screensaver, not after --
@@ -1916,6 +1918,7 @@ def api_status():
         frame_count = current_media_meta.get("frame_count")
         thumbnail = current_media_meta.get("thumbnail")
         media_id = current_media_meta.get("id")
+        is_gridcheck = current_media_meta.get("is_gridcheck", False)
 
     return jsonify(
         {
@@ -1930,6 +1933,7 @@ def api_status():
             "description": description,
             "is_sequence": is_sequence,
             "frame_count": frame_count,
+            "is_gridcheck": is_gridcheck,
             # only worth the extra IPC round-trip for sequences, where the
             # dock actually shows a frame counter
             "frame_number": prop("estimated-frame-number") if is_sequence else None,

@@ -876,15 +876,29 @@ mappingShadingBtn.addEventListener("click", async () => {
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
 });
+let gridcheckActive = false;
+function paintGridcheckBtn(active) {
+  gridcheckActive = active;
+  mappingGridcheckBtn.textContent = active ? "Stop grid check" : "Play grid check (loop)";
+}
 mappingGridcheckBtn.addEventListener("click", async () => {
   if (!adminPin) return;
+  if (gridcheckActive) {
+    await fetch("/api/control/stop", { method: "POST" });
+    paintGridcheckBtn(false);
+    return;
+  }
   const res = await fetch("/api/mapping/gridcheck", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pin: adminPin }),
   });
   const data = await res.json().catch(() => ({}));
-  if (data.error) alert(data.error);
+  if (data.error) {
+    alert(data.error);
+    return;
+  }
+  paintGridcheckBtn(true);
 });
 mappingResetBtn.addEventListener("click", async () => {
   if (!adminPin) return;
@@ -1278,6 +1292,7 @@ async function pollStatus() {
   try {
     const res = await fetch("/api/status");
     const s = await res.json();
+    paintGridcheckBtn(!!(s.playing && s.is_gridcheck));
     if (s.playing) {
       if (!wasPlaying) {
         // something's playing that this client didn't initiate (fresh
