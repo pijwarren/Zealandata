@@ -23,6 +23,7 @@ const popularVisibilityField = document.getElementById("popularVisibilityField")
 const popularVisibilityBtn = document.getElementById("popularVisibilityBtn");
 const mappingField = document.getElementById("mappingField");
 const mappingShadingBtn = document.getElementById("mappingShadingBtn");
+const mappingGridcheckBtn = document.getElementById("mappingGridcheckBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
 const pinScrim = document.getElementById("pinScrim");
 const pinModal = document.getElementById("pinModal");
@@ -874,6 +875,16 @@ mappingShadingBtn.addEventListener("click", async () => {
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
+});
+mappingGridcheckBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  const res = await fetch("/api/mapping/gridcheck", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (data.error) alert(data.error);
 });
 mappingResetBtn.addEventListener("click", async () => {
   if (!adminPin) return;

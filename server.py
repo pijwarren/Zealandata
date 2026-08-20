@@ -183,6 +183,11 @@ UPLOAD_MAX_MB = int(os.environ.get("ZEALANDATA_UPLOAD_MAX_MB", "8192"))
 SPINNER_HOLD_SECONDS = 1.5
 SPINNER_VIDEO_PATH = os.path.join(BASE_DIR, "static", "spinner.mp4")
 
+# A projection-mapping test pattern, played looping/muted on demand from the
+# calibration section -- not a library item, just a fixed asset like the
+# spinner above.
+GRIDCHECK_VIDEO_PATH = os.path.join(BASE_DIR, "static", "Gridcheck.mp4")
+
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
 # "resuming" something that's basically already finished).
@@ -1001,13 +1006,15 @@ def _backend_set_props_and_load(path, keep_open, loop_file, mute, start, image_d
     # webgl backend: translate an mpv-style absolute filesystem path into a
     # URL the /projection page's <video> can actually load. media_id (when
     # the caller has one -- a real library item) is the normal case; the
-    # spinner and idle image are the two fixed exceptions.
+    # spinner, idle image, and gridcheck pattern are the fixed exceptions.
     if media_id:
         url = f"/api/media/{media_id}/stream"
     elif path == SPINNER_VIDEO_PATH:
         url = "/static/spinner.mp4"
     elif path == LOADING_IMAGE_PATH:
         url = "/api/loading-image"
+    elif path == GRIDCHECK_VIDEO_PATH:
+        url = "/static/Gridcheck.mp4"
     else:
         url = None
     try:
@@ -1376,6 +1383,37 @@ def api_set_mapping():
         if key in body:
             values[key] = bool(body[key])
     return jsonify(set_mapping(values))
+
+
+@app.route("/api/mapping/gridcheck", methods=["POST"])
+def api_mapping_gridcheck():
+    """Plays static/Gridcheck.mp4 looping/muted on the projector -- a test
+    pattern for lining the physical print up against. Not a library item,
+    so this skips progress tracking, play counting, and the background
+    watcher thread that a real selection gets; use the dock's own Stop
+    button to end it, same as any other playback."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+    if not os.path.exists(GRIDCHECK_VIDEO_PATH):
+        return jsonify({"error": "Gridcheck.mp4 not found in static/"}), 404
+
+    _mark_interaction()
+    with meta_lock:
+        current_media_meta.update({
+            "id": None, "title": "Gridcheck test pattern",
+            "description": None, "is_sequence": False,
+            "frame_count": None, "thumbnail": None,
+        })
+    gen = _claim_generation("video")
+    stop_screensaver()
+    _hdmi_load(GRIDCHECK_VIDEO_PATH, keep_open="yes", loop_file="inf", mute="yes", start="none", gen=gen)
+    return jsonify({"status": "playing", "title": "Gridcheck test pattern"})
 
 
 @app.route("/api/loading-image")
