@@ -234,6 +234,7 @@ _last_interaction = time.monotonic()
 
 _media_cache = {"items": None, "mtime": 0}
 _media_attachments = {}  # media_id -> {filename: absolute path}, rebuilt on every scan
+media_lock = threading.Lock()
 
 progress_lock = threading.Lock()
 hero_lock = threading.Lock()
@@ -782,9 +783,10 @@ def _scan_media():
 
 
 def get_media(force=False):
-    if force or _media_cache["items"] is None:
-        _media_cache["items"] = _scan_media()
-    return _media_cache["items"]
+    with media_lock:
+        if force or _media_cache["items"] is None:
+            _media_cache["items"] = _scan_media()
+        return _media_cache["items"]
 
 
 def get_media_by_id(media_id):
@@ -1887,5 +1889,11 @@ if __name__ == "__main__":
     _go_idle(spinner=False)
     threading.Thread(target=_boot_grace_then_screensaver, daemon=True).start()
     threading.Thread(target=_idle_watcher_loop, daemon=True).start()
+    # The media cache starts cold on every process restart, and the first
+    # /api/media request pays for a full directory walk plus an ffprobe
+    # duration check per video -- multiple seconds on a real library. Warm
+    # it here so that cost lands before the first browser request instead
+    # of in front of it.
+    threading.Thread(target=get_media, daemon=True).start()
     port = int(os.environ.get("ZEALANDATA_PORT", "8000"))
     app.run(host="0.0.0.0", port=port, threaded=True)
