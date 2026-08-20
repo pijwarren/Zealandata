@@ -679,6 +679,7 @@ static GstBusSyncReply bus_sync_handler(GstBus *bus, GstMessage *msg, gpointer d
 static void video_pump(void) {
     if (!appsink) return;
     GstSample *s = gst_app_sink_try_pull_sample(GST_APP_SINK(appsink), 0);
+    const char *src = "sample";
     if (!s) {
         /* try_pull_sample only ever delivers *new* samples produced while
            PLAYING. Completing a paused seek (e.g. every frame-step) instead
@@ -689,8 +690,9 @@ static void video_pump(void) {
            back to the pipeline query while paused) but the picture on the
            actual projector never does. */
         s = gst_app_sink_try_pull_preroll(GST_APP_SINK(appsink), 0);
+        src = "preroll";
     }
-    if (!s) return;
+    if (!s) { fprintf(stderr, "[pump-dbg] no sample or preroll available\n"); return; }
     if (cur_sample) gst_sample_unref(cur_sample);
     cur_sample = s;
 
@@ -703,8 +705,14 @@ static void video_pump(void) {
     GstGLSyncMeta *sync_meta = buf ? gst_buffer_get_gl_sync_meta(buf) : NULL;
     if (sync_meta) gst_gl_sync_meta_wait(sync_meta, gst_app_ctx);
     GstMemory *mem = buf ? gst_buffer_peek_memory(buf, 0) : NULL;
+    GLuint prev_tex = cur_tex;
     if (mem && gst_is_gl_memory(mem)) {
         cur_tex = ((GstGLMemory *)mem)->tex_id;
+    }
+    if (!strcmp(src, "preroll") || !mem || !gst_is_gl_memory(mem)) {
+        fprintf(stderr, "[pump-dbg] src=%s is_gl=%d prev_tex=%u new_tex=%u pts=%"
+                GST_TIME_FORMAT "\n", src, mem ? gst_is_gl_memory(mem) : -1,
+                prev_tex, cur_tex, GST_TIME_ARGS(buf ? GST_BUFFER_PTS(buf) : GST_CLOCK_TIME_NONE));
     }
     GstCaps *caps = gst_sample_get_caps(s);
     GstVideoInfo vinfo;
