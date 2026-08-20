@@ -834,7 +834,30 @@ static void video_set_pause(bool pause) {
     gst_element_set_state(playbin, pause ? GST_STATE_PAUSED : GST_STATE_PLAYING);
 }
 
+/* Querying playbin's own position reflects the pipeline's read-ahead --
+   decodebin's internal queues buffer up to ~1-2s of local file content by
+   default, so during PLAYING this can report a position noticeably ahead
+   of whatever's actually been decoded and is on screen. Pausing forces a
+   resync to the true position, which showed up as the picture (and the
+   reported time) jumping backward by however far the pipeline had read
+   ahead -- most visible as the dock's position suddenly dropping a couple
+   of seconds the instant playback paused. cur_sample is the actual frame
+   video_pump() last pulled off the appsink and handed to the renderer, so
+   its buffer timestamp is exactly what's currently on screen, immune to
+   upstream buffering. Falls back to the pipeline query only when nothing's
+   been decoded yet (right after a fresh load, before the first frame). */
 static double video_get_position(void) {
+    if (cur_sample) {
+        GstBuffer *buf = gst_sample_get_buffer(cur_sample);
+        if (buf && GST_BUFFER_PTS_IS_VALID(buf)) {
+            const GstSegment *seg = gst_sample_get_segment(cur_sample);
+            GstClockTime stream_time = seg
+                ? gst_segment_to_stream_time(seg, GST_FORMAT_TIME, GST_BUFFER_PTS(buf))
+                : GST_BUFFER_PTS(buf);
+            if (GST_CLOCK_TIME_IS_VALID(stream_time))
+                return (double)stream_time / GST_SECOND;
+        }
+    }
     gint64 pos = 0;
     if (!gst_element_query_position(playbin, GST_FORMAT_TIME, &pos)) return 0;
     return (double)pos / GST_SECOND;
