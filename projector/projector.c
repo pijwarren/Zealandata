@@ -837,17 +837,23 @@ static void video_set_pause(bool pause) {
 /* Querying playbin's own position reflects the pipeline's read-ahead --
    decodebin's internal queues buffer up to ~1-2s of local file content by
    default, so during PLAYING this can report a position noticeably ahead
-   of whatever's actually been decoded and is on screen. Pausing forces a
-   resync to the true position, which showed up as the picture (and the
-   reported time) jumping backward by however far the pipeline had read
-   ahead -- most visible as the dock's position suddenly dropping a couple
-   of seconds the instant playback paused. cur_sample is the actual frame
-   video_pump() last pulled off the appsink and handed to the renderer, so
-   its buffer timestamp is exactly what's currently on screen, immune to
-   upstream buffering. Falls back to the pipeline query only when nothing's
-   been decoded yet (right after a fresh load, before the first frame). */
+   of whatever's actually been decoded and is on screen. cur_sample is the
+   actual frame video_pump() last pulled off the appsink and handed to the
+   renderer, so its buffer timestamp is exactly what's currently on
+   screen, immune to upstream buffering -- used here to fix the dock's
+   position suddenly jumping backward a couple of seconds the instant
+   playback paused (revealing how far the pipeline had actually read
+   ahead of what was on screen).
+
+   PAUSED is the opposite case: appsink's regular pull only hands back
+   *new* samples delivered during PLAYING, not the single buffer GStreamer
+   preroll-decodes to complete a paused seek, so cur_sample goes stale and
+   stops updating the moment something pauses -- exactly the state
+   frame-stepping lives in. The plain pipeline query is accurate here,
+   though: preroll guarantees the sink is holding precisely the buffer
+   the seek landed on by the time the state change completes. */
 static double video_get_position(void) {
-    if (cur_sample) {
+    if (!video_get_pause() && cur_sample) {
         GstBuffer *buf = gst_sample_get_buffer(cur_sample);
         if (buf && GST_BUFFER_PTS_IS_VALID(buf)) {
             const GstSegment *seg = gst_sample_get_segment(cur_sample);
