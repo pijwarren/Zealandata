@@ -68,48 +68,50 @@
     </button>
   </div>
 
-  <div class="field">
-    <label>Library</label>
-    <button type="button" class="btn btn-secondary btn-block" id="rescanBtn">Rescan library</button>
-  </div>
+  <div class="settings-grid">
+    <div class="field">
+      <label>Library</label>
+      <button type="button" class="btn btn-secondary btn-block" id="rescanBtn">Rescan library</button>
+    </div>
 
-  <div class="field">
-    <label>Admin mode</label>
-    <button type="button" class="btn btn-secondary btn-block" id="adminModeBtn">Unlock admin mode</button>
-    <p class="field__hint">PIN-protected — lets you rename videos, set the hero banner, and upload new files.</p>
-  </div>
+    <div class="field">
+      <label>Admin mode</label>
+      <button type="button" class="btn btn-secondary btn-block" id="adminModeBtn">Unlock admin mode</button>
+      <p class="field__hint">PIN-protected — lets you rename videos, set the hero banner, and upload new files.</p>
+    </div>
 
-  <div class="field hidden" id="changePinField">
-    <label>Admin PIN</label>
-    <button type="button" class="btn btn-secondary btn-block" id="changePinBtn">Change PIN</button>
-    <p class="field__hint" id="changePinStatus"></p>
-  </div>
+    <div class="field hidden" id="changePinField">
+      <label>Admin PIN</label>
+      <button type="button" class="btn btn-secondary btn-block" id="changePinBtn">Change PIN</button>
+      <p class="field__hint" id="changePinStatus"></p>
+    </div>
 
-  <div class="field hidden" id="uploadField">
-    <label>Upload video</label>
-    <select class="select-block" id="uploadCategorySelect">
-      <option value="">Uncategorized</option>
-      <option value="__new__">+ New category…</option>
-    </select>
-    <input type="text" id="uploadNewCategory" class="hidden" placeholder="New category name" maxlength="60">
-    <input type="file" id="uploadInput" accept=".mp4,.mkv,.avi,.mov,.m4v,.webm,.ts" class="hidden">
-    <button type="button" class="btn btn-secondary btn-block" id="uploadChooseBtn">Choose file…</button>
-    <input type="file" id="uploadAttachmentsInput" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" multiple class="hidden">
-    <button type="button" class="btn btn-secondary btn-block hidden" id="uploadAttachmentsChooseBtn">Add supplementary files (optional)</button>
-    <button type="button" class="btn btn-primary btn-block hidden" id="uploadBtn">Upload</button>
-    <p class="field__hint" id="uploadStatus"></p>
-  </div>
+    <div class="field hidden" id="uploadField">
+      <label>Upload video</label>
+      <select class="select-block" id="uploadCategorySelect">
+        <option value="">Uncategorized</option>
+        <option value="__new__">+ New category…</option>
+      </select>
+      <input type="text" id="uploadNewCategory" class="hidden" placeholder="New category name" maxlength="60">
+      <input type="file" id="uploadInput" accept=".mp4,.mkv,.avi,.mov,.m4v,.webm,.ts" class="hidden">
+      <button type="button" class="btn btn-secondary btn-block" id="uploadChooseBtn">Choose file…</button>
+      <input type="file" id="uploadAttachmentsInput" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" multiple class="hidden">
+      <button type="button" class="btn btn-secondary btn-block hidden" id="uploadAttachmentsChooseBtn">Add supplementary files (optional)</button>
+      <button type="button" class="btn btn-primary btn-block hidden" id="uploadBtn">Upload</button>
+      <p class="field__hint" id="uploadStatus"></p>
+    </div>
 
-  <div class="field hidden" id="playTrackingField">
-    <label>Play tracking</label>
-    <button type="button" class="btn btn-secondary btn-block" id="playTrackingBtn">Enable play tracking</button>
-    <p class="field__hint">Counts plays to drive the "Most Popular" row.</p>
-  </div>
+    <div class="field hidden" id="playTrackingField">
+      <label>Play tracking</label>
+      <button type="button" class="btn btn-secondary btn-block" id="playTrackingBtn">Enable play tracking</button>
+      <p class="field__hint">Counts plays to drive the "Most Popular" row.</p>
+    </div>
 
-  <div class="field hidden" id="popularVisibilityField">
-    <label>Most Popular row</label>
-    <button type="button" class="btn btn-secondary btn-block" id="popularVisibilityBtn">Show Most Popular row</button>
-    <p class="field__hint">Whether visitors see the "Most Popular" row at all, separate from whether plays are being counted — hide it while you curate, then reveal it once you're happy with the results.</p>
+    <div class="field hidden" id="popularVisibilityField">
+      <label>Most Popular row</label>
+      <button type="button" class="btn btn-secondary btn-block" id="popularVisibilityBtn">Show Most Popular row</button>
+      <p class="field__hint">Whether visitors see the "Most Popular" row at all, separate from whether plays are being counted — hide it while you curate, then reveal it once you're happy with the results.</p>
+    </div>
   </div>
 
   <div class="field hidden" id="mappingField">
