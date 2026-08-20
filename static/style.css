@@ -429,7 +429,6 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   letter-spacing:.5px; color:var(--color-neutral-400);
   margin-top:6px; padding-top:14px; border-top:1px solid var(--color-divider);
 }
-#mappingField .field__hint{ margin-top:0; }
 .mapping-row{ display:flex; align-items:center; gap:16px; }
 .mapping-row__label{ flex:0 0 80px; font-size:13px; color:var(--color-neutral-300); }
 .mapping-row__stepper{ flex:0 0 auto; display:flex; align-items:center; gap:6px; }
@@ -468,7 +467,6 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   background:var(--color-accent); cursor:pointer;
   box-shadow:0 0 0 1px var(--color-accent);
 }
-#mappingField .field__hint{ max-width:640px; margin-left:auto; margin-right:auto; text-align:left; }
 .mapping-actions{ display:flex; flex-wrap:wrap; justify-content:center; gap:12px; }
 .mapping-actions .btn{ flex:0 1 240px; justify-content:center; }
 
