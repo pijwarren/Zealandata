@@ -403,7 +403,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 }
 .select-block:focus, .field input[type="text"]:focus{ outline:none; border-color:var(--color-accent); }
 
-#mappingField{ display:flex; flex-direction:column; gap:14px; width:100%; }
+#mappingField{ display:flex; flex-direction:column; gap:14px; width:100%; max-width:none; margin:0; }
 #mappingField label{ margin-bottom:0; }
 #mappingField .field__hint{ margin-top:0; }
 .mapping-row{ display:flex; align-items:center; gap:16px; }
