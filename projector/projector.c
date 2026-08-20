@@ -372,14 +372,20 @@ static size_t m_nvert = 0, m_nidx = 0;
    sunken -- so the height axis is mirrored. Kept as constants rather than
    controls: these are fixed properties of this model file, not things that
    vary with where the projector happens to be. */
-static const bool INVERT_RELIEF = true;
-static const float BASE_ORIENTATION_Y_DEG = 90.f;
+static const bool INVERT_RELIEF = false;
+/* The fixed camera looks down -Z, so once the up-axis remap above has
+   folded height into depth, an "as seen on screen" spin lives on the Z
+   axis, not Y -- rotating a positive angle about Z is counter-clockwise
+   from the camera's side (standard GL convention), so clockwise needs a
+   negative value here. */
+static const float BASE_ORIENTATION_Z_DEG = 90.f;
+static const float BASE_ORIENTATION_X_DEG = 180.f;
 
 /* How the video needs turning to land the right way up on the print.
    Clockwise degrees as seen on the projector, then a flip across the
    horizontal axis. */
-static const int VIDEO_ROTATION_CW_DEG = 270;
-static const bool VIDEO_FLIP_ACROSS_HORIZONTAL = true;
+static const int VIDEO_ROTATION_CW_DEG = 180;
+static const bool VIDEO_FLIP_ACROSS_HORIZONTAL = false;
 
 static void orient_uv(float *u, float *v) {
     /* Inverse of the described transform: to turn the displayed image
@@ -451,9 +457,42 @@ static int load_obj(const char *path) {
     vec3 size = { mx.x - mn.x, mx.y - mn.y, mx.z - mn.z };
 
     /* Up axis is whichever has the smallest extent -- for a relief print
-       that's the height. */
-    int up = (size.y <= size.x && size.y <= size.z) ? 1
-           : (size.z <= size.x && size.z <= size.y) ? 2 : 1;
+       that's the height. Confirmed by hard data on 3dPrint_210kFaces.obj:
+       height extent (y) is ~10-20x smaller than the footprint (x, z). */
+    int up_detected = (size.y <= size.x && size.y <= size.z) ? 1
+                     : (size.z <= size.x && size.z <= size.y) ? 2 : 1;
+    printf("[obj] extents x=%.3f y=%.3f z=%.3f (heuristic picked %c)\n",
+           size.x, size.y, size.z, up_detected == 1 ? 'y' : up_detected == 2 ? 'z' : 'x');
+    int up = up_detected;
+
+    /* The renderer's camera is fixed: it always looks down -Z, with (X,Y)
+       as the visible plane and Z as depth (the standard GL convention).
+       For a y-up model that means rendering as-is would show it *side-on*
+       -- height correctly reads as screen-up, but the actual footprint
+       (X and Z) gets flattened into one visible axis (X) plus the hidden
+       depth axis (Z), instead of both footprint axes being visible from
+       above. Rotating -90 degrees about X swaps height into depth (where
+       a top-down view expects it) and brings both footprint axes onto
+       the screen. This is a proper rotation (determinant +1), not a
+       reflection, so it needs no winding fix, unlike the mirror below. */
+    if (up == 1) {
+        for (size_t i = 0; i < m_nvert; i++) {
+            float y = m_pos[i].y, z = m_pos[i].z;
+            m_pos[i].y = z;
+            m_pos[i].z = -y;
+        }
+        mn = m_pos[0]; mx = m_pos[0];
+        for (size_t i = 1; i < m_nvert; i++) {
+            if (m_pos[i].x < mn.x) mn.x = m_pos[i].x;
+            if (m_pos[i].x > mx.x) mx.x = m_pos[i].x;
+            if (m_pos[i].y < mn.y) mn.y = m_pos[i].y;
+            if (m_pos[i].y > mx.y) mx.y = m_pos[i].y;
+            if (m_pos[i].z < mn.z) mn.z = m_pos[i].z;
+            if (m_pos[i].z > mx.z) mx.z = m_pos[i].z;
+        }
+        size = (vec3){ mx.x - mn.x, mx.y - mn.y, mx.z - mn.z };
+        up = 2;   /* the data is now genuinely z-up */
+    }
 
     if (INVERT_RELIEF) {
         for (size_t i = 0; i < m_nvert; i++) {
@@ -638,6 +677,13 @@ static void video_pump(void) {
     cur_sample = s;
 
     GstBuffer *buf = gst_sample_get_buffer(s);
+    /* The upload/colour-convert that produced this texture ran on
+       GStreamer's own internal GL thread/context, and GL commands are
+       only ordered *within* a context -- without an explicit wait here,
+       sampling this texture from our context races the write that fills
+       it, and can show stale (recycled-pool) content instead of erroring. */
+    GstGLSyncMeta *sync_meta = buf ? gst_buffer_get_gl_sync_meta(buf) : NULL;
+    if (sync_meta) gst_gl_sync_meta_wait(sync_meta, gst_app_ctx);
     GstMemory *mem = buf ? gst_buffer_peek_memory(buf, 0) : NULL;
     if (mem && gst_is_gl_memory(mem)) {
         cur_tex = ((GstGLMemory *)mem)->tex_id;
@@ -704,12 +750,30 @@ static void video_pipeline_init(void) {
     CHECK(sinkbin, "gst glsinkbin");
     appsink = gst_element_factory_make("appsink", "vsink");
     CHECK(appsink, "gst appsink");
-    GstCaps *caps = gst_caps_from_string("video/x-raw(memory:GLMemory),format=RGBA");
+    /* texture-target pinned to 2D: without this, glupload is free to pick
+       whichever uploader it likes, and for some sources (confirmed via
+       GST_DEBUG on a file with B-frames + audio) it silently prefers
+       DirectDmabufExternal, producing an external-oes texture instead of
+       a plain 2D one. Our shader samples with a plain sampler2D bound via
+       GL_TEXTURE_2D; binding an external-oes texture object to that target
+       is invalid and just leaves whatever was previously bound there --
+       which looked exactly like playback being stuck on the last real
+       frame, when the pipeline itself was decoding fine the whole time. */
+    GstCaps *caps = gst_caps_from_string(
+        "video/x-raw(memory:GLMemory),format=RGBA,texture-target=2D");
     g_object_set(appsink, "caps", caps, "sync", TRUE, "max-buffers", 2, "drop", TRUE, NULL);
     gst_caps_unref(caps);
     g_object_set(sinkbin, "sink", appsink, NULL);
 
     g_object_set(playbin, "video-sink", sinkbin, NULL);
+    /* No audio device is configured on this headless Pi (no PipeWire/ALSA
+       session for a systemd-launched process) -- autoaudiosink picks
+       OpenAL, which fails to open a device, and that preroll failure was
+       killing the *whole* pipeline (video included) on any clip that
+       actually carries an audio track. This display never needs audio
+       output, so route it to fakesink unconditionally rather than let
+       sink auto-selection be a single point of failure for playback. */
+    g_object_set(playbin, "audio-sink", gst_element_factory_make("fakesink", "asink"), NULL);
 
     GstBus *bus = gst_element_get_bus(playbin);
     gst_bus_set_sync_handler(bus, bus_sync_handler, NULL, NULL);
@@ -983,6 +1047,11 @@ static void *ipc_server_thread(void *arg) {
 /* ================================================================= main == */
 
 int main(void) {
+    /* stdout is a pipe to journald under systemd, not a tty, so libc
+       defaults to full buffering -- without this, log lines sit
+       unflushed for minutes rather than appearing as they happen. */
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IOLBF, 0);
     const char *card    = getenv("ZEALANDATA_DRM_CARD");
     const char *objpath = getenv("ZEALANDATA_PROJECTION_OBJ");
     const char *sockpath= getenv("ZEALANDATA_MPV_SOCKET");
@@ -1032,6 +1101,33 @@ int main(void) {
     /* ---- scene target, for render_scale < 1 ---- */
     GLuint sceneFbo = 0, sceneTex = 0, sceneDepth = 0;
     int sceneW = 0, sceneH = 0;
+
+    /* ---- calibration test pattern: an odd-sized checkerboard, so opposite
+       corners always share a color (sum-of-indices parity) and all four
+       land on white -- lets orientation/mirroring be read at a glance
+       without depending on real video content. */
+    bool test_pattern = getenv("ZEALANDATA_TEST_PATTERN") != NULL;
+    GLuint checkerTex = 0;
+    if (test_pattern) {
+        const int N = 9, CELL = 32, DIM = N * CELL;
+        unsigned char *px = malloc((size_t)DIM * DIM * 4);
+        for (int y = 0; y < DIM; y++)
+            for (int x = 0; x < DIM; x++) {
+                int cx = x / CELL, cy = y / CELL;
+                unsigned char v = ((cx + cy) % 2 == 0) ? 200 : 80;
+                unsigned char *p = &px[(y * DIM + x) * 4];
+                p[0] = p[1] = p[2] = v; p[3] = 255;
+            }
+        glGenTextures(1, &checkerTex);
+        glBindTexture(GL_TEXTURE_2D, checkerTex);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, DIM, DIM, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        free(px);
+        printf("[cal] test pattern active (checkerboard, all corners white)\n");
+    }
 
     /* ---- GStreamer ---- */
     gst_init(NULL, NULL);
@@ -1091,8 +1187,10 @@ int main(void) {
         }
 
         /* ---- transform: base orientation, then calibration on top ---- */
-        mat4 mBase, mRx, mRy, mRz, mS, mT, tmp, model, proj, mvp;
-        mat_rot_y(mBase, BASE_ORIENTATION_Y_DEG * (float)M_PI / 180.f);
+        mat4 mBaseZ, mBaseX, mBase, mRx, mRy, mRz, mS, mT, tmp, model, proj, mvp;
+        mat_rot_z(mBaseZ, BASE_ORIENTATION_Z_DEG * (float)M_PI / 180.f);
+        mat_rot_x(mBaseX, BASE_ORIENTATION_X_DEG * (float)M_PI / 180.f);
+        mat_mul(mBase, mBaseZ, mBaseX);
         mat_rot_x(mRx, map_cur.rot_x * (float)M_PI / 180.f);
         mat_rot_y(mRy, map_cur.rot_y * (float)M_PI / 180.f);
         mat_rot_z(mRz, map_cur.rot_z * (float)M_PI / 180.f);
@@ -1121,7 +1219,7 @@ int main(void) {
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, cur_tex);
+        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : cur_tex);
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 

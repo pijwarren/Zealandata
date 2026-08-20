@@ -34,8 +34,6 @@ const mappingOffsetX = document.getElementById("mappingOffsetX");
 const mappingOffsetXValue = document.getElementById("mappingOffsetXValue");
 const mappingOffsetY = document.getElementById("mappingOffsetY");
 const mappingOffsetYValue = document.getElementById("mappingOffsetYValue");
-const mappingRenderScale = document.getElementById("mappingRenderScale");
-const mappingRenderScaleValue = document.getElementById("mappingRenderScaleValue");
 const mappingShadingBtn = document.getElementById("mappingShadingBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
 const pinScrim = document.getElementById("pinScrim");
@@ -804,8 +802,6 @@ function paintMappingControls(mapping) {
   mappingOffsetXValue.textContent = Number(mapping.offset_x).toFixed(2);
   mappingOffsetY.value = mapping.offset_y;
   mappingOffsetYValue.textContent = Number(mapping.offset_y).toFixed(2);
-  mappingRenderScale.value = mapping.render_scale;
-  mappingRenderScaleValue.textContent = `${Math.round(Number(mapping.render_scale) * 100)}%`;
   mappingShadingEnabled = !!mapping.shading;
   mappingShadingBtn.textContent = mappingShadingEnabled
     ? "Turn off calibration shading"
@@ -862,14 +858,6 @@ mappingOffsetX.addEventListener("input", () => {
 mappingOffsetY.addEventListener("input", () => {
   mappingOffsetYValue.textContent = Number(mappingOffsetY.value).toFixed(2);
   sendMappingUpdate({ offset_y: Number(mappingOffsetY.value) });
-});
-// Lower quality renders the projector's canvas below native resolution.
-// The Pi is fill-rate bound at 1080p, so this is the main lever for a
-// smoother picture -- and the softness barely shows once the image is
-// landing on a physical relief model.
-mappingRenderScale.addEventListener("input", () => {
-  mappingRenderScaleValue.textContent = `${Math.round(Number(mappingRenderScale.value) * 100)}%`;
-  sendMappingUpdate({ render_scale: Number(mappingRenderScale.value) });
 });
 mappingShadingBtn.addEventListener("click", async () => {
   if (!adminPin) return;
