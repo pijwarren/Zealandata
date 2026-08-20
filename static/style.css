@@ -443,8 +443,9 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   background:var(--color-accent); cursor:pointer;
   box-shadow:0 0 0 1px var(--color-accent);
 }
-#mappingField .btn-block{ max-width:320px; }
 #mappingField .field__hint{ max-width:640px; }
+.mapping-actions{ display:flex; justify-content:center; gap:12px; }
+.mapping-actions .btn{ flex:0 1 240px; }
 
 .pinpad{
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:71;
