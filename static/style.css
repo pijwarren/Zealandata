@@ -372,7 +372,12 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 .scrim{ position:fixed; inset:0; z-index:60; background:rgba(10,11,18,0.55); backdrop-filter:blur(2px); }
 .drawer{
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:61;
-  width:min(1100px, 94vw);
+  /* Narrower while locked -- only Library/Screensaver/Admin mode show, so
+     the wide calibration-section layout would just leave a big empty gap
+     on the right. Widens once admin mode (and everything it gates,
+     including the 2-column grid and the calibration section) is visible. */
+  width:min(560px, 94vw);
+  transition:width .2s ease;
   max-height:96vh;
   background:rgba(43,39,65,0.5);
   backdrop-filter:blur(28px) saturate(180%);
@@ -397,6 +402,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   border-radius:inherit; pointer-events:none;
   background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
 }
+body.admin-mode .drawer{ width:min(1100px, 94vw); }
 .drawer__header{ position:relative; flex:0 0 auto; width:100%; text-align:center; }
 .drawer__header h2{ font-family:var(--font-heading); font-weight:500; font-size:20px; margin:0; }
 .drawer__header #settingsCloseBtn{ position:absolute; top:50%; right:0; transform:translateY(-50%); }
