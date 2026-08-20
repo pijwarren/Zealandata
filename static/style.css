@@ -49,6 +49,11 @@
   --space-4: 11px;
   --space-6: 17px;
   --space-8: 22px;
+  /* Left/right inset shared by the topbar, hero content, browse area, and
+     category-nav -- kept as its own token (rather than reusing
+     --space-6 directly) so it can be tuned independently of the many
+     other things --space-6 is used for. 50% larger than --space-6. */
+  --page-inset: 25.5px;
 
   --radius-sm: 4px;
   --radius-md: 8px;
@@ -139,7 +144,7 @@ button:focus-visible, .card:focus-visible{
 .topbar{
   position:fixed; top:0; left:0; right:0; z-index:30;
   display:flex; align-items:center; justify-content:space-between;
-  padding:var(--space-4) var(--space-6);
+  padding:var(--space-4) var(--page-inset);
   transform:translateY(0);
   transition:transform .25s ease;
 }
@@ -188,7 +193,7 @@ button:focus-visible, .card:focus-visible{
              linear-gradient(0deg, rgba(22,24,38,0.95) 0%, rgba(22,24,38,0) 30%);
 }
 .hero__content{
-  position:absolute; left:var(--space-6); right:var(--space-6); bottom:56px;
+  position:absolute; left:var(--page-inset); right:var(--page-inset); bottom:56px;
   max-width:620px;
 }
 .hero__content .tag{ margin-bottom:14px; }
@@ -208,7 +213,7 @@ button:focus-visible, .card:focus-visible{
 
 /* ---------------------------------------------------------- browsing */
 
-#browseMain{ padding:34px var(--space-6) 150px; position:relative; z-index:1; background:var(--color-bg); margin-top:-40px; }
+#browseMain{ padding:34px var(--page-inset) 150px; position:relative; z-index:1; background:var(--color-bg); margin-top:-40px; }
 
 .row__heading{
   font-family:var(--font-heading);
@@ -225,7 +230,7 @@ button:focus-visible, .card:focus-visible{
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;
   display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
-  padding:16px var(--space-6) 20px;
+  padding:16px var(--page-inset) 20px;
 }
 /* Blur+fade behind the buttons rather than on .category-nav itself, so it
    doesn't also mute the button labels -- content sliding up from beneath
@@ -269,7 +274,7 @@ button:focus-visible, .card:focus-visible{
      scrollport gains bleed room without shifting where the first card
      actually sits -- otherwise it'd land to the right of the row
      heading above it instead of flush with it (and with the topbar/
-     category-nav, which all share the same var(--space-6) inset). */
+     category-nav, which all share the same var(--page-inset) inset). */
   padding:36px 32px 64px; margin:0 -32px; scrollbar-width:thin;
 }
 .row__scroller .card{ flex:0 0 300px; }
