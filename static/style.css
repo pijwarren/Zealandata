@@ -191,19 +191,12 @@ button:focus-visible, .card:focus-visible{
   -webkit-mask-image:linear-gradient(180deg, black 0%, black 55%, transparent 100%);
 }
 .topbar--hidden{ transform:translateY(-100%); }
-.topbar__title{
-  font-family:var(--font-heading);
-  font-weight:500;
-  font-size:19px;
-  letter-spacing:-0.2px;
-  display:flex; align-items:center; gap:9px;
-}
-.topbar__dot{
-  width:7px; height:7px; border-radius:50%;
-  background:var(--color-accent);
-  box-shadow:0 0 10px var(--color-accent);
-  display:inline-block;
-}
+/* ESNZ full logo lockup. Brand guide gives it a 180px minimum width for
+   legibility (it's a 3-line wordmark, not a single word) -- 56px tall at
+   this asset's native ~3.52:1 aspect ratio clears that with room to spare,
+   and the topbar (a fixed/floating bar, not part of document flow) just
+   grows a little taller to fit it rather than the logo getting cramped. */
+.topbar__logo{ display:block; height:56px; width:auto; }
 .topbar__controls{ display:flex; align-items:center; gap:10px; }
 
 /* -------------------------------------------------------------- hero */
