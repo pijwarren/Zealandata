@@ -460,7 +460,8 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 body.admin-mode .drawer{ width:min(1100px, 94vw); }
 .drawer__header{ position:relative; flex:0 0 auto; width:100%; text-align:center; }
 .drawer__header h2{ font-family:var(--font-heading); font-weight:500; font-size:20px; margin:0; }
-.drawer__header #settingsCloseBtn{ position:absolute; top:50%; right:0; transform:translateY(-50%); }
+.drawer__header #settingsCloseBtn,
+.drawer__header #paletteCloseBtn{ position:absolute; top:50%; right:0; transform:translateY(-50%); }
 .settings-grid{
   display:grid; grid-template-columns:1fr; grid-template-rows:none;
   grid-auto-flow:row; column-gap:var(--space-8); row-gap:var(--space-6);
@@ -494,6 +495,43 @@ body.admin-mode .settings-grid{
   background-size:14px;
 }
 .select-block:focus, .field input[type="text"]:focus{ outline:none; border-color:var(--color-accent); }
+
+/* ---------------------------------------------------- colour palette */
+
+.palette-group + .palette-group{ margin-top:var(--space-6); }
+.palette-group__title{
+  font-family:var(--font-heading); font-weight:500; font-size:12px;
+  text-transform:uppercase; letter-spacing:.5px; color:var(--color-neutral-400);
+  margin-bottom:9px;
+}
+.palette-group__rows{ display:flex; flex-direction:column; gap:8px; }
+.palette-row{ display:flex; align-items:center; gap:10px; }
+.palette-row__meta{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
+.palette-row__label{ font-size:13px; }
+.palette-row__var{ font-size:11px; font-family:monospace; color:var(--color-neutral-400); }
+.palette-swatch{
+  flex:0 0 auto; width:34px; height:34px; padding:0; border-radius:var(--radius-sm);
+  border:1px solid var(--color-divider); background:none; cursor:pointer;
+}
+/* Native <input type=color> ships its own inset swatch chrome (border +
+   padding) that fights the sizing above in Chromium -- strip it back to a
+   flat fill so the swatch reads as one flush colour square. */
+.palette-swatch::-webkit-color-swatch-wrapper{ padding:0; }
+.palette-swatch::-webkit-color-swatch{ border:none; border-radius:inherit; }
+.palette-hex{
+  flex:0 0 auto; width:84px; box-sizing:border-box;
+  background:var(--color-neutral-900); color:var(--color-text);
+  border:1px solid var(--color-divider); border-radius:var(--radius-sm);
+  padding:8px 10px; font:12px monospace;
+}
+.palette-hex:focus{ outline:none; border-color:var(--color-accent); }
+.palette-actions{ display:flex; justify-content:flex-end; gap:10px; }
+.palette-output{
+  width:100%; box-sizing:border-box; resize:vertical;
+  background:var(--color-neutral-900); color:var(--color-text);
+  border:1px solid var(--color-divider); border-radius:var(--radius-sm);
+  padding:11px 14px; font:12px monospace; line-height:1.5;
+}
 
 #mappingField{ display:flex; flex-direction:column; gap:14px; width:100%; max-width:none; margin:0; }
 #mappingField label{ margin-bottom:0; }
