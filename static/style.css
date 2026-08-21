@@ -1,50 +1,74 @@
-/* Design tokens ported from the Claude Design import ("Zealandata AppleTV").
-   The import originally pulled "Inter" from Google Fonts CDN, which doesn't
-   work here -- this Pi never has internet access (ad-hoc wifi hotspot) --
-   so the actual font files are hosted locally instead (static/fonts/,
-   variable-weight, covering the 100-900 range Inter ships in one file).
-   Everything else (colors, spacing, radii, shadows) is ported as specified. */
+/* Design tokens for the ESNZ (Earth Sciences New Zealand) brand reskin.
+   Fonts are "Host Grotesk" per brand guidelines, with Arial as the brand's
+   specified fallback. Google Fonts CDN doesn't work here -- this Pi never
+   has internet access (ad-hoc wifi hotspot) -- so the font files are
+   hosted locally instead (static/fonts/), same approach as the Inter
+   files this replaces.
+   Colours are the ESNZ palette (Navy/Sky/Sea/Lavender/Clay/Lime) kept in
+   the app's existing dark theme: Navy stands in for the old near-black
+   background, Sky-Mid for the old purple accent. The *-rgb tokens exist
+   so the many translucent glass-panel effects below (rgba(var(--x),A))
+   can share the same source colours instead of hardcoding separate hex. */
 
 @font-face{
-  font-family:"Inter";
-  src:url("/static/fonts/Inter-Variable.ttf") format("truetype");
-  font-weight:100 900;
+  font-family:"Host Grotesk";
+  src:url("/static/fonts/HostGrotesk-Regular.ttf") format("truetype");
+  font-weight:400;
   font-style:normal;
   font-display:swap;
 }
 @font-face{
-  font-family:"Inter";
-  src:url("/static/fonts/Inter-Italic-Variable.ttf") format("truetype");
-  font-weight:100 900;
-  font-style:italic;
+  font-family:"Host Grotesk";
+  src:url("/static/fonts/HostGrotesk-Medium.ttf") format("truetype");
+  font-weight:500;
+  font-style:normal;
+  font-display:swap;
+}
+@font-face{
+  font-family:"Host Grotesk";
+  src:url("/static/fonts/HostGrotesk-SemiBold.ttf") format("truetype");
+  font-weight:600;
+  font-style:normal;
+  font-display:swap;
+}
+@font-face{
+  font-family:"Host Grotesk";
+  src:url("/static/fonts/HostGrotesk-Bold.ttf") format("truetype");
+  font-weight:700;
+  font-style:normal;
   font-display:swap;
 }
 
 :root{
-  --color-bg:        #161826;
-  --color-surface:   #232532;
-  --color-text:      #e9e9ed;
-  --color-accent:    #9184d9;
-  --color-accent-100:#f5f4ff;
-  --color-accent-300:#d2cefd;
-  --color-accent-400:#b5abfc;
-  --color-accent-800:#423a6a;
-  --color-accent-900:#2b2741;
+  --color-bg:        #062D51; /* ESNZ Navy */
+  --color-surface:   #0C3A61;
+  --color-text:      #EEEEEE; /* ESNZ Body-Light */
+  --color-accent:    #60C7FA; /* ESNZ Sky-Mid */
+  --color-accent-100:#EAF6FF;
+  --color-accent-300:#AEDBFF; /* ESNZ Sky */
+  --color-accent-400:#60C7FA;
+  --color-accent-800:#0E4A73;
+  --color-accent-900:#082944;
 
-  --color-neutral-100:#f3f5fe;
-  --color-neutral-200:#e4e7f5;
-  --color-neutral-300:#cfd3e5;
-  --color-neutral-400:#b2b6ca;
-  --color-neutral-600:#75798c;
-  --color-neutral-700:#595d6c;
-  --color-neutral-800:#3f424d;
-  --color-neutral-900:#292b31;
+  --color-bg-rgb:    6,45,81;
+  --color-text-rgb:  238,238,238;
+  --color-accent-rgb:96,199,250;
+  --color-panel-rgb: 14,74,115; /* == --color-accent-800, as rgba() components */
 
-  --color-divider:   rgba(233,233,237,0.16);
-  --color-danger:    #ff6b6b;
+  --color-neutral-100:#F3F4F6; /* ESNZ Grey-Light */
+  --color-neutral-200:#DAE0E5; /* ESNZ Grey */
+  --color-neutral-300:#C0C9D2;
+  --color-neutral-400:#A5B2BE; /* ESNZ Grey-Medium */
+  --color-neutral-600:#657686; /* ESNZ Grey-Dark */
+  --color-neutral-700:#455B6B;
+  --color-neutral-800:#2C3F4E;
+  --color-neutral-900:#152736;
 
-  --font-heading: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-body:    "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --color-divider:   rgba(var(--color-text-rgb),0.16);
+  --color-danger:    #F47218; /* ESNZ Clay-Mid */
+
+  --font-heading: "Host Grotesk", Arial, sans-serif;
+  --font-body:    "Host Grotesk", Arial, sans-serif;
 
   --space-4: 11px;
   --space-6: 17px;
@@ -122,7 +146,7 @@ button.tag:hover{ opacity:.85; }
 .btn-primary{ background:var(--color-text); color:var(--color-bg); border-color:var(--color-text); }
 .btn-primary:hover{ background:var(--color-neutral-200); }
 .btn-secondary{ border-color:var(--color-divider); }
-.btn-secondary:hover{ background:rgba(233,233,237,0.07); }
+.btn-secondary:hover{ background:rgba(var(--color-text-rgb),0.07); }
 .btn-block{ width:100%; justify-content:center; }
 
 .btn-icon{
@@ -136,7 +160,7 @@ button.tag:hover{ opacity:.85; }
   cursor:pointer;
   transition:background .15s ease, border-color .15s ease;
 }
-.btn-icon:hover{ background:rgba(233,233,237,0.1); border-color:var(--color-accent); }
+.btn-icon:hover{ background:rgba(var(--color-text-rgb),0.1); border-color:var(--color-accent); }
 .btn-icon:disabled{ opacity:.35; cursor:default; pointer-events:none; }
 .btn-icon-lg{ width:68px; height:68px; }
 .btn-icon-lg:hover{ background:var(--color-neutral-200); }
@@ -160,7 +184,7 @@ button:focus-visible, .card:focus-visible{
    fade the actual content sitting on top of it. */
 .topbar::before{
   content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(22,24,38,0.28) 0%, rgba(22,24,38,0) 100%);
+  background:linear-gradient(180deg, rgba(var(--color-bg-rgb),0.28) 0%, rgba(var(--color-bg-rgb),0) 100%);
   backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px);
   mask-image:linear-gradient(180deg, black 0%, black 55%, transparent 100%);
@@ -196,8 +220,8 @@ button:focus-visible, .card:focus-visible{
 .hero__bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
 .hero__scrim{
   position:absolute; inset:0; pointer-events:none;
-  background:linear-gradient(90deg, rgba(22,24,38,0.92) 0%, rgba(22,24,38,0.25) 55%, rgba(22,24,38,0) 78%),
-             linear-gradient(0deg, rgba(22,24,38,0.95) 0%, rgba(22,24,38,0) 30%);
+  background:linear-gradient(90deg, rgba(var(--color-bg-rgb),0.92) 0%, rgba(var(--color-bg-rgb),0.25) 55%, rgba(var(--color-bg-rgb),0) 78%),
+             linear-gradient(0deg, rgba(var(--color-bg-rgb),0.95) 0%, rgba(var(--color-bg-rgb),0) 30%);
 }
 .hero__content{
   position:absolute; left:var(--page-inset); right:var(--page-inset); bottom:56px;
@@ -237,14 +261,14 @@ button:focus-visible, .card:focus-visible{
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;
   display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
-  padding:16px var(--page-inset) 20px;
+  padding:16px var(--page-inset) 40px;
 }
 /* Blur+fade behind the buttons rather than on .category-nav itself, so it
    doesn't also mute the button labels -- content sliding up from beneath
    the sticky hero would otherwise show through the gaps around them. */
 .category-nav::before{
   content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(22,24,38,1) 0%, rgba(22,24,38,0.25) 100%);
+  background:linear-gradient(180deg, rgba(var(--color-bg-rgb),1) 0%, rgba(var(--color-bg-rgb),0.25) 100%);
   backdrop-filter:blur(16px);
   -webkit-backdrop-filter:blur(16px);
   mask-image:linear-gradient(180deg, black 60%, transparent 100%);
@@ -255,7 +279,7 @@ button:focus-visible, .card:focus-visible{
   min-height:56px; padding:clamp(6px, 1.2vw, 14px) clamp(4px, 1vw, 18px);
   display:flex; align-items:center; justify-content:center;
   text-align:center;
-  background:rgba(43,39,65,0.5);
+  background:rgba(var(--color-panel-rgb),0.5);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
   border:1px solid rgba(255,255,255,0.16);
@@ -266,7 +290,7 @@ button:focus-visible, .card:focus-visible{
   cursor:pointer;
   transition:background .15s ease, border-color .15s ease, transform .15s ease;
 }
-.category-nav__item:hover{ background:rgba(43,39,65,0.68); border-color:var(--color-accent); transform:translateY(-2px); }
+.category-nav__item:hover{ background:rgba(var(--color-panel-rgb),0.68); border-color:var(--color-accent); transform:translateY(-2px); }
 .category-nav__item--empty{ opacity:.35; cursor:default; pointer-events:none; }
 .row__scroller{
   display:flex; gap:20px; overflow-x:auto;
@@ -281,16 +305,26 @@ button:focus-visible, .card:focus-visible{
      scrollport gains bleed room without shifting where the first card
      actually sits -- otherwise it'd land to the right of the row
      heading above it instead of flush with it (and with the topbar/
-     category-nav, which all share the same var(--page-inset) inset). */
-  padding:36px 32px 64px; margin:0 -32px; scrollbar-width:thin;
+     category-nav, which all share the same var(--page-inset) inset).
+     Top/bottom get the same treatment: the padding still gives the
+     hover-shadow room to bleed into without being clipped, but the
+     matching negative margin collapses that same amount back out of
+     normal flow, so .row__viewport ends up sized tight to the actual
+     card content instead of carrying the bleed padding as visible gap. */
+  padding:36px 32px 64px; margin:-36px -32px -64px;
+  /* Scrolling itself stays fully functional (wheel/trackpad/touch, plus
+     the hover arrow buttons already built for it) -- only the visible
+     scrollbar chrome is suppressed, across engines. */
+  scrollbar-width:none; -ms-overflow-style:none;
 }
+.row__scroller::-webkit-scrollbar{ display:none; }
 .row__scroller .card{ flex:0 0 300px; }
 
 .row__viewport{ position:relative; }
 .row__arrow{
   position:absolute; top:50%; transform:translateY(-50%);
   width:36px; height:36px; border-radius:50%;
-  background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
+  background:rgba(var(--color-bg-rgb),0.75); backdrop-filter:blur(6px);
   border:1px solid var(--color-divider);
   color:var(--color-text); font-size:18px; line-height:1;
   cursor:pointer; z-index:3;
@@ -315,13 +349,13 @@ button:focus-visible, .card:focus-visible{
 .card__frame{ position:relative; width:100%; height:100%; }
 .card:hover, .card:focus-visible{
   transform:scale(1.08) translateY(-4px);
-  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(0,0,0,0.55), 0 0 34px rgba(145,132,217,0.35);
+  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(0,0,0,0.55), 0 0 34px rgba(var(--color-accent-rgb),0.35);
   z-index:2;
 }
 .card:focus-visible{ outline:none; }
 .card--selected{
   transform:scale(1.08) translateY(-4px);
-  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(0,0,0,0.55), 0 0 34px rgba(145,132,217,0.35);
+  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(0,0,0,0.55), 0 0 34px rgba(var(--color-accent-rgb),0.35);
   z-index:2;
 }
 
@@ -332,8 +366,8 @@ button:focus-visible, .card:focus-visible{
 .card__play{
   position:absolute; top:50%; left:50%;
   width:44px; height:44px; transform:translate(-50%,-50%) scale(.85);
-  border-radius:50%; background:rgba(233,233,237,0.14); backdrop-filter:blur(6px);
-  border:1px solid rgba(233,233,237,0.25);
+  border-radius:50%; background:rgba(var(--color-text-rgb),0.14); backdrop-filter:blur(6px);
+  border:1px solid rgba(var(--color-text-rgb),0.25);
   display:flex; align-items:center; justify-content:center;
   color:var(--color-text); font-size:15px; opacity:0;
   transition:opacity .15s ease, transform .15s ease;
@@ -360,12 +394,12 @@ button:focus-visible, .card:focus-visible{
   display:flex; align-items:center; gap:6px;
 }
 .card__resume-badge{
-  background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
+  background:rgba(var(--color-bg-rgb),0.75); backdrop-filter:blur(6px);
   color:var(--color-text); font-size:10px; font-weight:500; padding:4px 9px; border-radius:980px;
 }
 .card__rename{
   display:none; width:28px; height:28px; border-radius:50%; flex-shrink:0;
-  border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
+  border:1px solid rgba(var(--color-text-rgb),0.14); background:rgba(var(--color-bg-rgb),0.75); backdrop-filter:blur(6px);
   color:var(--color-text); font-size:12px; line-height:1; cursor:pointer;
   align-items:center; justify-content:center;
   opacity:0; transition:opacity .15s, border-color .15s, background .15s;
@@ -375,14 +409,14 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 .card__rename:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
 .card__restart{
   position:absolute; top:9px; left:9px; width:28px; height:28px; border-radius:50%;
-  border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
+  border:1px solid rgba(var(--color-text-rgb),0.14); background:rgba(var(--color-bg-rgb),0.75); backdrop-filter:blur(6px);
   color:var(--color-text); font-size:13px; line-height:1; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
   opacity:0; transition:opacity .15s, border-color .15s, background .15s;
 }
 .card:hover .card__restart, .card:focus-within .card__restart, .card--selected .card__restart{ opacity:1; }
 .card__restart:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
-.card__progress{ position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(233,233,237,0.15); z-index:1; }
+.card__progress{ position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(var(--color-text-rgb),0.15); z-index:1; }
 .card__progress-fill{ height:100%; background:var(--color-accent); }
 
 .empty{ padding:90px 0; text-align:center; color:var(--color-neutral-400); }
@@ -390,7 +424,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 
 /* --------------------------------------------------------- settings */
 
-.scrim{ position:fixed; inset:0; z-index:60; background:rgba(10,11,18,0.55); backdrop-filter:blur(2px); }
+.scrim{ position:fixed; inset:0; z-index:60; background:rgba(0,0,0,0.55); backdrop-filter:blur(2px); }
 .drawer{
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:61;
   /* Narrower while locked -- only Library/Screensaver/Admin mode show, so
@@ -400,7 +434,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   width:min(560px, 94vw);
   transition:width .2s ease;
   max-height:96vh;
-  background:rgba(43,39,65,0.5);
+  background:rgba(var(--color-panel-rgb),0.5);
   backdrop-filter:blur(28px) saturate(180%);
   -webkit-backdrop-filter:blur(28px) saturate(180%);
   border:1px solid rgba(255,255,255,0.16);
@@ -473,7 +507,7 @@ body.admin-mode .settings-grid{
 .mapping-row__stepper{ flex:0 0 auto; display:flex; align-items:center; gap:6px; }
 .mapping-row__step{
   width:28px; height:28px; flex:0 0 auto; border-radius:50%;
-  border:1px solid var(--color-divider); background:rgba(233,233,237,0.05);
+  border:1px solid var(--color-divider); background:rgba(var(--color-text-rgb),0.05);
   color:var(--color-text); font-size:16px; line-height:1; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
   transition:background-color .1s ease, border-color .1s ease;
@@ -511,7 +545,7 @@ body.admin-mode .settings-grid{
 
 .pinpad{
   position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:71;
-  background:rgba(43,39,65,0.5);
+  background:rgba(var(--color-panel-rgb),0.5);
   backdrop-filter:blur(28px) saturate(180%);
   -webkit-backdrop-filter:blur(28px) saturate(180%);
   border:1px solid rgba(255,255,255,0.16);
@@ -550,7 +584,7 @@ body.admin-mode .settings-grid{
 .pinpad__key{
   aspect-ratio:1; border-radius:50%;
   border:1px solid var(--color-divider);
-  background:rgba(233,233,237,0.05);
+  background:rgba(var(--color-text-rgb),0.05);
   color:var(--color-text);
   font-family:var(--font-body);
   font-size:18px; font-weight:500;
@@ -558,10 +592,10 @@ body.admin-mode .settings-grid{
   display:flex; align-items:center; justify-content:center;
   transition:background-color .1s ease, border-color .1s ease;
 }
-.pinpad__key:hover{ background:rgba(233,233,237,0.1); border-color:var(--color-accent); }
+.pinpad__key:hover{ background:rgba(var(--color-text-rgb),0.1); border-color:var(--color-accent); }
 .pinpad__key:active{ background:var(--color-accent-800); }
 .pinpad__key--ghost{ background:none; border:none; font-size:12px; color:var(--color-neutral-400); }
-.pinpad__key--ghost:hover{ background:rgba(233,233,237,0.06); border:none; }
+.pinpad__key--ghost:hover{ background:rgba(var(--color-text-rgb),0.06); border:none; }
 
 /* -------------------------------------------------------------- dock */
 
@@ -584,7 +618,7 @@ body.admin-mode .settings-grid{
   align-items:center;
   column-gap:18px;
   padding:14px 22px;
-  background:rgba(43,39,65,0.5);
+  background:rgba(var(--color-panel-rgb),0.5);
   backdrop-filter:blur(28px) saturate(180%);
   -webkit-backdrop-filter:blur(28px) saturate(180%);
   border:1px solid rgba(255,255,255,0.16);
@@ -620,7 +654,7 @@ body.admin-mode .settings-grid{
 }
 .dock__time{ grid-area:time; display:flex; align-items:center; gap:12px; font-size:11px; color:var(--color-neutral-300); font-variant-numeric:tabular-nums; margin-top:8px; }
 .dock__bar{ flex:1; height:16px; display:flex; align-items:center; cursor:pointer; touch-action:none; }
-.dock__bar-track{ position:relative; width:100%; height:4px; background:rgba(233,233,237,0.15); border-radius:2px; }
+.dock__bar-track{ position:relative; width:100%; height:4px; background:rgba(var(--color-text-rgb),0.15); border-radius:2px; }
 .dock__bar-fill{ height:100%; width:0%; background:var(--color-accent); border-radius:2px; }
 .dock__bar-handle{
   position:absolute; top:50%; left:0%; width:12px; height:12px; border-radius:50%;
@@ -632,7 +666,7 @@ body.admin-mode .settings-grid{
 .dock__docs-panel{
   position:relative; isolation:isolate;
   padding:12px 16px 14px;
-  background:rgba(43,39,65,0.5);
+  background:rgba(var(--color-panel-rgb),0.5);
   backdrop-filter:blur(28px) saturate(180%);
   -webkit-backdrop-filter:blur(28px) saturate(180%);
   border:1px solid rgba(255,255,255,0.16);
@@ -688,7 +722,7 @@ body.admin-mode .settings-grid{
 }
 .doc-viewer__close{
   position:absolute; top:20px; right:20px;
-  background:rgba(43,39,65,0.5);
+  background:rgba(var(--color-panel-rgb),0.5);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
   border-color:rgba(255,255,255,0.16);
@@ -696,7 +730,7 @@ body.admin-mode .settings-grid{
 .doc-viewer__nav{
   position:absolute; top:50%; transform:translateY(-50%);
   width:44px; height:44px;
-  background:rgba(43,39,65,0.5);
+  background:rgba(var(--color-panel-rgb),0.5);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
   border-color:rgba(255,255,255,0.16);
@@ -712,6 +746,80 @@ body.admin-mode .settings-grid{
   border-radius:980px; padding:5px 14px;
 }
 
+/* Floating, non-modal (no scrim) so it never blocks the calibration
+   sliders underneath -- default position sits clear of the settings
+   drawer's centered position, and the whole box is drag-repositionable
+   (see app.js) for whatever's left over on a narrower screen. No title bar:
+   the close button floats directly over the preview (see
+   .preview-lightbox__close) so the render gets the full box. Sits above
+   the drawer (z-index 61) but below the PIN pad/doc viewer (71/72), since
+   those are true modals and should still win. */
+.preview-lightbox{
+  position:fixed; top:88px; left:50%; transform:translateX(-50%); z-index:65;
+  width:min(960px, 90vw);
+  /* Height is derived from width, not set directly -- Chromium (the only
+     browser this kiosk/admin setup needs to support) keeps this ratio
+     locked while dragging the resize handle too, so the box can only ever
+     grow/shrink as a 16:9 rectangle. */
+  aspect-ratio:16/9;
+  max-height:80vh;
+  min-width:320px; min-height:180px;
+  background:rgba(var(--color-panel-rgb),0.72);
+  backdrop-filter:blur(28px) saturate(180%);
+  -webkit-backdrop-filter:blur(28px) saturate(180%);
+  border:1px solid rgba(255,255,255,0.16);
+  border-radius:var(--radius-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.05),
+    var(--shadow-lg);
+  overflow:hidden;
+  /* Native corner resize handle -- the box has no fixed aspect ratio to
+     preserve (the canvas re-fits whatever space it's given, see
+     calibration_preview.js's ResizeObserver), so both directions are free.
+     Dragging is via the handle button (top-left) only, not the whole box
+     -- a whole-box drag region fought with grabbing this corner handle. */
+  resize:both;
+}
+.preview-lightbox__stage{
+  position:absolute; inset:0;
+  padding:16px; box-sizing:border-box;
+}
+.preview-lightbox__stage canvas{ display:block; width:100%; height:100%; background:#000; border-radius:var(--radius-sm); }
+.preview-lightbox__axis-label{
+  position:absolute; top:0; left:0; z-index:1;
+  transform:translate(-50%,-50%);
+  font-size:12px; font-weight:700; font-family:var(--font-heading);
+  text-shadow:0 1px 3px rgba(0,0,0,0.9);
+  pointer-events:none; opacity:0;
+}
+.preview-lightbox__axis-label--x{ color:#ff4d4d; }
+.preview-lightbox__axis-label--y{ color:#4dff4d; }
+.preview-lightbox__axis-label--z{ color:#598cff; }
+.preview-lightbox__status{
+  position:absolute; inset:0; z-index:2;
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; color:var(--color-neutral-300);
+  background:rgba(0,0,0,0.55);
+}
+.preview-lightbox__drag{
+  position:absolute; top:10px; left:10px; z-index:3;
+  background:rgba(var(--color-panel-rgb),0.6);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-color:rgba(255,255,255,0.16);
+  width:30px; height:30px;
+  cursor:grab; user-select:none;
+}
+.preview-lightbox__drag:active{ cursor:grabbing; }
+.preview-lightbox__close{
+  position:absolute; top:10px; right:10px; z-index:3;
+  background:rgba(var(--color-panel-rgb),0.6);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-color:rgba(255,255,255,0.16);
+  width:30px; height:30px;
+}
 .dock__controls{ grid-area:controls; display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .dock__controls .btn-icon{ width:38px; height:38px; }
 .dock__stop:hover{ border-color:var(--color-danger); color:var(--color-danger); }
@@ -739,7 +847,7 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
-  .category-nav{ padding:14px 16px 18px; }
+  .category-nav{ padding:14px 16px 36px; }
   .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; }
   /* row-gap isn't used here (rather than margin on each row) because a
      hidden (display:none) row still consumes its row-gap in a CSS grid --
