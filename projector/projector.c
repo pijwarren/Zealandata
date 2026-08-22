@@ -33,6 +33,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>  /* strcasecmp */
+#include <stdint.h>
+#include <png.h>
 #include <stdbool.h>
 #include <math.h>
 #include <time.h>
@@ -723,6 +726,7 @@ static GstGLContext *gst_app_ctx;
 
 static bool   idle_active = true;    /* true only when nothing is loaded */
 static bool   loop_enabled = false;
+static bool   cur_is_image = false;  /* see its own comment above video_load */
 static double volume_pct = 100.0;
 static double pending_start = 0.0;   /* seconds to seek to once loaded */
 static bool   have_pending_start = false;
@@ -895,7 +899,98 @@ static void video_pipeline_init(void) {
     gst_object_unref(bus);
 }
 
+/* Still images (just the idle/loading image in practice) are decoded with
+   libpng and uploaded via a plain glTexImage2D, entirely bypassing
+   GStreamer/playbin. Empirically, a still image only ever produces exactly
+   one decoded buffer through playbin3/decodebin3 before EOS (no imagefreeze
+   auto-insertion, unlike legacy playbin) -- and that one buffer's
+   software-decoded (sysmem, not DMA-BUF) glupload path never actually lands
+   usable pixel data on this Pi's V3D/Mesa driver: a kmsgrab capture of the
+   real scanned-out output stayed solid black even after confirming cur_tex
+   held a real, non-zero GL texture id. Real video works fine because it's
+   hardware-decoded straight into GL-shareable DMA-BUF memory -- a
+   completely different upload path that this bug doesn't touch. Decoding
+   ourselves sidesteps the broken path rather than chasing it further. */
+static uint8_t *pending_image_px = NULL;   /* guarded by play_lock */
+static int      pending_image_w = 0, pending_image_h = 0;
+static GLuint   idle_tex = 0;
+
+static bool path_is_still_image(const char *path) {
+    const char *dot = strrchr(path, '.');
+    if (!dot) return false;
+    static const char *exts[] = { ".png", ".jpg", ".jpeg", ".bmp", ".gif", NULL };
+    for (int i = 0; exts[i]; i++) if (!strcasecmp(dot, exts[i])) return true;
+    return false;
+}
+
+/* Runs on whichever thread received the IPC "loadfile" command -- pure CPU
+   decode, no GL calls (this thread doesn't have our EGL context current).
+   Stashes the decoded pixels for image_pump() to actually upload from the
+   main render thread, the only one where that's valid. */
+static void image_load(const char *path) {
+    png_image img;
+    memset(&img, 0, sizeof img);
+    img.version = PNG_IMAGE_VERSION;
+    if (!png_image_begin_read_from_file(&img, path)) {
+        fprintf(stderr, "[png] %s: %s\n", path, img.message);
+        return;
+    }
+    img.format = PNG_FORMAT_RGBA;
+    uint8_t *px = malloc(PNG_IMAGE_SIZE(img));
+    if (!px) { png_image_free(&img); return; }
+    if (!png_image_finish_read(&img, NULL, px, 0, NULL)) {
+        fprintf(stderr, "[png] %s: %s\n", path, img.message);
+        free(px);
+        png_image_free(&img);
+        return;
+    }
+    pthread_mutex_lock(&play_lock);
+    free(pending_image_px);    /* drop any not-yet-uploaded previous decode */
+    pending_image_px = px;
+    pending_image_w = (int)img.width;
+    pending_image_h = (int)img.height;
+    pthread_mutex_unlock(&play_lock);
+    png_image_free(&img);
+    printf("[png] loaded %s (%ux%u)\n", path, img.width, img.height);
+}
+
+/* Called once per render frame, same spot video_pump() is -- uploads
+   whatever image_load() (possibly a different thread) most recently
+   decoded, if anything's pending. */
+static void image_pump(void) {
+    pthread_mutex_lock(&play_lock);
+    uint8_t *px = pending_image_px;
+    int w = pending_image_w, h = pending_image_h;
+    pending_image_px = NULL;
+    pthread_mutex_unlock(&play_lock);
+    if (!px) return;
+    if (!idle_tex) glGenTextures(1, &idle_tex);
+    glBindTexture(GL_TEXTURE_2D, idle_tex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, w, h, 0, GL_RGBA, GL_UNSIGNED_BYTE, px);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    free(px);
+}
+
 static void video_load(const char *path, double start_sec) {
+    pthread_mutex_lock(&play_lock);
+    idle_active = false;
+    cur_is_image = path_is_still_image(path);
+    pthread_mutex_unlock(&play_lock);
+
+    if (cur_is_image) {
+        /* Never touches playbin -- any previously-loaded video stays
+           paused-on-last-frame underneath, same as it would if this were
+           just another mpv-style loadfile; it's simply not what's bound
+           for sampling while cur_is_image is true (see the bind site in
+           the render loop). */
+        image_load(path);
+        printf("[png] loadfile %s\n", path);
+        return;
+    }
+
     char uri[2048];
     if (strstr(path, "://")) snprintf(uri, sizeof uri, "%s", path);
     else {
@@ -909,7 +1004,6 @@ static void video_load(const char *path, double start_sec) {
     pthread_mutex_lock(&play_lock);
     pending_start = start_sec;
     have_pending_start = start_sec > 0;
-    idle_active = false;
     pthread_mutex_unlock(&play_lock);
     gst_element_set_state(playbin, GST_STATE_PLAYING);
     printf("[gst] loadfile %s (start=%.2f)\n", path, start_sec);
@@ -1350,6 +1444,7 @@ int main(void) {
         bus_pump();
         video_apply_pending_start();
         video_pump();
+        image_pump();
         acc_video += now_sec() - tA;
 
 
@@ -1411,7 +1506,7 @@ int main(void) {
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : cur_tex);
+        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : (cur_is_image ? idle_tex : cur_tex));
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 
