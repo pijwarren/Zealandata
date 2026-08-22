@@ -273,17 +273,22 @@ button:focus-visible, .card:focus-visible{
 /* Offset by the full sticky hero+nav height (not just a nominal header
    size) so a category jump lands with the row heading actually visible
    below the pinned hero, instead of hidden underneath it. */
-.row{ position:relative; margin-bottom:var(--space-8); scroll-margin-top:calc(var(--hero-h) + 20px); }
+/* z-index:0 (not just position:relative) so this establishes its own
+   stacking context -- otherwise .row--sweep::before's negative z-index
+   below could escape behind neighbouring rows/the browse background
+   instead of staying pinned just behind this row's own heading/cards. */
+.row{ position:relative; z-index:0; margin-bottom:var(--space-8); scroll-margin-top:calc(var(--hero-h) + 20px); }
 /* One-shot highlight triggered by clicking the matching category button
    (see triggerRowSweep in app.js) -- a soft accent-coloured band sweeps
-   left-to-right over the row so the jump-to-section lands somewhere
-   obviously connected to the button just clicked. mix-blend-mode:screen
-   keeps card art/titles readable under the wash instead of just tinting
-   everything flat. */
+   left-to-right behind the row, sitting just above the page background
+   and below the heading/cards themselves (negative z-index paints before
+   this row's own non-positioned content -- see .row's stacking context
+   above). mix-blend-mode:screen keeps it a soft wash rather than a flat
+   tint where it does peek out around the cards. */
 .row--sweep::before{
   content:"";
   position:absolute; inset:0;
-  z-index:5; pointer-events:none;
+  z-index:-1; pointer-events:none;
   background:linear-gradient(90deg,
     transparent 0%,
     rgba(var(--color-accent-rgb),0.5) 48%,
