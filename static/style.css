@@ -341,7 +341,9 @@ button:focus-visible, .card:focus-visible{
 
 .card{
   cursor:pointer;
-  border-radius:var(--radius-md);
+  /* Same corner treatment as .category-nav__item -- increased rounding
+     with the bottom-left corner left square, for a consistent motif. */
+  border-radius:20px 20px 20px 0;
   overflow:hidden;
   background:var(--color-neutral-800);
   position:relative;
