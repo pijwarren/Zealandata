@@ -836,6 +836,26 @@ static void video_pipeline_init(void) {
     gst_display = GST_GL_DISPLAY(gst_gl_display_egl_new_with_egl_display(egl_dpy));
     gst_app_ctx = gst_gl_context_new_wrapped(gst_display, (guintptr)egl_ctx,
                                               GST_GL_PLATFORM_EGL, GST_GL_API_GLES2);
+    /* gst_gl_context_new_wrapped() alone leaves the wrapped context's
+       private state (including the "active_thread" bookkeeping every
+       gst_gl_context_thread_add() call checks) uninitialized -- every such
+       call against it fails its own assertion and silently no-ops instead
+       of running the marshaled callback. video_pump()'s gst_gl_sync_meta_wait
+       is one of these; it happens to still leave *a* texture id in cur_tex
+       either way, so multi-frame video mostly still displays, but a
+       single-frame still image (the idle/loading image, decoded once then
+       straight to EOS) never gets a second chance -- effectively blank.
+       activate+fill_info here, on this thread (the one egl_ctx is current
+       on), is the documented way to fully initialize a wrapped/foreign
+       context so later thread-marshaled calls against it actually run. */
+    gst_gl_context_activate(gst_app_ctx, TRUE);
+    GError *gl_ctx_err = NULL;
+    if (!gst_gl_context_fill_info(gst_app_ctx, &gl_ctx_err)) {
+        fprintf(stderr, "[gst] gst_gl_context_fill_info failed: %s\n",
+                gl_ctx_err ? gl_ctx_err->message : "?");
+        if (gl_ctx_err) g_error_free(gl_ctx_err);
+    }
+    gst_gl_context_activate(gst_app_ctx, FALSE);
 
     playbin = gst_element_factory_make("playbin3", "playbin");
     if (!playbin) playbin = gst_element_factory_make("playbin", "playbin");
