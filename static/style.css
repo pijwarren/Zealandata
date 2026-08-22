@@ -126,6 +126,12 @@ html,body{
 .tag-accent{ background:var(--color-accent-800); color:var(--color-accent-100); }
 button.tag{ cursor:pointer; transition:opacity .15s ease; }
 button.tag:hover{ opacity:.85; }
+/* When the hero's category matches one of the six brand SVGs
+   (static/buttons/, see .category-nav__item), swap the plain text pill
+   for that art instead -- resets the pill's own border/padding/pill-
+   radius since the SVG already brings its own shape. */
+.tag--icon{ display:inline-flex; align-items:center; height:40px; padding:0; border:none; background:none; }
+.tag--icon img{ display:block; height:100%; width:auto; }
 
 .btn{
   font-family:var(--font-body);
@@ -227,7 +233,10 @@ button:focus-visible, .card:focus-visible{
   position:absolute; left:var(--page-inset); right:var(--page-inset); bottom:56px;
   max-width:620px;
 }
-.hero__content .tag{ margin-bottom:14px; }
+.hero__actions{ display:flex; align-items:center; gap:14px; margin-top:6px; }
+/* Same corner treatment as .card/.category-nav__item -- rounded, with the
+   bottom-left corner left square. */
+#heroPlayBtn{ border-radius:20px 20px 20px 0; }
 .hero__content h1{
   font-family:var(--font-heading); font-weight:500;
   font-size:clamp(28px, 4.5vw, 46px);

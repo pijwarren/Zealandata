@@ -417,7 +417,20 @@ function paintHero(item, heroThumbnail) {
   heroSection.classList.remove("hidden");
   const src = heroThumbnail || item.thumbnail;
   if (src) heroImg.src = src;
-  heroCategory.textContent = item.category || "";
+  // Same brand SVG as the matching category-nav button, where there is one
+  // -- falls back to a plain text pill for anything outside the fixed 6
+  // (uncategorized, or a category added since these were drawn).
+  const heroIconFile = CATEGORY_NAV_ICONS[item.category];
+  heroCategory.classList.toggle("tag--icon", !!heroIconFile);
+  if (heroIconFile) {
+    heroCategory.innerHTML = "";
+    const heroIconImg = document.createElement("img");
+    heroIconImg.src = `/static/buttons/${encodeURIComponent(heroIconFile)}`;
+    heroIconImg.alt = item.category;
+    heroCategory.appendChild(heroIconImg);
+  } else {
+    heroCategory.textContent = item.category || "";
+  }
   heroTitle.textContent = item.title;
   heroDesc.textContent = item.description || "";
   heroDesc.classList.toggle("hidden", !item.description);
