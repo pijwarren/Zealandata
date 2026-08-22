@@ -363,9 +363,9 @@ button:focus-visible, .card:focus-visible{
 
 .card{
   cursor:pointer;
-  /* Same corner treatment as .category-nav__item -- increased rounding
-     with the bottom-left corner left square, for a consistent motif. */
-  border-radius:20px 20px 20px 0;
+  /* Only the top-right corner rounded -- distinct from the pill/nav-button
+     motif elsewhere (rounded except bottom-left). */
+  border-radius:0 20px 0 0;
   overflow:hidden;
   background:var(--color-neutral-800);
   position:relative;
