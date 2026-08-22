@@ -273,7 +273,29 @@ button:focus-visible, .card:focus-visible{
 /* Offset by the full sticky hero+nav height (not just a nominal header
    size) so a category jump lands with the row heading actually visible
    below the pinned hero, instead of hidden underneath it. */
-.row{ margin-bottom:var(--space-8); scroll-margin-top:calc(var(--hero-h) + 20px); }
+.row{ position:relative; margin-bottom:var(--space-8); scroll-margin-top:calc(var(--hero-h) + 20px); }
+/* One-shot highlight triggered by clicking the matching category button
+   (see triggerRowSweep in app.js) -- a soft accent-coloured band sweeps
+   left-to-right over the row so the jump-to-section lands somewhere
+   obviously connected to the button just clicked. mix-blend-mode:screen
+   keeps card art/titles readable under the wash instead of just tinting
+   everything flat. */
+.row--sweep::before{
+  content:"";
+  position:absolute; inset:0;
+  z-index:5; pointer-events:none;
+  background:linear-gradient(90deg,
+    transparent 0%,
+    rgba(var(--color-accent-rgb),0.5) 48%,
+    rgba(var(--color-accent-rgb),0.5) 52%,
+    transparent 100%);
+  mix-blend-mode:screen;
+  transform:translateX(-150%);
+  animation:row-sweep .9s cubic-bezier(.2,.7,.3,1);
+}
+@keyframes row-sweep{
+  to{ transform:translateX(150%); }
+}
 
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;

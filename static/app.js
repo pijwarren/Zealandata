@@ -335,7 +335,10 @@ for (const name of CATEGORY_NAV_NAMES) {
   btn.appendChild(img);
   btn.addEventListener("click", () => {
     const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
-    if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (section) {
+      section.scrollIntoView({ behavior: "smooth", block: "start" });
+      triggerRowSweep(section);
+    }
   });
   categoryNav.appendChild(btn);
 }
@@ -378,6 +381,15 @@ window.addEventListener("resize", () => {
   categoryNavResizeTimer = setTimeout(fitCategoryNavWidth, 100);
 });
 
+// Re-adding a class that's already present is a no-op, so a second click
+// while the previous sweep is still mid-animation wouldn't restart it --
+// force a reflow between remove/add so the animation always plays fresh.
+function triggerRowSweep(section) {
+  section.classList.remove("row--sweep");
+  void section.offsetWidth;
+  section.classList.add("row--sweep");
+}
+
 function renderCategories(items) {
   selectedCard = null; // about to be torn down along with the old cards
   previewedItem = null; // loadMedia() repaints the hero right after this anyway
@@ -414,6 +426,13 @@ function renderCategories(items) {
     scroller.appendChild(buildComingSoonCard());
     section.appendChild(scroller);
     wrapScroller(scroller);
+
+    // The sweep is a one-shot CSS animation on .row--sweep -- clean the class
+    // back off once it finishes so the next click can re-trigger it (adding
+    // an already-present class is a no-op, it wouldn't replay otherwise).
+    section.addEventListener("animationend", (e) => {
+      if (e.animationName === "row-sweep") section.classList.remove("row--sweep");
+    });
 
     categoryRows.appendChild(section);
   }
