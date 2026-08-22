@@ -281,7 +281,12 @@ button:focus-visible, .card:focus-visible{
    the sticky hero would otherwise show through the gaps around them. */
 .category-nav::before{
   content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(var(--color-bg-rgb),1) 0%, rgba(var(--color-bg-rgb),0.25) 100%);
+  /* Accent-tinted layer (Sky-Mid) painted over the existing bg fade --
+     first in the list so it sits on top, washing the blur with colour
+     instead of just plain navy. */
+  background:
+    linear-gradient(180deg, rgba(var(--color-accent-rgb),0.16) 0%, rgba(var(--color-accent-rgb),0) 100%),
+    linear-gradient(180deg, rgba(var(--color-bg-rgb),1) 0%, rgba(var(--color-bg-rgb),0.25) 100%);
   backdrop-filter:blur(16px);
   -webkit-backdrop-filter:blur(16px);
   mask-image:linear-gradient(180deg, black 60%, transparent 100%);
@@ -294,7 +299,7 @@ button:focus-visible, .card:focus-visible{
    fixed and width left auto so every button keeps the SVG's own natural
    proportions (they vary per label length) instead of being stretched. */
 .category-nav__item{
-  flex:0 0 auto; height:64px; padding:0;
+  flex:0 0 auto; height:var(--category-btn-height, 64px); padding:0;
   display:flex; align-items:center; justify-content:center;
   background:none; border:none; box-shadow:none;
   cursor:pointer;

@@ -331,6 +331,7 @@ for (const name of CATEGORY_NAV_NAMES) {
   const img = document.createElement("img");
   img.src = `/static/buttons/${encodeURIComponent(CATEGORY_NAV_ICONS[name])}`;
   img.alt = name;
+  img.addEventListener("load", fitCategoryNavWidth);
   btn.appendChild(img);
   btn.addEventListener("click", () => {
     const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
@@ -338,6 +339,32 @@ for (const name of CATEGORY_NAV_NAMES) {
   });
   categoryNav.appendChild(btn);
 }
+
+// Scales every button (uniformly, preserving each SVG's own aspect ratio)
+// so the row spans edge-to-edge within .category-nav's own side padding --
+// otherwise a fixed height leaves the buttons' natural, label-length-driven
+// widths clustered in the middle with empty space on both sides.
+let categoryNavResizeTimer = null;
+function fitCategoryNavWidth() {
+  const items = Array.from(categoryNav.children);
+  const imgs = items.map((btn) => btn.querySelector("img"));
+  if (imgs.length === 0 || imgs.some((img) => !img || !img.naturalWidth)) return;
+
+  const sumRatios = imgs.reduce((sum, img) => sum + img.naturalWidth / img.naturalHeight, 0);
+  const style = getComputedStyle(categoryNav);
+  const contentWidth = categoryNav.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+  const gapPx = parseFloat(style.columnGap) || 0;
+  const availableForButtons = contentWidth - gapPx * (items.length - 1);
+
+  // Floor rather than let it shrink indefinitely on a very narrow window --
+  // flex-wrap takes over into a second row below this instead.
+  const height = Math.max(44, availableForButtons / sumRatios);
+  categoryNav.style.setProperty("--category-btn-height", `${height}px`);
+}
+window.addEventListener("resize", () => {
+  clearTimeout(categoryNavResizeTimer);
+  categoryNavResizeTimer = setTimeout(fitCategoryNavWidth, 100);
+});
 
 function renderCategories(items) {
   selectedCard = null; // about to be torn down along with the old cards
