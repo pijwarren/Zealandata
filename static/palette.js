@@ -6,30 +6,30 @@
 
 const PALETTE_GROUPS = [
   { title: "Core", vars: [
-    { name: "--color-bg", label: "Background" },
-    { name: "--color-surface", label: "Surface" },
-    { name: "--color-text", label: "Text" },
-    { name: "--color-accent", label: "Accent" },
+    { name: "--color-bg", label: "Background", usage: "Page background; browse-area background" },
+    { name: "--color-surface", label: "Surface", usage: "Hero/thumbnail fallback bg; topbar & dock bar background" },
+    { name: "--color-text", label: "Text", usage: "Primary text colour; also the fill behind Play/primary buttons" },
+    { name: "--color-accent", label: "Accent", usage: "Focus rings, hover borders, tags, progress fill, card hover glow" },
   ]},
   { title: "Accent tints", vars: [
-    { name: "--color-accent-100", label: "Accent 100" },
-    { name: "--color-accent-300", label: "Accent 300" },
-    { name: "--color-accent-400", label: "Accent 400" },
-    { name: "--color-accent-800", label: "Accent 800" },
-    { name: "--color-accent-900", label: "Accent 900" },
+    { name: "--color-accent-100", label: "Accent 100", usage: "Text colour on the filled accent tag (tag-accent)" },
+    { name: "--color-accent-300", label: "Accent 300", usage: "Brand reference tint — not yet wired to an element" },
+    { name: "--color-accent-400", label: "Accent 400", usage: "Brand reference tint — currently same value as Accent" },
+    { name: "--color-accent-800", label: "Accent 800", usage: "Filled tag bg, row-arrow/card hover fill, active pinpad key" },
+    { name: "--color-accent-900", label: "Accent 900", usage: "Brand reference tint — not yet wired to an element" },
   ]},
   { title: "Neutrals", vars: [
-    { name: "--color-neutral-100", label: "Neutral 100" },
-    { name: "--color-neutral-200", label: "Neutral 200" },
-    { name: "--color-neutral-300", label: "Neutral 300" },
-    { name: "--color-neutral-400", label: "Neutral 400" },
-    { name: "--color-neutral-600", label: "Neutral 600" },
-    { name: "--color-neutral-700", label: "Neutral 700" },
-    { name: "--color-neutral-800", label: "Neutral 800" },
-    { name: "--color-neutral-900", label: "Neutral 900" },
+    { name: "--color-neutral-100", label: "Neutral 100", usage: "Brand reference tint — not yet wired to an element" },
+    { name: "--color-neutral-200", label: "Neutral 200", usage: "Hero description text; hover bg for primary/icon buttons" },
+    { name: "--color-neutral-300", label: "Neutral 300", usage: "Field labels, dock time/frame counters, doc-viewer captions" },
+    { name: "--color-neutral-400", label: "Neutral 400", usage: "Hint text, empty-state text, ghost pinpad key" },
+    { name: "--color-neutral-600", label: "Neutral 600", usage: "Placeholder-thumb icon colour; button focus-ring shadow" },
+    { name: "--color-neutral-700", label: "Neutral 700", usage: "Mapping-slider track; button hover-ring shadow" },
+    { name: "--color-neutral-800", label: "Neutral 800", usage: "Card fallback background; button default-ring shadow" },
+    { name: "--color-neutral-900", label: "Neutral 900", usage: "Form input / select / palette-hex field backgrounds" },
   ]},
   { title: "Status", vars: [
-    { name: "--color-danger", label: "Danger" },
+    { name: "--color-danger", label: "Danger", usage: "Pin-pad error text; dock stop-button hover state" },
   ]},
 ];
 
@@ -120,7 +120,7 @@ function buildPaletteRows() {
     const rowsEl = document.createElement("div");
     rowsEl.className = "palette-group__rows";
 
-    group.vars.forEach(({ name, label }) => {
+    group.vars.forEach(({ name, label, usage }) => {
       const value = currentValue(name) || "#000000";
 
       const row = document.createElement("div");
@@ -129,6 +129,7 @@ function buildPaletteRows() {
         <div class="palette-row__meta">
           <span class="palette-row__label">${label}</span>
           <span class="palette-row__var">${name}</span>
+          ${usage ? `<span class="palette-row__usage">${usage}</span>` : ""}
         </div>
         <input type="color" class="palette-swatch" value="${value}">
         <input type="text" class="palette-hex" value="${value}" maxlength="7" spellcheck="false">
@@ -166,6 +167,10 @@ function closePalette() {
   document.getElementById("paletteScrim").classList.add("hidden");
   document.getElementById("paletteDrawer").classList.add("hidden");
 }
+
+document.getElementById("paletteLogoSelect").addEventListener("change", (e) => {
+  document.getElementById("topbarLogo").src = e.target.value;
+});
 
 document.getElementById("paletteBtn").addEventListener("click", openPalette);
 document.getElementById("paletteCloseBtn").addEventListener("click", closePalette);

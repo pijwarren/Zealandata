@@ -10,7 +10,7 @@
 <body>
 
 <header class="topbar" id="topbar">
-  <img class="topbar__logo" src="/static/esnz_lb.png" alt="Earth Sciences New Zealand — Te Whatu Ao">
+  <img class="topbar__logo" id="topbarLogo" src="/static/esnz_lb.png" alt="Earth Sciences New Zealand — Te Whatu Ao">
   <div class="topbar__controls">
     <button type="button" class="btn-icon" id="startScreensaverBtn" aria-label="Start screensaver now" title="Start screensaver now">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"></polyline><line x1="4" y1="20" x2="21" y2="3"></line><polyline points="21 16 21 21 16 21"></polyline><line x1="15" y1="15" x2="21" y2="21"></line><line x1="4" y1="4" x2="9" y2="9"></line></svg>
@@ -275,6 +275,19 @@
     </button>
   </div>
   <p class="field__hint">Live-preview colours against the real UI. Changes here aren't saved — copy the CSS once you're happy and paste it into style.css.</p>
+  <div class="palette-group">
+    <div class="palette-group__title">Logo</div>
+    <div class="palette-row">
+      <div class="palette-row__meta">
+        <span class="palette-row__label">Topbar logo</span>
+        <span class="palette-row__var">esnz_lb.png / esnz_db.png</span>
+      </div>
+      <select class="palette-hex" id="paletteLogoSelect">
+        <option value="/static/esnz_lb.png">Light (current)</option>
+        <option value="/static/esnz_db.png">Dark</option>
+      </select>
+    </div>
+  </div>
   <div id="paletteGroups"></div>
   <div class="palette-actions">
     <button type="button" class="btn btn-secondary" id="paletteResetBtn">Reset to defaults</button>
