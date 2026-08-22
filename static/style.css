@@ -276,14 +276,16 @@ button:focus-visible, .card:focus-visible{
 }
 .category-nav__item{
   flex:1 1 0; min-width:0; width:auto;
-  min-height:56px; padding:clamp(6px, 1.2vw, 14px) clamp(4px, 1vw, 18px);
+  aspect-ratio:10/3; padding:clamp(6px, 1.2vw, 14px) clamp(4px, 1vw, 18px);
   display:flex; align-items:center; justify-content:center;
   text-align:center;
   background:rgba(var(--color-panel-rgb),0.5);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
   border:1px solid rgba(255,255,255,0.16);
-  border-radius:var(--radius-md);
+  /* Increased rounding, with the bottom-left corner left square -- a
+     deliberate "clipped corner" accent rather than a uniform pill. */
+  border-radius:20px 20px 20px 0;
   box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), inset 0 0 0 1px rgba(255,255,255,0.05);
   color:var(--color-text); font-family:var(--font-heading); font-weight:600;
   font-size:clamp(8px, 1.6vw, 12px); text-transform:uppercase; letter-spacing:.3px; line-height:1.3;
