@@ -281,7 +281,12 @@ button:focus-visible, .card:focus-visible{
      label's natural width (see .category-nav__item below) rather than
      six equal flex-fill slots, so the row's total width varies and can
      exceed one line at narrower widths. */
-  display:flex; flex-wrap:wrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
+  /* flex-start, not center -- otherwise the row's small rounding-safety
+     slack (see fitCategoryNavWidth in app.js) gets split evenly across
+     both edges, nudging the left edge a few px in from var(--page-inset)
+     and out of alignment with the topbar/hero/card rows, which all sit
+     flush against it. */
+  display:flex; flex-wrap:wrap; justify-content:flex-start; gap:clamp(4px, 1vw, 12px);
   padding:16px var(--page-inset) 40px;
 }
 /* Blur+fade behind the buttons rather than on .category-nav itself, so it
