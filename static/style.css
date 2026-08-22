@@ -291,7 +291,7 @@ button:focus-visible, .card:focus-visible{
     transparent 100%);
   mix-blend-mode:screen;
   transform:translateX(-150%);
-  animation:row-sweep .9s cubic-bezier(.2,.7,.3,1);
+  animation:row-sweep 2s cubic-bezier(.2,.7,.3,1);
 }
 @keyframes row-sweep{
   to{ transform:translateX(150%); }
