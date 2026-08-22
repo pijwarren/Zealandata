@@ -227,8 +227,8 @@ button:focus-visible, .card:focus-visible{
 .hero__scrim{
   position:absolute; inset:0; pointer-events:none;
   background:
-    linear-gradient(90deg, rgba(var(--color-accent-rgb),0.92) 0%, rgba(var(--color-accent-rgb),0.25) 55%, rgba(var(--color-accent-rgb),0) 78%),
-    linear-gradient(0deg, rgba(var(--color-accent-rgb),0.95) 0%, rgba(var(--color-accent-rgb),0) 30%);
+    linear-gradient(90deg, rgba(var(--color-accent-rgb),0.46) 0%, rgba(var(--color-accent-rgb),0.125) 55%, rgba(var(--color-accent-rgb),0) 78%),
+    linear-gradient(0deg, rgba(var(--color-accent-rgb),0.475) 0%, rgba(var(--color-accent-rgb),0) 30%);
 }
 .hero__content{
   position:absolute; left:var(--page-inset); right:var(--page-inset); bottom:56px;
