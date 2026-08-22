@@ -174,11 +174,8 @@ button:focus-visible, .card:focus-visible{
 
 .topbar{
   position:fixed; top:0; left:0; right:0; z-index:30;
-  display:flex; align-items:center; justify-content:space-between;
-  /* Top matches the left/right inset (rather than the shorter --space-4
-     both top and bottom get elsewhere) so the logo sits in an evenly
-     framed corner instead of hugging the top edge. */
-  padding:var(--page-inset) var(--page-inset) var(--space-4);
+  display:flex; align-items:flex-start; justify-content:space-between;
+  padding:var(--space-4) var(--page-inset);
   transform:translateY(0);
   transition:transform .25s ease;
 }
@@ -199,7 +196,14 @@ button:focus-visible, .card:focus-visible{
    this asset's native ~3.52:1 aspect ratio clears that with room to spare,
    and the topbar (a fixed/floating bar, not part of document flow) just
    grows a little taller to fit it rather than the logo getting cramped. */
-.topbar__logo{ display:block; height:56px; width:auto; }
+.topbar__logo{
+  display:block; height:56px; width:auto;
+  /* Independent of .topbar's own (unchanged, original) padding-top --
+     pushes just the logo down so its top matches the left/right inset,
+     without dragging .topbar__controls down with it (they stay flush
+     with the top edge, right where they were). */
+  margin-top:calc(var(--page-inset) - var(--space-4));
+}
 .topbar__controls{ display:flex; align-items:center; gap:10px; }
 
 /* -------------------------------------------------------------- hero */
