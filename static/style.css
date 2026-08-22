@@ -236,7 +236,7 @@ button:focus-visible, .card:focus-visible{
 .hero__actions{ display:flex; align-items:center; gap:14px; margin-top:6px; }
 /* Same corner treatment as .card/.category-nav__item -- rounded, with the
    bottom-left corner left square. */
-#heroPlayBtn{ border-radius:20px 20px 20px 0; }
+#heroPlayBtn{ border-radius:20px 20px 20px 0; height:40px; }
 .hero__content h1{
   font-family:var(--font-heading); font-weight:500;
   font-size:clamp(28px, 4.5vw, 46px);
