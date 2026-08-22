@@ -349,12 +349,24 @@ function fitCategoryNavWidth() {
   const items = Array.from(categoryNav.children);
   const imgs = items.map((btn) => btn.querySelector("img"));
   if (imgs.length === 0 || imgs.some((img) => !img || !img.naturalWidth)) return;
+  // These 6 SVGs load fast enough (small, local) to finish before
+  // paintHero's first call ever un-hides #heroSection -- clientWidth reads
+  // 0 for a display:none ancestor, which would otherwise stick the row at
+  // the 44px floor permanently (nothing re-triggers this once the images
+  // are already loaded). Skip and let paintHero's own call below --
+  // firing right as the hero actually becomes visible/measurable -- do it
+  // instead.
+  if (categoryNav.clientWidth === 0) return;
 
   const sumRatios = imgs.reduce((sum, img) => sum + img.naturalWidth / img.naturalHeight, 0);
   const style = getComputedStyle(categoryNav);
   const contentWidth = categoryNav.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
   const gapPx = parseFloat(style.columnGap) || 0;
-  const availableForButtons = contentWidth - gapPx * (items.length - 1);
+  // A couple of px slack per button, since each one's own rendered width
+  // gets sub-pixel-rounded independently -- an exact-fit target computed
+  // from unrounded math can add up to just over the container and tip the
+  // whole row into wrapping a button onto its own second line.
+  const availableForButtons = contentWidth - gapPx * (items.length - 1) - items.length * 2;
 
   // Floor rather than let it shrink indefinitely on a very narrow window --
   // flex-wrap takes over into a second row below this instead.
@@ -442,6 +454,11 @@ function paintHero(item, heroThumbnail) {
     return;
   }
   heroSection.classList.remove("hidden");
+  // First time through, the category-nav SVGs have likely already loaded
+  // (fast, small, local) while this was still display:none and unmeasurable
+  // -- fitCategoryNavWidth's own clientWidth guard skipped it then, so
+  // retry now that .category-nav is actually visible.
+  fitCategoryNavWidth();
   const src = heroThumbnail || item.thumbnail;
   if (src) heroImg.src = src;
   // Same brand SVG as the matching category-nav button, where there is one
