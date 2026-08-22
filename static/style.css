@@ -175,7 +175,10 @@ button:focus-visible, .card:focus-visible{
 .topbar{
   position:fixed; top:0; left:0; right:0; z-index:30;
   display:flex; align-items:center; justify-content:space-between;
-  padding:var(--space-4) var(--page-inset);
+  /* Top matches the left/right inset (rather than the shorter --space-4
+     both top and bottom get elsewhere) so the logo sits in an evenly
+     framed corner instead of hugging the top edge. */
+  padding:var(--page-inset) var(--page-inset) var(--space-4);
   transform:translateY(0);
   transition:transform .25s ease;
 }
