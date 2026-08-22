@@ -67,6 +67,13 @@
   --color-divider:   rgba(var(--color-text-rgb),0.16);
   --color-danger:    #F47218; /* ESNZ Clay-Mid */
 
+  /* Calibration-preview axis labels (static/calibration_preview.js) --
+     kept as their own tokens rather than reusing brand colours, since
+     these are conventional X/Y/Z red/green/blue, not brand-derived. */
+  --color-axis-x: #ff4d4d;
+  --color-axis-y: #4dff4d;
+  --color-axis-z: #598cff;
+
   --font-heading: "Host Grotesk", Arial, sans-serif;
   --font-body:    "Host Grotesk", Arial, sans-serif;
 
@@ -525,6 +532,7 @@ body.admin-mode .settings-grid{
 }
 .palette-group__rows{ display:flex; flex-direction:column; gap:8px; }
 .palette-row{ display:flex; align-items:center; gap:10px; }
+.palette-row--note{ font-size:11px; color:var(--color-neutral-400); line-height:1.4; font-style:italic; }
 .palette-row__meta{ flex:1 1 auto; min-width:0; display:flex; flex-direction:column; }
 .palette-row__label{ font-size:13px; }
 .palette-row__var{ font-size:11px; font-family:monospace; color:var(--color-neutral-400); }
@@ -851,9 +859,9 @@ body.admin-mode .settings-grid{
   text-shadow:0 1px 3px rgba(0,0,0,0.9);
   pointer-events:none; opacity:0;
 }
-.preview-lightbox__axis-label--x{ color:#ff4d4d; }
-.preview-lightbox__axis-label--y{ color:#4dff4d; }
-.preview-lightbox__axis-label--z{ color:#598cff; }
+.preview-lightbox__axis-label--x{ color:var(--color-axis-x); }
+.preview-lightbox__axis-label--y{ color:var(--color-axis-y); }
+.preview-lightbox__axis-label--z{ color:var(--color-axis-z); }
 .preview-lightbox__status{
   position:absolute; inset:0; z-index:2;
   display:flex; align-items:center; justify-content:center;

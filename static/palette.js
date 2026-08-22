@@ -4,32 +4,92 @@
 // here is persisted -- reload to discard, or use "Copy CSS" to save a combo
 // you like back into style.css by hand.
 
+// Grouped by where colour actually shows up on screen (18 element groups),
+// rather than by the underlying token scale -- several groups share the same
+// CSS variable (e.g. --color-accent drives focus rings AND the hero scrim
+// AND the dock progress bar), so editing it in any one group updates every
+// other row bound to that same variable too (see PALETTE_INPUT_REGISTRY).
 const PALETTE_GROUPS = [
-  { title: "Core", vars: [
+  { title: "Page background & text", vars: [
     { name: "--color-bg", label: "Background", usage: "Page background; browse-area background" },
-    { name: "--color-surface", label: "Surface", usage: "Hero/thumbnail fallback bg; topbar & dock bar background" },
-    { name: "--color-text", label: "Text", usage: "Primary text colour; also the fill behind Play/primary buttons" },
-    { name: "--color-accent", label: "Accent", usage: "Focus rings, hover borders, tags, progress fill, card hover glow" },
+    { name: "--color-text", label: "Text", usage: "Default text colour; also the fill behind Play/primary buttons" },
   ]},
-  { title: "Accent tints", vars: [
-    { name: "--color-accent-100", label: "Accent 100", usage: "Text colour on the filled accent tag (tag-accent)" },
-    { name: "--color-accent-300", label: "Accent 300", usage: "Brand reference tint — not yet wired to an element" },
-    { name: "--color-accent-400", label: "Accent 400", usage: "Brand reference tint — currently same value as Accent" },
-    { name: "--color-accent-800", label: "Accent 800", usage: "Filled tag bg, row-arrow/card hover fill, active pinpad key" },
-    { name: "--color-accent-900", label: "Accent 900", usage: "Brand reference tint — not yet wired to an element" },
+  { title: "Buttons", vars: [
+    { name: "--color-text", label: "Primary fill", usage: "btn-primary background" },
+    { name: "--color-neutral-200", label: "Hover fill", usage: "Primary/large-icon button hover background" },
+    { note: "Secondary/icon button border is Text at 16% opacity (--color-divider) — adjust it via Text, above." },
+    { name: "--color-accent", label: "Hover border", usage: "Icon-button hover border; focus ring on all buttons" },
   ]},
-  { title: "Neutrals", vars: [
-    { name: "--color-neutral-100", label: "Neutral 100", usage: "Brand reference tint — not yet wired to an element" },
-    { name: "--color-neutral-200", label: "Neutral 200", usage: "Hero description text; hover bg for primary/icon buttons" },
-    { name: "--color-neutral-300", label: "Neutral 300", usage: "Field labels, dock time/frame counters, doc-viewer captions" },
-    { name: "--color-neutral-400", label: "Neutral 400", usage: "Hint text, empty-state text, ghost pinpad key" },
-    { name: "--color-neutral-600", label: "Neutral 600", usage: "Placeholder-thumb icon colour; button focus-ring shadow" },
-    { name: "--color-neutral-700", label: "Neutral 700", usage: "Mapping-slider track; button hover-ring shadow" },
-    { name: "--color-neutral-800", label: "Neutral 800", usage: "Card fallback background; button default-ring shadow" },
-    { name: "--color-neutral-900", label: "Neutral 900", usage: "Form input / select / palette-hex field backgrounds" },
+  { title: "Tags", vars: [
+    { name: "--color-accent", label: "Outline", usage: "tag-outline border + text" },
+    { name: "--color-accent-800", label: "Filled background", usage: "tag-accent background" },
+    { name: "--color-accent-100", label: "Filled text", usage: "tag-accent text colour" },
   ]},
-  { title: "Status", vars: [
-    { name: "--color-danger", label: "Danger", usage: "Pin-pad error text; dock stop-button hover state" },
+  { title: "Topbar", vars: [
+    { name: "--color-bg", label: "Blur tint", usage: "Topbar's blurred backdrop fade (same variable as Page background)" },
+  ]},
+  { title: "Hero", vars: [
+    { name: "--color-accent", label: "Scrim tint", usage: "Sky wash over the hero media" },
+    { name: "--color-neutral-200", label: "Description text", usage: "Hero description paragraph" },
+  ]},
+  { title: "Category strip", vars: [
+    { name: "--color-accent", label: "Backdrop tint", usage: "Sky wash over the blurred strip behind the category buttons" },
+    { name: "--color-bg", label: "Backdrop fade", usage: "Navy fade behind the category buttons (same variable as Page background)" },
+    { note: "Each category button's own artwork (static/buttons/*.svg) bakes in its own colour and isn't adjustable here." },
+  ]},
+  { title: "Row headings", vars: [
+    { name: "--color-neutral-300", label: "Heading text", usage: "\"CONTINUE WATCHING\" / category row headings" },
+  ]},
+  { title: "Row arrows", vars: [
+    { name: "--color-bg", label: "Background tint", usage: "Scroll-arrow button background (same variable as Page background)" },
+    { note: "Border is Text at 16% opacity (--color-divider) — adjust it via Text, above." },
+    { name: "--color-accent-800", label: "Hover fill", usage: "Scroll-arrow hover background" },
+  ]},
+  { title: "Cards", vars: [
+    { name: "--color-neutral-800", label: "Fallback background", usage: "Card background before its thumbnail loads" },
+    { name: "--color-surface", label: "Thumbnail fallback", usage: "card__thumb background before the image loads" },
+    { name: "--color-accent", label: "Hover / selected glow", usage: "Ring + glow shown on hover and when selected" },
+    { name: "--color-neutral-600", label: "Placeholder icon", usage: "Placeholder glyph; \"coming soon\" label text" },
+    { name: "--color-text", label: "Title text", usage: "Card title" },
+    { name: "--color-accent-800", label: "Rename/restart hover", usage: "Admin-mode rename/restart button hover fill" },
+  ]},
+  { title: "Empty state", vars: [
+    { name: "--color-neutral-400", label: "Empty-state text", usage: "\"No films on the reel\" message" },
+  ]},
+  { title: "Drawers (Settings & Palette)", vars: [
+    { name: "--color-accent-800", label: "Glass tint", usage: "Translucent panel tint (drives --color-panel-rgb)" },
+  ]},
+  { title: "Form fields", vars: [
+    { name: "--color-neutral-900", label: "Field background", usage: "Text input / select background" },
+    { note: "Border is Text at 16% opacity (--color-divider) — adjust it via Text, above." },
+    { name: "--color-accent", label: "Focus border", usage: "Field border on focus" },
+  ]},
+  { title: "Calibration sliders", vars: [
+    { name: "--color-neutral-700", label: "Track", usage: "Slider track background" },
+    { name: "--color-accent", label: "Thumb / fill", usage: "Slider thumb and stepper hover colour" },
+  ]},
+  { title: "PIN pad", vars: [
+    { name: "--color-accent", label: "Dots / keys", usage: "Filled PIN dots; keypad hover/active state" },
+    { name: "--color-danger", label: "Error text", usage: "Incorrect-PIN message" },
+  ]},
+  { title: "Playback dock", vars: [
+    { name: "--color-accent", label: "Progress bar", usage: "Scrub-bar fill and drag handle" },
+    { name: "--color-neutral-300", label: "Time / frame text", usage: "Elapsed-time and frame-counter labels" },
+  ]},
+  { title: "Docs panel", vars: [
+    { name: "--color-surface", label: "Chip background", usage: "Document chip thumbnail fallback" },
+    { name: "--color-accent", label: "Chip hover border", usage: "Document chip hover state" },
+  ]},
+  { title: "Doc viewer", vars: [
+    { name: "--color-text", label: "Iframe background", usage: "Background behind a PDF/iframe document" },
+    { name: "--color-accent", label: "Nav hover", usage: "Prev/next button hover border" },
+    { name: "--color-neutral-300", label: "Page counter text", usage: "\"n / total\" counter chip" },
+  ]},
+  { title: "Calibration preview", vars: [
+    { name: "--color-axis-x", label: "X axis label", usage: "Projection-mapping preview lightbox" },
+    { name: "--color-axis-y", label: "Y axis label", usage: "Projection-mapping preview lightbox" },
+    { name: "--color-axis-z", label: "Z axis label", usage: "Projection-mapping preview lightbox" },
+    { name: "--color-neutral-300", label: "Status text", usage: "\"Loading…\" / status overlay" },
   ]},
 ];
 
@@ -56,19 +116,37 @@ function currentValue(name) {
   return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
 }
 
+// Several groups above point at the *same* variable (e.g. --color-accent
+// shows up under Buttons, Hero, Cards, PIN pad...). This registry tracks
+// every swatch+hex pair rendered for a given variable so that editing it in
+// any one group immediately updates its value everywhere else it's shown,
+// instead of the other rows silently going stale until the panel rebuilds.
+const PALETTE_INPUT_REGISTRY = {};
+
+function uniqueVarNames() {
+  const seen = new Set();
+  PALETTE_GROUPS.forEach((group) => {
+    group.vars.forEach(({ name }) => { if (name) seen.add(name); });
+  });
+  return [...seen];
+}
+
 function applyVar(name, hex) {
   document.documentElement.style.setProperty(name, hex);
   const sibling = RGB_SIBLINGS[name];
   if (sibling) document.documentElement.style.setProperty(sibling, hexToRgbTriplet(hex));
+
+  (PALETTE_INPUT_REGISTRY[name] || []).forEach(({ swatch, hexInput }) => {
+    swatch.value = hex;
+    hexInput.value = hex;
+  });
 }
 
 function resetPalette() {
-  PALETTE_GROUPS.forEach((group) => {
-    group.vars.forEach(({ name }) => {
-      document.documentElement.style.removeProperty(name);
-      const sibling = RGB_SIBLINGS[name];
-      if (sibling) document.documentElement.style.removeProperty(sibling);
-    });
+  uniqueVarNames().forEach((name) => {
+    document.documentElement.style.removeProperty(name);
+    const sibling = RGB_SIBLINGS[name];
+    if (sibling) document.documentElement.style.removeProperty(sibling);
   });
   document.getElementById("paletteOutput").classList.add("hidden");
   buildPaletteRows();
@@ -76,13 +154,10 @@ function resetPalette() {
 
 function copyPaletteCss() {
   const lines = [];
-  PALETTE_GROUPS.forEach((group) => {
-    lines.push(`  /* ${group.title} */`);
-    group.vars.forEach(({ name }) => {
-      lines.push(`  ${name}: ${currentValue(name)};`);
-      const sibling = RGB_SIBLINGS[name];
-      if (sibling) lines.push(`  ${sibling}: ${currentValue(sibling)};`);
-    });
+  uniqueVarNames().sort().forEach((name) => {
+    lines.push(`  ${name}: ${currentValue(name)};`);
+    const sibling = RGB_SIBLINGS[name];
+    if (sibling) lines.push(`  ${sibling}: ${currentValue(sibling)};`);
   });
   const css = `:root{\n${lines.join("\n")}\n}`;
 
@@ -106,6 +181,8 @@ function copyPaletteCss() {
 }
 
 function buildPaletteRows() {
+  Object.keys(PALETTE_INPUT_REGISTRY).forEach((k) => delete PALETTE_INPUT_REGISTRY[k]);
+
   const container = document.getElementById("paletteGroups");
   container.innerHTML = "";
   PALETTE_GROUPS.forEach((group) => {
@@ -120,7 +197,15 @@ function buildPaletteRows() {
     const rowsEl = document.createElement("div");
     rowsEl.className = "palette-group__rows";
 
-    group.vars.forEach(({ name, label, usage }) => {
+    group.vars.forEach(({ name, label, usage, note }) => {
+      if (!name) {
+        const noteRow = document.createElement("div");
+        noteRow.className = "palette-row palette-row--note";
+        noteRow.textContent = note;
+        rowsEl.appendChild(noteRow);
+        return;
+      }
+
       const value = currentValue(name) || "#000000";
 
       const row = document.createElement("div");
@@ -137,16 +222,12 @@ function buildPaletteRows() {
 
       const swatch = row.querySelector(".palette-swatch");
       const hexInput = row.querySelector(".palette-hex");
-      swatch.addEventListener("input", () => {
-        hexInput.value = swatch.value;
-        applyVar(name, swatch.value);
-      });
+      (PALETTE_INPUT_REGISTRY[name] = PALETTE_INPUT_REGISTRY[name] || []).push({ swatch, hexInput });
+
+      swatch.addEventListener("input", () => applyVar(name, swatch.value));
       hexInput.addEventListener("input", () => {
         const v = hexInput.value.trim();
-        if (/^#[0-9a-fA-F]{6}$/.test(v)) {
-          swatch.value = v;
-          applyVar(name, v);
-        }
+        if (/^#[0-9a-fA-F]{6}$/.test(v)) applyVar(name, v);
       });
 
       rowsEl.appendChild(row);
