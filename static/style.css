@@ -260,7 +260,11 @@ button:focus-visible, .card:focus-visible{
 
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;
-  display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
+  /* wrap, not nowrap -- each button is now brand art sized to its own
+     label's natural width (see .category-nav__item below) rather than
+     six equal flex-fill slots, so the row's total width varies and can
+     exceed one line at narrower widths. */
+  display:flex; flex-wrap:wrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
   padding:16px var(--page-inset) 40px;
 }
 /* Blur+fade behind the buttons rather than on .category-nav itself, so it
@@ -274,25 +278,21 @@ button:focus-visible, .card:focus-visible{
   mask-image:linear-gradient(180deg, black 60%, transparent 100%);
   -webkit-mask-image:linear-gradient(180deg, black 60%, transparent 100%);
 }
+/* Each SVG in static/buttons/ already bakes in its own background shape
+   (with the same increased-rounding, square-bottom-left corner as
+   .card/.category-nav__item elsewhere), icon, and text label -- so the
+   button itself is just a sized, unstyled frame around it. Height is
+   fixed and width left auto so every button keeps the SVG's own natural
+   proportions (they vary per label length) instead of being stretched. */
 .category-nav__item{
-  flex:1 1 0; min-width:0; width:auto;
-  aspect-ratio:10/3; padding:clamp(6px, 1.2vw, 14px) clamp(4px, 1vw, 18px);
+  flex:0 0 auto; height:64px; padding:0;
   display:flex; align-items:center; justify-content:center;
-  text-align:center;
-  background:rgba(var(--color-panel-rgb),0.5);
-  backdrop-filter:blur(20px) saturate(180%);
-  -webkit-backdrop-filter:blur(20px) saturate(180%);
-  border:1px solid rgba(255,255,255,0.16);
-  /* Increased rounding, with the bottom-left corner left square -- a
-     deliberate "clipped corner" accent rather than a uniform pill. */
-  border-radius:20px 20px 20px 0;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), inset 0 0 0 1px rgba(255,255,255,0.05);
-  color:var(--color-text); font-family:var(--font-heading); font-weight:600;
-  font-size:clamp(8px, 1.6vw, 12px); text-transform:uppercase; letter-spacing:.3px; line-height:1.3;
+  background:none; border:none; box-shadow:none;
   cursor:pointer;
-  transition:background .15s ease, border-color .15s ease, transform .15s ease;
+  transition:transform .15s ease;
 }
-.category-nav__item:hover{ background:rgba(var(--color-panel-rgb),0.68); border-color:var(--color-accent); transform:translateY(-2px); }
+.category-nav__item img{ display:block; height:100%; width:auto; }
+.category-nav__item:hover{ transform:translateY(-2px); }
 .category-nav__item--empty{ opacity:.35; cursor:default; pointer-events:none; }
 .row__scroller{
   display:flex; gap:20px; overflow-x:auto;

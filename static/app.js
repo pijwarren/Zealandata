@@ -307,25 +307,31 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
 
 let allMediaItems = [];
 
-// Wordmark placeholders for this library's fixed 6 categories (real icons
-// TBD) -- jumps to that category's row when clicked, regardless of scroll
-// position. Built once; renderCategories() below just toggles which ones
-// currently have any content, since not every category necessarily has
-// videos in it yet.
-const CATEGORY_NAV_NAMES = [
-  "Geological Hazards",
-  "Weather and Climate Hazards",
-  "Atmosphere and Climate",
-  "Land and Water",
-  "Oceans and Fisheries",
-  "Energy",
-];
+// Brand button art for this library's fixed 6 categories (static/buttons/) --
+// each SVG bakes in its own background shape, icon, and text label, so the
+// button element itself is just a sized, transparent frame around it.
+// Jumps to that category's row when clicked, regardless of scroll position.
+// Built once; renderCategories() below just toggles which ones currently
+// have any content, since not every category necessarily has videos in it
+// yet.
+const CATEGORY_NAV_ICONS = {
+  "Geological Hazards": "Geologicalhazards.svg",
+  "Weather and Climate Hazards": "Weather&climatehazards.svg",
+  "Atmosphere and Climate": "Atmosphere&climate.svg",
+  "Land and Water": "Land&water.svg",
+  "Oceans and Fisheries": "Oceans&fisheries.svg",
+  "Energy": "Energy.svg",
+};
+const CATEGORY_NAV_NAMES = Object.keys(CATEGORY_NAV_ICONS);
 for (const name of CATEGORY_NAV_NAMES) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "category-nav__item";
-  btn.textContent = name.replace(/\band\b/gi, "&");
   btn.dataset.categoryName = name;
+  const img = document.createElement("img");
+  img.src = `/static/buttons/${encodeURIComponent(CATEGORY_NAV_ICONS[name])}`;
+  img.alt = name;
+  btn.appendChild(img);
   btn.addEventListener("click", () => {
     const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
     if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
