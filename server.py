@@ -115,7 +115,16 @@ MAPPING_NUMERIC = {
 # never left on for real projection -- shading the video with fake light
 # fights the physical object's own real shading, which is the whole point
 # of projecting onto it.
-MAPPING_BOOLEAN = {"shading": False}
+MAPPING_BOOLEAN = {
+    "shading": False,
+    # Calibration aid only, like shading above -- three colored orientation
+    # rings the native renderer draws over the real HDMI output (and the
+    # admin panel's client-side preview mirrors), independent of shading
+    # itself so either can be toggled without the other. See projector.c's
+    # own gizmo comments for why it's drawn after (bypassing) the keystone
+    # warp. Off by default for the same reason shading is.
+    "gizmo": False,
+}
 DEFAULT_MAPPING = {**MAPPING_NUMERIC, **MAPPING_BOOLEAN}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts"}
 

@@ -77,6 +77,9 @@ static double now_sec(void) {
 struct mapping {
     float scale, rot_x, rot_y, rot_z, off_x, off_y, render_scale;
     bool shading;
+    /* Independent of shading -- either can be toggled without the other,
+       matching server.py's MAPPING_BOOLEAN. */
+    bool gizmo;
     /* Keystone: how far each corner of the final rendered picture is
        nudged from its default position, in NDC units (+-1 spans the full
        display) -- corrects for the projector itself sitting off-axis from
@@ -86,7 +89,7 @@ struct mapping {
        an actual perspective-correct quad warp. */
     float ks_tl_x, ks_tl_y, ks_tr_x, ks_tr_y, ks_bl_x, ks_bl_y, ks_br_x, ks_br_y;
 };
-static struct mapping map_cur = { 1, 0, 0, 0, 0, 0, 1, false, 0, 0, 0, 0, 0, 0, 0, 0 };
+static struct mapping map_cur = { 1, 0, 0, 0, 0, 0, 1, false, false, 0, 0, 0, 0, 0, 0, 0, 0 };
 static const char *mapping_path = "/home/pj/zealandata/mapping.json";
 /* Sub-second resolution matters here: st_mtime alone is whole seconds, so
    several slider-drag writes landing in the same wall-clock second would
@@ -141,6 +144,7 @@ static void mapping_reload(void) {
     json_num(buf, "offset_y", &map_cur.off_y);
     json_num(buf, "render_scale", &map_cur.render_scale);
     json_bool(buf, "shading", &map_cur.shading);
+    json_bool(buf, "gizmo", &map_cur.gizmo);
     json_num(buf, "keystone_tl_x", &map_cur.ks_tl_x);
     json_num(buf, "keystone_tl_y", &map_cur.ks_tl_y);
     json_num(buf, "keystone_tr_x", &map_cur.ks_tr_x);
@@ -151,10 +155,10 @@ static void mapping_reload(void) {
     json_num(buf, "keystone_br_y", &map_cur.ks_br_y);
     if (map_cur.render_scale < 0.25f) map_cur.render_scale = 0.25f;
     if (map_cur.render_scale > 1.0f) map_cur.render_scale = 1.0f;
-    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f shading=%d "
+    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f shading=%d gizmo=%d "
            "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
-           map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.shading,
+           map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.shading, map_cur.gizmo,
            map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
            map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y);
 }
@@ -697,6 +701,121 @@ static const char *WARP_FS_SRC =
     "void main(){\n"
     "  oColor = texture(uSceneTex, vUV);\n"
     "}\n";
+
+/* ================================================ calibration gizmo === *
+ * Three colored rings -- one per rotation axis, red/green/blue for X/Y/Z
+ * -- plus a hand-drawn letter beside each, so an operator can see which
+ * physical rotation each slider drives without doing it by trial and
+ * error. Drawn in its own pass straight to the default framebuffer
+ * *after* the keystone warp blit in the render loop, reusing the same
+ * MVP the model itself used but never touching the warp step: keystone
+ * corrects for the projector sitting off-axis from the print, which has
+ * nothing to do with reading the gizmo, and running these circles through
+ * that same perspective warp would turn them into skewed ellipses/quads
+ * -- exactly the confusion a reference gizmo exists to avoid. Gated on
+ * the existing calibration-shading toggle rather than a new mapping
+ * field, since that flag already means "actively lining things up, never
+ * during real projection" -- the same moment this is useful. */
+static const char *GIZMO_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec3 aPos;\n"
+    "layout(location=1) in vec3 aCol;\n"
+    "uniform mat4 uMVP;\n"
+    "out vec3 vCol;\n"
+    "void main(){\n"
+    "  vCol = aCol;\n"
+    "  gl_Position = uMVP * vec4(aPos, 1.0);\n"
+    "}\n";
+
+static const char *GIZMO_FS_SRC =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "in vec3 vCol;\n"
+    "out vec4 oColor;\n"
+    "void main(){ oColor = vec4(vCol, 1.0); }\n";
+
+/* Labels are plain NDC positions (not run through uMVP): each letter's
+   center is computed once per frame on the CPU by projecting its ring
+   anchor through the same MVP the rings use, then offset by a fixed
+   on-screen size -- so the letters stay upright and equally legible
+   regardless of the model's current rotation, rather than tumbling with
+   the ring they sit next to. */
+static const char *GIZMO_LABEL_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec2 aPos;\n"
+    "layout(location=1) in vec3 aCol;\n"
+    "out vec3 vCol;\n"
+    "void main(){\n"
+    "  vCol = aCol;\n"
+    "  gl_Position = vec4(aPos, 0.0, 1.0);\n"
+    "}\n";
+
+#define GIZMO_SEGMENTS 64
+#define GIZMO_RADIUS 0.4f
+#define GIZMO_LABEL_MAX_VERTS 32   /* 3 letters, at most 3 segments (6 verts) each */
+
+typedef struct { float x, y, z, r, g, b; } gizmo_vert;
+typedef struct { float x, y, r, g, b; } label_vert;
+typedef struct { float x0, y0, x1, y1; } glyph_seg;
+
+/* Hand-drawn strokes for X/Y/Z, in a unit square (0,0)-(1,1), y-up --
+   simplest way to get legible labels without pulling in a font/glyph
+   dependency for three letters. */
+static const glyph_seg GLYPH_X[] = { { 0, 0, 1, 1 }, { 0, 1, 1, 0 } };
+static const glyph_seg GLYPH_Y[] = {
+    { 0, 1, 0.5f, 0.5f }, { 1, 1, 0.5f, 0.5f }, { 0.5f, 0.5f, 0.5f, 0 }
+};
+static const glyph_seg GLYPH_Z[] = { { 0, 1, 1, 1 }, { 1, 1, 0, 0 }, { 0, 0, 1, 0 } };
+
+/* Ring i lies in the plane perpendicular to axis i, matching the sense in
+   which rotation_x/y/z actually spin the model (see mat_rot_x/y/z above)
+   -- so each ring visibly turns when its own slider moves, not the other
+   two. */
+static void build_gizmo_rings(gizmo_vert out[3 * GIZMO_SEGMENTS]) {
+    static const float col[3][3] = { { 1, 0.25f, 0.25f }, { 0.25f, 1, 0.25f }, { 0.35f, 0.55f, 1 } };
+    for (int ring = 0; ring < 3; ring++) {
+        for (int s = 0; s < GIZMO_SEGMENTS; s++) {
+            float a = 2.f * (float)M_PI * s / GIZMO_SEGMENTS;
+            float c = cosf(a), sn = sinf(a);
+            float x = 0, y = 0, z = 0;
+            if (ring == 0)      { y =  c * GIZMO_RADIUS; z = sn * GIZMO_RADIUS; }
+            else if (ring == 1) { x =  c * GIZMO_RADIUS; z = -sn * GIZMO_RADIUS; }
+            else                { x =  c * GIZMO_RADIUS; y = sn * GIZMO_RADIUS; }
+            gizmo_vert *v = &out[ring * GIZMO_SEGMENTS + s];
+            v->x = x; v->y = y; v->z = z;
+            v->r = col[ring][0]; v->g = col[ring][1]; v->b = col[ring][2];
+        }
+    }
+}
+
+/* Projects a gizmo-space point through mvp down to NDC (w-divide, though
+   with the pipeline's affine-only ortho matrices w is always 1 in
+   practice -- done properly anyway since it's nearly free). */
+static void gizmo_project_ndc(const mat4 mvp, float x, float y, float z, float *ndcx, float *ndcy) {
+    float cx = mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12];
+    float cy = mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13];
+    float cw = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
+    if (fabsf(cw) < 1e-6f) cw = 1.f;
+    *ndcx = cx / cw; *ndcy = cy / cw;
+}
+
+/* Appends one letter's line segments, in NDC, centered at (cx,cy) with
+   on-screen "size" corrected by aspect so it reads as a square glyph
+   rather than a stretched one on a non-square display. Returns the new
+   vertex count. */
+static int gizmo_append_glyph(label_vert *out, int count, const glyph_seg *segs, int nseg,
+                                float cx, float cy, float size, float aspect,
+                                float r, float g, float b) {
+    for (int i = 0; i < nseg; i++) {
+        float x0 = cx + (segs[i].x0 - 0.5f) * size / aspect;
+        float y0 = cy + (segs[i].y0 - 0.5f) * size;
+        float x1 = cx + (segs[i].x1 - 0.5f) * size / aspect;
+        float y1 = cy + (segs[i].y1 - 0.5f) * size;
+        out[count].x = x0; out[count].y = y0; out[count].r = r; out[count].g = g; out[count].b = b; count++;
+        out[count].x = x1; out[count].y = y1; out[count].r = r; out[count].g = g; out[count].b = b; count++;
+    }
+    return count;
+}
 
 static GLuint compile_shader(GLenum type, const char *src) {
     GLuint s = glCreateShader(type);
@@ -1268,6 +1387,46 @@ int main(void) {
     static const unsigned warpIdx[6] = { 0, 1, 2, 0, 2, 3 };
     glGenBuffers(1, &warpIbo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, warpIbo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof warpIdx, warpIdx, GL_STATIC_DRAW);
+
+    /* ---- calibration gizmo: ring program + static ring geometry ---- */
+    GLuint gizmoProg = glCreateProgram();
+    glAttachShader(gizmoProg, compile_shader(GL_VERTEX_SHADER, GIZMO_VS_SRC));
+    glAttachShader(gizmoProg, compile_shader(GL_FRAGMENT_SHADER, GIZMO_FS_SRC));
+    glLinkProgram(gizmoProg);
+    GLint gizmoLinked = 0; glGetProgramiv(gizmoProg, GL_LINK_STATUS, &gizmoLinked);
+    if (!gizmoLinked) { char log[2048]; glGetProgramInfoLog(gizmoProg, sizeof log, NULL, log);
+                         fprintf(stderr, "gizmo link: %s\n", log); return 1; }
+    GLint uGizmoMVP = glGetUniformLocation(gizmoProg, "uMVP");
+
+    GLuint gizmoVao, gizmoVbo;
+    glGenVertexArrays(1, &gizmoVao); glBindVertexArray(gizmoVao);
+    glGenBuffers(1, &gizmoVbo); glBindBuffer(GL_ARRAY_BUFFER, gizmoVbo);
+    gizmo_vert ringVerts[3 * GIZMO_SEGMENTS];
+    build_gizmo_rings(ringVerts);
+    glBufferData(GL_ARRAY_BUFFER, sizeof ringVerts, ringVerts, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(gizmo_vert), (void *)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(gizmo_vert), (void *)(3 * sizeof(float)));
+
+    /* ---- calibration gizmo: label program + dynamic per-frame geometry --- */
+    GLuint labelProg = glCreateProgram();
+    glAttachShader(labelProg, compile_shader(GL_VERTEX_SHADER, GIZMO_LABEL_VS_SRC));
+    glAttachShader(labelProg, compile_shader(GL_FRAGMENT_SHADER, GIZMO_FS_SRC));
+    glLinkProgram(labelProg);
+    GLint labelLinked = 0; glGetProgramiv(labelProg, GL_LINK_STATUS, &labelLinked);
+    if (!labelLinked) { char log[2048]; glGetProgramInfoLog(labelProg, sizeof log, NULL, log);
+                         fprintf(stderr, "gizmo label link: %s\n", log); return 1; }
+
+    GLuint labelVao, labelVbo;
+    glGenVertexArrays(1, &labelVao); glBindVertexArray(labelVao);
+    glGenBuffers(1, &labelVbo); glBindBuffer(GL_ARRAY_BUFFER, labelVbo);
+    glBufferData(GL_ARRAY_BUFFER, GIZMO_LABEL_MAX_VERTS * sizeof(label_vert), NULL, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(label_vert), (void *)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(label_vert), (void *)(2 * sizeof(float)));
+
     glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
 
     /* Scene is now always rendered off-screen (previously only when
@@ -1359,7 +1518,7 @@ int main(void) {
         }
 
         /* ---- transform: base orientation, then calibration on top ---- */
-        mat4 mBaseZ, mBaseX, mBase, mRx, mRy, mRz, mS, mT, tmp, model, proj, mvp;
+        mat4 mBaseZ, mBaseX, mBase, mRx, mRy, mRz, mS, mT, tmp, model, proj, mvp, gizmoModel, gizmoMvp;
         mat_rot_z(mBaseZ, BASE_ORIENTATION_Z_DEG * (float)M_PI / 180.f);
         mat_rot_x(mBaseX, BASE_ORIENTATION_X_DEG * (float)M_PI / 180.f);
         mat_mul(mBase, mBaseZ, mBaseX);
@@ -1369,9 +1528,20 @@ int main(void) {
         mat_scale(mS, map_cur.scale);
         mat_translate(mT, map_cur.off_x, map_cur.off_y, 0);
 
-        mat_mul(tmp, mRy, mBase);      /* base orientation sits underneath */
+        /* rotation_z applied right above the base orientation (before x/y)
+           so it spins the model's own current up-axis -- what an operator
+           reads as "turn the print" -- rather than the camera's fixed view
+           axis. Applying it last (outermost, as this used to) instead
+           rotates the *already x/y-tilted* result about the camera's own
+           axis regardless of that tilt, which looks like the picture
+           spinning in place rather than the model turning -- exactly the
+           "z rotation looks pinned to the camera, not the model" report
+           this reordering fixes. rotation_x/y stay outermost: they exist
+           to correct the projector's own perpendicularity relative to the
+           screen, which is inherently a camera-relative correction. */
+        mat_mul(tmp, mRz, mBase);
+        mat_mul(tmp, mRy, tmp);
         mat_mul(tmp, mRx, tmp);
-        mat_mul(tmp, mRz, tmp);
         mat_mul(tmp, mS, tmp);
         mat_mul(model, mT, tmp);
 
@@ -1379,6 +1549,25 @@ int main(void) {
         float aspect = (float)wantW / (float)wantH;
         mat_ortho(proj, -half * aspect, half * aspect, -half, half, -100.f, 100.f);
         mat_mul(mvp, proj, model);
+
+        /* The gizmo needs its own model matrix, built the same way but with
+           mBase left out. mBase is a fixed correction for how this OBJ
+           happens to be exported (see its own comment above) -- baking it
+           underneath the live rotations, as the mesh's model matrix does,
+           means Rx/Ry/Rz each end up spinning things about whatever axis
+           mBase happened to leave pointing that way (mBase's 90-degree Z
+           term alone swaps X and Y), not about the axis their name and
+           slider suggest. Dropping mBase here is what makes the red/green/
+           blue rings actually turn with their own same-named slider,
+           independent of this model's particular resting-orientation
+           quirk. Same rz-then-ry-then-rx order as the real model matrix
+           above, for the same reason: keeps the blue ring's spin attached
+           to the gizmo's own current tilt instead of the camera. */
+        mat_mul(tmp, mRy, mRz);
+        mat_mul(tmp, mRx, tmp);
+        mat_mul(tmp, mS, tmp);
+        mat_mul(gizmoModel, mT, tmp);
+        mat_mul(gizmoMvp, proj, gizmoModel);
 
         double tB = now_sec();
         glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
@@ -1422,6 +1611,44 @@ int main(void) {
         glBindBuffer(GL_ARRAY_BUFFER, warpVbo);
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof warpVerts, warpVerts);
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+        /* ---- calibration gizmo: drawn after the warp, deliberately
+           bypassing it -- see the comment above GIZMO_VS_SRC. Uses
+           gizmoMvp (model's transform minus mBase -- see its own comment
+           above) rather than mvp, so each ring turns with its own
+           same-named slider instead of whichever one mBase's fixed
+           90-degree Z term happens to alias it to. Gated on its own
+           mapping.gizmo flag, independent of shading -- see MAPPING_BOOLEAN
+           in server.py. */
+        if (map_cur.gizmo) {
+            glUseProgram(gizmoProg);
+            glUniformMatrix4fv(uGizmoMVP, 1, GL_FALSE, gizmoMvp);
+            glBindVertexArray(gizmoVao);
+            for (int ring = 0; ring < 3; ring++)
+                glDrawArrays(GL_LINE_LOOP, ring * GIZMO_SEGMENTS, GIZMO_SEGMENTS);
+
+            /* Each label anchors on its own ring at a fixed 45-degree
+               point, nudged past the ring radius, then projected through
+               the same gizmoMvp -- see gizmo_project_ndc/gizmo_append_glyph. */
+            label_vert labelVerts[GIZMO_LABEL_MAX_VERTS];
+            int lc = 0;
+            float ndcx, ndcy;
+            const float ANCHOR = GIZMO_RADIUS * 1.3f;
+            const float S = 0.7071068f; /* sin/cos of 45 degrees */
+            gizmo_project_ndc(gizmoMvp, 0, ANCHOR * S, ANCHOR * S, &ndcx, &ndcy);
+            lc = gizmo_append_glyph(labelVerts, lc, GLYPH_X, 2, ndcx, ndcy, 0.06f, aspect, 1.f, 0.25f, 0.25f);
+            gizmo_project_ndc(gizmoMvp, ANCHOR * S, 0, -ANCHOR * S, &ndcx, &ndcy);
+            lc = gizmo_append_glyph(labelVerts, lc, GLYPH_Y, 3, ndcx, ndcy, 0.06f, aspect, 0.25f, 1.f, 0.25f);
+            gizmo_project_ndc(gizmoMvp, ANCHOR * S, ANCHOR * S, 0, &ndcx, &ndcy);
+            lc = gizmo_append_glyph(labelVerts, lc, GLYPH_Z, 3, ndcx, ndcy, 0.06f, aspect, 0.35f, 0.55f, 1.f);
+
+            glUseProgram(labelProg);
+            glBindVertexArray(labelVao);
+            glBindBuffer(GL_ARRAY_BUFFER, labelVbo);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, lc * sizeof(label_vert), labelVerts);
+            glDrawArrays(GL_LINES, 0, lc);
+        }
+
         glBindVertexArray(vao);   /* restore, matching pre-warp-pass state */
 
         glFinish();                       /* so the timing splits are real */
