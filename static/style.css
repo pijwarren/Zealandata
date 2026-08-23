@@ -712,6 +712,81 @@ body.admin-mode .settings-grid{
   border-radius:980px; padding:5px 14px;
 }
 
+/* Floating, non-modal (no scrim) so it never blocks the calibration
+   sliders underneath -- default position sits clear of the settings
+   drawer's centered position, and the whole box is drag-repositionable
+   (see app.js) for whatever's left over on a narrower screen. No title bar:
+   the close button floats directly over the preview (see
+   .preview-lightbox__close) so the render gets the full box. Sits above
+   the drawer (z-index 61) but below the PIN pad/doc viewer (71/72), since
+   those are true modals and should still win. */
+.preview-lightbox{
+  position:fixed; top:88px; left:50%; transform:translateX(-50%); z-index:65;
+  width:min(960px, 90vw);
+  /* Height is derived from width, not set directly -- Chromium (the only
+     browser this kiosk/admin setup needs to support) keeps this ratio
+     locked while dragging the resize handle too, so the box can only ever
+     grow/shrink as a 16:9 rectangle. */
+  aspect-ratio:16/9;
+  max-height:80vh;
+  min-width:320px; min-height:180px;
+  background:rgba(43,39,65,0.72);
+  backdrop-filter:blur(28px) saturate(180%);
+  -webkit-backdrop-filter:blur(28px) saturate(180%);
+  border:1px solid rgba(255,255,255,0.16);
+  border-radius:var(--radius-lg);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,0.35),
+    inset 0 0 0 1px rgba(255,255,255,0.05),
+    var(--shadow-lg);
+  overflow:hidden;
+  /* Native corner resize handle -- the box has no fixed aspect ratio to
+     preserve (the canvas re-fits whatever space it's given, see
+     calibration_preview.js's ResizeObserver), so both directions are free.
+     Dragging is via the handle button (top-left) only, not the whole box
+     -- a whole-box drag region fought with grabbing this corner handle. */
+  resize:both;
+}
+.preview-lightbox__stage{
+  position:absolute; inset:0;
+  padding:16px; box-sizing:border-box;
+}
+.preview-lightbox__stage canvas{ display:block; width:100%; height:100%; background:#000; border-radius:var(--radius-sm); }
+.preview-lightbox__axis-label{
+  position:absolute; top:0; left:0; z-index:1;
+  transform:translate(-50%,-50%);
+  font-size:12px; font-weight:700; font-family:var(--font-heading);
+  text-shadow:0 1px 3px rgba(0,0,0,0.9);
+  pointer-events:none; opacity:0;
+}
+.preview-lightbox__axis-label--x{ color:#ff4d4d; }
+.preview-lightbox__axis-label--y{ color:#4dff4d; }
+.preview-lightbox__axis-label--z{ color:#598cff; }
+.preview-lightbox__status{
+  position:absolute; inset:0; z-index:2;
+  display:flex; align-items:center; justify-content:center;
+  font-size:12px; color:var(--color-neutral-300);
+  background:rgba(0,0,0,0.55);
+}
+.preview-lightbox__drag{
+  position:absolute; top:10px; left:10px; z-index:3;
+  background:rgba(43,39,65,0.6);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-color:rgba(255,255,255,0.16);
+  width:30px; height:30px;
+  cursor:grab; user-select:none;
+}
+.preview-lightbox__drag:active{ cursor:grabbing; }
+.preview-lightbox__close{
+  position:absolute; top:10px; right:10px; z-index:3;
+  background:rgba(43,39,65,0.6);
+  backdrop-filter:blur(20px) saturate(180%);
+  -webkit-backdrop-filter:blur(20px) saturate(180%);
+  border-color:rgba(255,255,255,0.16);
+  width:30px; height:30px;
+}
+
 .dock__controls{ grid-area:controls; display:flex; align-items:center; gap:8px; flex-shrink:0; }
 .dock__controls .btn-icon{ width:38px; height:38px; }
 .dock__stop:hover{ border-color:var(--color-danger); color:var(--color-danger); }

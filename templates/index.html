@@ -115,6 +115,11 @@
       <button type="button" class="btn btn-secondary btn-block" id="popularVisibilityBtn">Show Most Popular row</button>
       <p class="field__hint">Whether visitors see the "Most Popular" row at all, separate from whether plays are being counted — hide it while you curate, then reveal it once you're happy with the results.</p>
     </div>
+
+    <div class="field hidden" id="previewField">
+      <label>Output preview</label>
+      <button type="button" class="btn btn-secondary btn-block" id="previewToggleBtn">Show output preview</button>
+    </div>
   </div>
 
   <div class="field hidden" id="mappingField">
@@ -250,7 +255,29 @@
       <button type="button" class="btn btn-secondary" id="mappingShadingBtn">Turn on calibration shading</button>
       <button type="button" class="btn btn-secondary" id="mappingGridcheckBtn">Play grid check (loop)</button>
       <button type="button" class="btn btn-secondary" id="mappingResetBtn">Reset to default</button>
+      <button type="button" class="btn btn-secondary" id="previewGizmoBtn">Hide preview gizmo</button>
     </div>
+  </div>
+</div>
+
+<!-- Not a modal: no scrim, and it's positioned/draggable so it can sit
+     alongside the settings drawer's calibration sliders rather than on top
+     of them. Rendered entirely client-side (see static/calibration_preview.js)
+     -- it never touches the physical projector, just mirrors the same
+     mapping values applied to the same model/gizmo math. -->
+<div class="preview-lightbox hidden" id="previewLightbox" role="dialog" aria-label="Output preview">
+  <div class="preview-lightbox__stage" id="previewStage">
+    <canvas id="previewCanvas" width="640" height="360"></canvas>
+    <span class="preview-lightbox__axis-label preview-lightbox__axis-label--x" id="previewLabelX">X</span>
+    <span class="preview-lightbox__axis-label preview-lightbox__axis-label--y" id="previewLabelY">Y</span>
+    <span class="preview-lightbox__axis-label preview-lightbox__axis-label--z" id="previewLabelZ">Z</span>
+    <div class="preview-lightbox__status hidden" id="previewStatus"></div>
+    <button type="button" class="btn-icon preview-lightbox__drag" id="previewLightboxDrag" aria-label="Move preview">
+      <svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M230.14,117.66l-24-24a8,8,0,0,0-11.31,11.31L204.69,115H140V50.34l9.94,9.94a8,8,0,0,0,11.32-11.32l-24-24a8,8,0,0,0-11.32,0l-24,24A8,8,0,0,0,113.31,60.28L123.31,50.34V115H60.28L70.22,105a8,8,0,0,0-11.32-11.31l-24,24a8,8,0,0,0,0,11.31l24,24A8,8,0,0,0,70.22,141.66L60.28,131.72H123.31v64.66l-9.94-9.94a8,8,0,0,0-11.32,11.31l24,24a8,8,0,0,0,11.32,0l24-24a8,8,0,0,0-11.32-11.31L140,196.38V131.72h63.03l-9.94,9.94a8,8,0,0,0,11.31,11.31l24-24A8,8,0,0,0,230.14,117.66Z"></path></svg>
+    </button>
+    <button type="button" class="btn-icon preview-lightbox__close" id="previewLightboxClose" aria-label="Close preview">
+      <svg width="13" height="13" viewBox="0 0 256 256" fill="currentColor"><path d="M205.66,194.34a8,8,0,0,1-11.32,11.32L128,139.31,61.66,205.66a8,8,0,0,1-11.32-11.32L116.69,128,50.34,61.66A8,8,0,0,1,61.66,50.34L128,116.69l66.34-66.35a8,8,0,0,1,11.32,11.32L139.31,128Z"></path></svg>
+    </button>
   </div>
 </div>
 
