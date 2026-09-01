@@ -90,6 +90,20 @@ MAPPING_NUMERIC = {
     "rotation_z": 0.0,
     "offset_x": 0.0,
     "offset_y": 0.0,
+    # Independent of the model pose above -- these stretch/nudge the video
+    # itself within its own texture space, for correcting a video whose
+    # framing doesn't match the model's footprint, without having to touch
+    # how the model itself sits in the frame. Each is where that edge of
+    # the display samples the video (0-1 = untouched); moving one edge
+    # stretches the video from that side while the opposite edge -- and
+    # whatever's sampled there -- stays put, rather than scaling around a
+    # shared center. E.g. video_left=0.1 crops/stretches in from the left
+    # only; video_right stays at 1.0 (the video's own right edge) unless
+    # moved separately.
+    "video_left": 0.0,
+    "video_right": 1.0,
+    "video_top": 0.0,
+    "video_bottom": 1.0,
     # Fraction of the display's native resolution the WebGL canvas is
     # actually drawn at (it's scaled back up to fill the screen). The Pi's
     # GPU is fill-rate bound at 1080p, so dropping this is the main lever

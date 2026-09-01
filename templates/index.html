@@ -178,6 +178,43 @@
         <button type="button" class="mapping-row__step" data-target="mappingOffsetY" data-dir="1" aria-label="Increase offset Y">+</button>
       </div>
     </div>
+    <label class="mapping-subheading">Video stretch &amp; offset</label>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Left edge</span>
+      <input type="range" id="mappingVideoLeft" min="-1" max="2" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoLeft" data-dir="-1" aria-label="Decrease left edge">−</button>
+        <input type="number" class="mapping-row__number" id="mappingVideoLeftNumber" min="-1" max="2" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoLeft" data-dir="1" aria-label="Increase left edge">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Right edge</span>
+      <input type="range" id="mappingVideoRight" min="-1" max="2" step="0.005" value="1">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoRight" data-dir="-1" aria-label="Decrease right edge">−</button>
+        <input type="number" class="mapping-row__number" id="mappingVideoRightNumber" min="-1" max="2" step="0.005" value="1.000">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoRight" data-dir="1" aria-label="Increase right edge">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Top edge</span>
+      <input type="range" id="mappingVideoTop" min="-1" max="2" step="0.005" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoTop" data-dir="-1" aria-label="Decrease top edge">−</button>
+        <input type="number" class="mapping-row__number" id="mappingVideoTopNumber" min="-1" max="2" step="0.005" value="0.000">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoTop" data-dir="1" aria-label="Increase top edge">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Bottom edge</span>
+      <input type="range" id="mappingVideoBottom" min="-1" max="2" step="0.005" value="1">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoBottom" data-dir="-1" aria-label="Decrease bottom edge">−</button>
+        <input type="number" class="mapping-row__number" id="mappingVideoBottomNumber" min="-1" max="2" step="0.005" value="1.000">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoBottom" data-dir="1" aria-label="Increase bottom edge">+</button>
+      </div>
+    </div>
     <label class="mapping-subheading">Keystone correction</label>
     <div class="mapping-row">
       <span class="mapping-row__label">Top-left X</span>

@@ -49,9 +49,12 @@ in vec2 vUV;
 in vec3 vNrm;
 uniform sampler2D uTex;
 uniform int uShading;
+uniform vec2 uVideoEdgeLT;
+uniform vec2 uVideoEdgeRB;
 out vec4 oColor;
 void main(){
-  vec4 c = texture(uTex, vUV);
+  vec2 uv = uVideoEdgeLT + vUV * (uVideoEdgeRB - uVideoEdgeLT);
+  vec4 c = texture(uTex, uv);
   if (uShading == 1) {
     vec3 L = normalize(vec3(-1.0, 1.6, 1.0));
     float d = max(dot(normalize(vNrm), L), 0.0);
@@ -557,6 +560,16 @@ function render(mapping) {
   // here should depend on whether "calibration shading" happens to be
   // toggled on for the actual projector right now.
   gl.uniform1i(gl.getUniformLocation(modelProg, "uShading"), 1);
+  gl.uniform2f(
+    gl.getUniformLocation(modelProg, "uVideoEdgeLT"),
+    Number(mapping.video_left) || 0,
+    Number(mapping.video_top) || 0,
+  );
+  gl.uniform2f(
+    gl.getUniformLocation(modelProg, "uVideoEdgeRB"),
+    mapping.video_right === undefined ? 1 : Number(mapping.video_right) || 0,
+    mapping.video_bottom === undefined ? 1 : Number(mapping.video_bottom) || 0,
+  );
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.uniform1i(gl.getUniformLocation(modelProg, "uTex"), 0);

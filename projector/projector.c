@@ -88,8 +88,18 @@ struct mapping {
        pose. See the warp pass in the render loop for how these turn into
        an actual perspective-correct quad warp. */
     float ks_tl_x, ks_tl_y, ks_tr_x, ks_tr_y, ks_bl_x, ks_bl_y, ks_br_x, ks_br_y;
+    /* Video edge stretch: where each edge of the display samples the
+       video, in its own UV space (0-1 = untouched). Independent of the
+       model pose above -- moving one edge stretches the video in from
+       that side while the opposite edge stays put. See the fragment
+       shader's uv remap for how these turn into the actual sample. */
+    float vid_left, vid_right, vid_top, vid_bottom;
 };
-static struct mapping map_cur = { 1, 0, 0, 0, 0, 0, 1, false, false, 0, 0, 0, 0, 0, 0, 0, 0 };
+static struct mapping map_cur = {
+    1, 0, 0, 0, 0, 0, 1, false, false,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 1, 0, 1,
+};
 static const char *mapping_path = "/home/pj/zealandata/mapping.json";
 /* Sub-second resolution matters here: st_mtime alone is whole seconds, so
    several slider-drag writes landing in the same wall-clock second would
@@ -153,14 +163,20 @@ static void mapping_reload(void) {
     json_num(buf, "keystone_bl_y", &map_cur.ks_bl_y);
     json_num(buf, "keystone_br_x", &map_cur.ks_br_x);
     json_num(buf, "keystone_br_y", &map_cur.ks_br_y);
+    json_num(buf, "video_left", &map_cur.vid_left);
+    json_num(buf, "video_right", &map_cur.vid_right);
+    json_num(buf, "video_top", &map_cur.vid_top);
+    json_num(buf, "video_bottom", &map_cur.vid_bottom);
     if (map_cur.render_scale < 0.25f) map_cur.render_scale = 0.25f;
     if (map_cur.render_scale > 1.0f) map_cur.render_scale = 1.0f;
     printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f shading=%d gizmo=%d "
-           "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f)\n",
+           "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f) "
+           "video_edges=(%.3f,%.3f,%.3f,%.3f)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
            map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.shading, map_cur.gizmo,
            map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
-           map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y);
+           map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y,
+           map_cur.vid_left, map_cur.vid_right, map_cur.vid_top, map_cur.vid_bottom);
 }
 
 /* ============================================================ DRM / KMS == */
@@ -660,9 +676,12 @@ static const char *FS_SRC =
     "in vec3 vNrm;\n"
     "uniform sampler2D uTex;\n"
     "uniform int uShading;\n"
+    "uniform vec2 uVideoEdgeLT;\n"
+    "uniform vec2 uVideoEdgeRB;\n"
     "out vec4 oColor;\n"
     "void main(){\n"
-    "  vec4 c = texture(uTex, vUV);\n"
+    "  vec2 uv = uVideoEdgeLT + vUV * (uVideoEdgeRB - uVideoEdgeLT);\n"
+    "  vec4 c = texture(uTex, uv);\n"
     "  if (uShading == 1) {\n"
     /* Oblique on purpose: a light along the view axis flattens relief back
        out, which is the exact thing the calibration shading exists to show. */
@@ -1360,6 +1379,8 @@ int main(void) {
     GLint uMVP = glGetUniformLocation(prog, "uMVP");
     GLint uModel = glGetUniformLocation(prog, "uModel");
     GLint uShading = glGetUniformLocation(prog, "uShading");
+    GLint uVideoEdgeLT = glGetUniformLocation(prog, "uVideoEdgeLT");
+    GLint uVideoEdgeRB = glGetUniformLocation(prog, "uVideoEdgeRB");
     glUniform1i(glGetUniformLocation(prog, "uTex"), 0);
 
     /* ---- keystone warp pass: scene render target + its own quad ---- */
@@ -1579,6 +1600,8 @@ int main(void) {
         glUniformMatrix4fv(uMVP, 1, GL_FALSE, mvp);
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
+        glUniform2f(uVideoEdgeLT, map_cur.vid_left, map_cur.vid_top);
+        glUniform2f(uVideoEdgeRB, map_cur.vid_right, map_cur.vid_bottom);
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : cur_tex);
         glBindVertexArray(vao);

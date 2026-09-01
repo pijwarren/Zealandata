@@ -345,6 +345,22 @@ function applyMapping(mapping) {
     rig.position.set(offsetX, offsetY, 0);
   }
 
+  // Video edge stretch: sample_u = left + u*(right-left), independent of
+  // the model pose above. Texture.offset/repeat give this directly with
+  // the default (0,0) center -- final_u = u*repeat.x + offset.x -- so
+  // repeat.x is the (right-left) span and offset.x is left, with no need
+  // to touch center. Applied on top of whatever the uv attribute already
+  // holds (orientUV's rotate/flip), so "left/right/top/bottom" mean
+  // screen-space edges as the operator sees them, not raw model UV.
+  if (videoTexture) {
+    const left = Number(mapping.video_left) || 0;
+    const right = mapping.video_right === undefined ? 1 : Number(mapping.video_right) || 0;
+    const top = Number(mapping.video_top) || 0;
+    const bottom = mapping.video_bottom === undefined ? 1 : Number(mapping.video_bottom) || 0;
+    videoTexture.offset.set(left, top);
+    videoTexture.repeat.set(right - left, bottom - top);
+  }
+
   if (modelMesh) {
     const wantShaded = !!mapping.shading;
     const nextMaterial = wantShaded ? shadedMaterial : flatMaterial;
