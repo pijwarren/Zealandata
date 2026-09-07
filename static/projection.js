@@ -289,12 +289,24 @@ function buildFallbackPlane() {
   placeMesh(geometry);
 }
 
+// A stray edge or point primitive anywhere in the file retypes the *whole*
+// object it sits in: OBJLoader flips object.geometry.type to 'Line'/'Points'
+// the moment it parses one, and then emits that entire object as
+// LineSegments/Points instead of a Mesh -- so a single leftover `l` line at
+// the end of an export (3dPrint_95kFaces.obj has exactly one) is enough to
+// make a 95k-face model arrive with no mesh in it at all. These primitives
+// are never anything we'd draw here regardless, so they're dropped before
+// the parser can see them rather than worked around afterward.
+function stripNonSurfacePrimitives(text) {
+  return text.replace(/^[lp][ \t][^\n]*$/gm, "");
+}
+
 async function loadModel() {
   try {
     const res = await fetch("/api/projection/model");
     if (!res.ok) throw new Error("no model");
     const text = await res.text();
-    const obj = new OBJLoader().parse(text);
+    const obj = new OBJLoader().parse(stripNonSurfacePrimitives(text));
     const merged = new THREE.Group();
     let geometry = null;
     obj.traverse((child) => {
