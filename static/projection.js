@@ -22,8 +22,8 @@ const POLL_MS = 100;
 const HEARTBEAT_MS = 250;
 
 const canvas = document.getElementById("scene");
-const idleImg = document.getElementById("idleImg");
 const videoEl = document.getElementById("sourceVideo");
+const fpsCounter = document.getElementById("fpsCounter");
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setPixelRatio(window.devicePixelRatio || 1);
@@ -232,6 +232,59 @@ function buildMaterials() {
   return flatMaterial;
 }
 
+// The idle image goes onto the model through the same UVs, calibration and
+// materials as video, rather than being laid over the top of the scene as a
+// flat <img>. On a projector aimed at a physical relief print, a full-frame
+// overlay is the one thing guaranteed not to line up with the object it's
+// landing on -- so the holding frame between videos would break the
+// alignment the rest of the pipeline exists to maintain. Swapping the map
+// keeps the geometry, keystone and edge-stretch identical across both.
+const textureLoader = new THREE.TextureLoader();
+let imageTexture = null;
+let imageTextureUrl = null;
+
+// Latest video_left/right/top/bottom from the mapping, held so a texture
+// created later (the idle image) can be brought up to date on arrival
+// rather than waiting for the next poll to notice it exists.
+let textureWindow = { left: 0, right: 1, top: 0, bottom: 1 };
+
+function applyTextureWindow(texture) {
+  if (!texture) return;
+  const { left, right, top, bottom } = textureWindow;
+  texture.offset.set(left, top);
+  texture.repeat.set(right - left, bottom - top);
+}
+
+function setActiveMap(texture) {
+  if (!texture) return;
+  for (const material of [flatMaterial, shadedMaterial]) {
+    if (material && material.map !== texture) {
+      material.map = texture;
+      material.needsUpdate = true; // the map swap changes the shader program
+    }
+  }
+}
+
+function showImageOnModel(url) {
+  if (imageTextureUrl === url) {
+    setActiveMap(imageTexture);
+    return;
+  }
+  textureLoader.load(
+    url,
+    (texture) => {
+      texture.colorSpace = THREE.SRGBColorSpace;
+      if (imageTexture) imageTexture.dispose();
+      imageTexture = texture;
+      imageTextureUrl = url;
+      applyTextureWindow(imageTexture);
+      setActiveMap(imageTexture);
+    },
+    undefined,
+    () => console.warn("[projection] idle image failed to load:", url)
+  );
+}
+
 // OBJLoader hands back non-indexed geometry -- every triangle carries its
 // own three vertices, so a 210k-face model is drawn as ~632k vertices
 // even though it only has ~106k distinct ones. Once the render scale
@@ -364,14 +417,19 @@ function applyMapping(mapping) {
   // to touch center. Applied on top of whatever the uv attribute already
   // holds (orientUV's rotate/flip), so "left/right/top/bottom" mean
   // screen-space edges as the operator sees them, not raw model UV.
-  if (videoTexture) {
-    const left = Number(mapping.video_left) || 0;
-    const right = mapping.video_right === undefined ? 1 : Number(mapping.video_right) || 0;
-    const top = Number(mapping.video_top) || 0;
-    const bottom = mapping.video_bottom === undefined ? 1 : Number(mapping.video_bottom) || 0;
-    videoTexture.offset.set(left, top);
-    videoTexture.repeat.set(right - left, bottom - top);
-  }
+  // Applied to both textures, not just whichever is on the model right
+  // now: the idle image and the video land on the same physical print
+  // through the same UVs, so an edge-stretch dialled in against one is
+  // just as correct for the other -- and doing it here means a swap never
+  // has to re-derive it.
+  textureWindow = {
+    left: Number(mapping.video_left) || 0,
+    right: mapping.video_right === undefined ? 1 : Number(mapping.video_right) || 0,
+    top: Number(mapping.video_top) || 0,
+    bottom: mapping.video_bottom === undefined ? 1 : Number(mapping.video_bottom) || 0,
+  };
+  applyTextureWindow(videoTexture);
+  applyTextureWindow(imageTexture);
 
   if (modelMesh) {
     const wantShaded = !!mapping.shading;
@@ -380,6 +438,14 @@ function applyMapping(mapping) {
       modelMesh.material = nextMaterial;
     }
   }
+
+  showFps = !!mapping.fps;
+  fpsCounter.classList.toggle("hidden", !showFps);
+  // Repaint immediately on the toggle rather than waiting up to a second
+  // for the next measurement window to close -- otherwise turning it on
+  // shows a stale (or placeholder) number first, which reads as a broken
+  // counter exactly when someone's checking whether it works.
+  if (showFps) paintFps();
 }
 
 // Rolling render rate, reported in the heartbeat. Worth having
@@ -390,6 +456,14 @@ function applyMapping(mapping) {
 let renderedFrames = 0;
 let fpsWindowStart = performance.now();
 let measuredFps = null;
+// Mirrors mapping.fps -- see applyMapping. Kept as its own flag so the
+// render loop can skip the DOM write entirely while the counter is off,
+// which is the normal case for a projector that's actually in use.
+let showFps = false;
+
+function paintFps() {
+  fpsCounter.textContent = measuredFps === null ? "-- fps" : `${measuredFps} fps`;
+}
 
 function render() {
   requestAnimationFrame(render);
@@ -401,6 +475,11 @@ function render() {
     measuredFps = Math.round((renderedFrames * 1000) / elapsed);
     renderedFrames = 0;
     fpsWindowStart = now;
+    // Once per closed measurement window, not once per frame: this is a
+    // layout-triggering write sitting inside the render loop whose cost
+    // it's reporting on, and at 60fps that's 60 needless reflows a second
+    // to redraw a number that only changes once.
+    if (showFps) paintFps();
   }
 }
 
@@ -427,16 +506,18 @@ async function applyState(state) {
   currentFps = state.fps || currentFps;
 
   const showImage = !!state.is_image;
-  idleImg.classList.toggle("hidden", !showImage);
-  canvas.classList.toggle("hidden", showImage);
 
   if (state.load_seq !== lastLoadSeq) {
     lastLoadSeq = state.load_seq;
     localIdleActive = false;
     const url = fullVideoUrl(state.path);
     if (showImage) {
-      if (url) idleImg.src = url;
+      // Stop the video first: a VideoTexture left playing underneath the
+      // swapped-in image keeps decoding frames nothing will ever draw.
+      videoEl.pause();
+      if (url) showImageOnModel(url);
     } else if (url) {
+      setActiveMap(videoTexture);
       videoEl.pause();
       videoEl.src = url;
       videoEl.loop = !!state.loop;
@@ -444,6 +525,10 @@ async function applyState(state) {
       videoEl.currentTime = state.start || 0;
       videoEl.play().catch(() => {});
     } else {
+      // Nothing queued at all (no loading image configured): back to the
+      // empty video texture, so this reads as a black model rather than
+      // leaving a previous idle image standing as if it were current.
+      setActiveMap(videoTexture);
       videoEl.pause();
       videoEl.removeAttribute("src");
       videoEl.load();
