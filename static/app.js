@@ -37,6 +37,7 @@ const previewLabelY = document.getElementById("previewLabelY");
 const previewLabelZ = document.getElementById("previewLabelZ");
 const mappingField = document.getElementById("mappingField");
 const mappingShadingBtn = document.getElementById("mappingShadingBtn");
+const mappingFpsBtn = document.getElementById("mappingFpsBtn");
 const mappingGridcheckBtn = document.getElementById("mappingGridcheckBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
 const pinScrim = document.getElementById("pinScrim");
@@ -818,6 +819,11 @@ popularVisibilityBtn.addEventListener("click", async () => {
 // stay available regardless since there's no harm in adjusting values
 // that simply aren't being rendered against right now.
 let mappingShadingEnabled = false;
+// Unlike shading and the gizmo, this one has no counterpart in the
+// client-side preview: it reports what the projection page's own render
+// loop is achieving, which the preview canvas -- a different renderer on
+// a different machine -- can't stand in for. So it's output-only.
+let mappingFpsEnabled = false;
 
 // Each slider is paired with a number input (typed entry) and a pair of
 // +/- buttons (nudge by the slider's own step) -- driven off this table
@@ -863,6 +869,8 @@ function paintMappingControls(mapping) {
     : "Turn on calibration shading";
   previewGizmoEnabled = !!mapping.gizmo;
   previewGizmoBtn.textContent = previewGizmoEnabled ? "Hide preview gizmo" : "Show preview gizmo";
+  mappingFpsEnabled = !!mapping.fps;
+  mappingFpsBtn.textContent = mappingFpsEnabled ? "Hide FPS on output" : "Show FPS on output";
   notifyPreview();
 }
 
@@ -1044,6 +1052,17 @@ mappingShadingBtn.addEventListener("click", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ pin: adminPin, shading: !mappingShadingEnabled }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.error) paintMappingControls(data);
+});
+
+mappingFpsBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  const res = await fetch("/api/mapping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, fps: !mappingFpsEnabled }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);

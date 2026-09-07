@@ -138,6 +138,15 @@ MAPPING_BOOLEAN = {
     # own gizmo comments for why it's drawn after (bypassing) the keystone
     # warp. Off by default for the same reason shading is.
     "gizmo": False,
+    # Diagnostic aid, and the only one of these three that's readable from
+    # the projector itself rather than the admin panel: draws the render
+    # rate the projection page is actually achieving as a small overlay on
+    # the real HDMI output. /api/projection/stats already reports the same
+    # number, but reading it there means having a second device to hand --
+    # this is for standing in front of the projection and seeing directly
+    # what the Quality slider or a re-encoded source just bought. Off by
+    # default like the others: it's an overlay on the projected image.
+    "fps": False,
 }
 DEFAULT_MAPPING = {**MAPPING_NUMERIC, **MAPPING_BOOLEAN}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts"}
