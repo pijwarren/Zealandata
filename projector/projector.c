@@ -974,6 +974,18 @@ static void video_pipeline_init(void) {
     gst_display = GST_GL_DISPLAY(gst_gl_display_egl_new_with_egl_display(egl_dpy));
     gst_app_ctx = gst_gl_context_new_wrapped(gst_display, (guintptr)egl_ctx,
                                               GST_GL_PLATFORM_EGL, GST_GL_API_GLES2);
+    /* A wrapped context has to be activated on the thread that actually
+       owns the underlying EGL context (this one, via egl_init()'s
+       eglMakeCurrent) before any GStreamer GL element touches it --
+       otherwise gst_gl_context_thread_add() has no active_thread recorded
+       and asserts on every call from the streaming thread. fill_info then
+       queries GL_VERSION/extensions now that the context is current. */
+    CHECK(gst_gl_context_activate(gst_app_ctx, TRUE), "gst_gl_context_activate");
+    GError *gl_err = NULL;
+    if (!gst_gl_context_fill_info(gst_app_ctx, &gl_err)) {
+        fprintf(stderr, "gst_gl_context_fill_info: %s\n", gl_err ? gl_err->message : "?");
+        if (gl_err) g_error_free(gl_err);
+    }
 
     playbin = gst_element_factory_make("playbin3", "playbin");
     if (!playbin) playbin = gst_element_factory_make("playbin", "playbin");
