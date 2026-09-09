@@ -88,8 +88,21 @@
     // Matches the admin panel's own calibration poll. The payload is a
     // small flat JSON object and the client is on the same LAN, so this is
     // orders of magnitude cheaper than the snapshot feed it replaces.
+    //
+    // The poll is the fallback path, and what makes this page work when
+    // it's opened on its own. While the admin panel is driving, its slider
+    // values arrive over the BroadcastChannel below instead, which is
+    // immediate rather than up to a poll behind.
     const POLL_MS = 400;
+    // How long a pushed update keeps the poll from overwriting it. The
+    // panel debounces its save, so for a moment after a drag the server
+    // still holds the previous value -- without this, a poll landing in
+    // that window would yank the view back to it and the mirror would
+    // visibly stutter against the slider.
+    const PUSH_AUTHORITY_MS = 1200;
     let lastSerialised = null;
+    let currentMapping = null;
+    let lastPushAt = 0;
 
     async function fetchMapping() {
       const r = await fetch("/api/mapping", { cache: "no-store" });
@@ -104,7 +117,22 @@
       const serialised = JSON.stringify(mapping);
       if (serialised === lastSerialised) return;
       lastSerialised = serialised;
+      currentMapping = mapping;
       preview.requestRender(mapping);
+    }
+
+    // Live slider values pushed straight from the admin panel -- same
+    // origin, same browser, no server in the middle. Merged over the last
+    // polled mapping rather than used alone, since the panel only sends
+    // the fields it has controls for and the renderer reads more than
+    // that.
+    if (typeof BroadcastChannel !== "undefined") {
+      const channel = new BroadcastChannel("zealandata-mapping");
+      channel.onmessage = (event) => {
+        if (!event.data || !preview.isReady()) return;
+        lastPushAt = Date.now();
+        apply({ ...(currentMapping || {}), ...event.data });
+      };
     }
 
     async function poll() {
@@ -113,12 +141,13 @@
         if (!preview.isReady()) {
           await preview.init(canvas, labels, statusEl, mapping);
           lastSerialised = JSON.stringify(mapping);
-        } else {
+          currentMapping = mapping;
+        } else if (Date.now() - lastPushAt > PUSH_AUTHORITY_MS) {
           apply(mapping);
-          // init() clears the status itself on success; this covers
-          // recovering from a failed poll after we were already running.
-          statusEl.classList.add("hidden");
         }
+        // init() clears the status itself on success; this covers
+        // recovering from a failed poll after we were already running.
+        if (preview.isReady()) statusEl.classList.add("hidden");
       } catch (err) {
         statusEl.textContent = "Waiting for the server… (" + err.message + ")";
         statusEl.classList.remove("hidden");

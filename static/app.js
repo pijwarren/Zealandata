@@ -878,6 +878,7 @@ function paintMappingControls(mapping) {
   mappingFlipHBtn.textContent = mappingFlipHEnabled ? "Un-flip video horizontally" : "Flip video horizontally";
   mappingFlipVEnabled = !!mapping.video_flip_v;
   mappingFlipVBtn.textContent = mappingFlipVEnabled ? "Un-flip video vertically" : "Flip video vertically";
+  broadcastMapping();
 }
 
 // ------------------------------------------------------- output preview
@@ -889,14 +890,41 @@ function paintMappingControls(mapping) {
 //
 // Named target rather than "_blank" so clicking again focuses the tab
 // that's already open instead of piling up new ones.
-//
-// Worth knowing: the old overlay re-rendered straight off this page's
-// slider values, so it moved in lockstep with a drag. The tab polls
-// /api/mapping instead, so it follows a slider within about half a second
-// rather than instantly.
 previewToggleBtn.addEventListener("click", () => {
   window.open("/projection/mirror", "zealandataOutputMirror");
 });
+
+// The mirror tab polls /api/mapping on its own, which is what makes it
+// work when opened by itself -- but a poll can only follow a slider about
+// half a second behind, which is too slow to nudge alignment against the
+// physical print. So this pushes the slider values straight across as they
+// move: same origin, same browser, no server round-trip, and the tab
+// renders in lockstep the way the old floating overlay did.
+//
+// One-way by design -- this page only posts and the mirror only listens,
+// so there's no loop to guard against. Posting with nothing open is a
+// no-op, so this costs nothing when the mirror isn't running.
+const mappingChannel =
+  typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("zealandata-mapping") : null;
+
+// Only the fields the mirror actually renders from -- the sliders' own
+// live values rather than what the server has stored, which is the whole
+// point of pushing them.
+function currentMappingSnapshot() {
+  const snap = {
+    shading: mappingShadingEnabled,
+    gizmo: previewGizmoEnabled,
+    video_flip_h: mappingFlipHEnabled,
+    video_flip_v: mappingFlipVEnabled,
+  };
+  MAPPING_CONTROLS.forEach(({ key, rangeEl }) => { snap[key] = Number(rangeEl.value); });
+  return snap;
+}
+
+function broadcastMapping() {
+  if (!mappingChannel) return;
+  mappingChannel.postMessage(currentMappingSnapshot());
+}
 
 // Persisted mapping.json field (see server.py's MAPPING_BOOLEAN), not
 // preview-only state -- toggling it here also takes effect on the real
@@ -923,6 +951,9 @@ let mappingPending = {};
 let mappingSendTimer = null;
 function sendMappingUpdate(partial) {
   if (!adminPin) return;
+  // Straight across to the mirror on the slider's own live value, rather
+  // than waiting for the debounced POST below and the mirror's next poll.
+  broadcastMapping();
   // Sliders fire continuously while dragging -- debounce so each drag only
   // sends a burst of requests, not one per pixel of movement. Pending
   // fields are merged (not replaced) across calls so nudging one slider
