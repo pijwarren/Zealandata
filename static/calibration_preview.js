@@ -15,14 +15,14 @@
 const MODEL_URL = "/api/projection/model";
 const TEXTURE_URL = "/api/loading-image";
 
-// Mirrors projector.c's BASE_ORIENTATION_*_DEG / INVERT_RELIEF / video
-// orientation constants exactly -- these are fixed properties of this
-// model file and the native renderer's fixed camera, not calibration
-// knobs, so they're hardcoded here the same way.
+// Mirrors projector.c's BASE_ORIENTATION_*_DEG / INVERT_RELIEF exactly --
+// fixed properties of this model file and the native renderer's fixed
+// camera, not calibration knobs, so they're hardcoded here the same way.
+// The video's own fixed 90-degree-CCW orientation correction is baked
+// directly into MODEL_VS below instead (see its comment) -- ported from
+// projector.c's VS_SRC the same way.
 const BASE_ORIENTATION_Z_DEG = 90;
 const BASE_ORIENTATION_X_DEG = 180;
-const VIDEO_ROTATION_CW_DEG = 90;
-const VIDEO_FLIP_ACROSS_HORIZONTAL = false;
 
 const GIZMO_SEGMENTS = 64;
 const GIZMO_RADIUS = 0.4;
@@ -32,7 +32,6 @@ const GIZMO_RADIUS = 0.4;
 const MODEL_VS = `#version 300 es
 layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNrm;
-layout(location=2) in vec2 aUV;
 uniform mat4 uMVP;
 uniform mat4 uModel;
 // Deliberately NOT uMVP -- see below.
@@ -41,17 +40,21 @@ out vec2 vUV;
 out vec3 vNrm;
 void main(){
   gl_Position = uMVP * vec4(aPos, 1.0);
-  // aUV (the static top-down footprint UV from parseObj) is unused now --
-  // see projector.c's matching VS_SRC comment. uUVMVP is a true point-
-  // source perspective, so the on-model texture coordinate has to come
-  // from a clip-space position -- but not uMVP's: that includes mBase
-  // (the fixed cosmetic correction for this OBJ export's raw axes), which
-  // has no real-world meaning and would rotate/mirror the video against
-  // the model exactly as much as mBase reorients the mesh on screen.
-  // uUVMVP is the same rotation/scale/offset/eye/frustum stack with mBase
-  // left out -- already computed as gizmoMvp for the same reason.
+  // No static per-vertex UV any more -- see projector.c's matching VS_SRC
+  // comment. uUVMVP is a true point-source perspective, so the on-model
+  // texture coordinate has to come from a clip-space position -- but not
+  // uMVP's: that includes mBase (the fixed cosmetic correction for this
+  // OBJ export's raw axes), which has no real-world meaning and would
+  // rotate/mirror the video against the model exactly as much as mBase
+  // reorients the mesh on screen. uUVMVP is the same rotation/scale/
+  // offset/eye/frustum stack with mBase left out -- already computed as
+  // gizmoMvp for the same reason.
   vec4 uvClip = uUVMVP * vec4(aPos, 1.0);
-  vUV = uvClip.xy / uvClip.w * 0.5 + 0.5;
+  vec2 uv = uvClip.xy / uvClip.w * 0.5 + 0.5;
+  // Fixed 90-degree counter-clockwise turn (as seen on the projector) so
+  // the video lands right-way-up on this print -- ported from
+  // projector.c's VS_SRC; edit both together if it ever needs to change.
+  vUV = vec2(1.0 - uv.y, uv.x);
   vNrm = mat3(uModel) * aNrm;
 }`;
 
@@ -229,20 +232,11 @@ function linkProgram(gl, vsSrc, fsSrc) {
 
 // -------------------------------------------------------------- OBJ / model
 // Mirrors projector.c's load_obj(): fan-triangulated indexed geometry, the
-// same up-axis heuristic and remap, the same planar top-down UV projection
-// (with the same fixed video-orientation constants), and the same
-// area-weighted smooth normals. INVERT_RELIEF is left out entirely since
-// the native renderer's own INVERT_RELIEF is false.
-
-function orientUv(u, v) {
-  if (VIDEO_FLIP_ACROSS_HORIZONTAL) v = 1 - v;
-  switch (((VIDEO_ROTATION_CW_DEG % 360) + 360) % 360) {
-    case 90: return [1 - v, u];
-    case 180: return [1 - u, 1 - v];
-    case 270: return [v, 1 - u];
-    default: return [u, v];
-  }
-}
+// same up-axis heuristic and remap, and the same area-weighted smooth
+// normals. INVERT_RELIEF is left out entirely since the native renderer's
+// own INVERT_RELIEF is false. No per-vertex UV here any more -- see
+// MODEL_VS's comment on why that's now derived from the live clip-space
+// position instead.
 
 function parseObj(text) {
   const positions = [];
@@ -306,14 +300,6 @@ function parseObj(text) {
   }
   sizeX *= norm; sizeY *= norm; sizeZ *= norm;
 
-  const uv = new Float32Array(nvert * 2);
-  for (let i = 0; i < nvert; i++) {
-    let u = sizeX > 0 ? (pos[i * 3] + sizeX / 2) / sizeX : 0.5;
-    let v = sizeY > 0 ? (pos[i * 3 + 1] + sizeY / 2) / sizeY : 0.5;
-    [u, v] = orientUv(u, v);
-    uv[i * 2] = u; uv[i * 2 + 1] = v;
-  }
-
   const idx = new Uint32Array(indices);
   const nrm = new Float32Array(nvert * 3);
   for (let i = 0; i + 2 < idx.length; i += 3) {
@@ -336,7 +322,7 @@ function parseObj(text) {
     if (l > 0) { nrm[i * 3] = x / l; nrm[i * 3 + 1] = y / l; nrm[i * 3 + 2] = z / l; }
   }
 
-  return { pos, nrm, uv, idx };
+  return { pos, nrm, idx };
 }
 
 // -------------------------------------------------------------- gizmo geo
@@ -366,7 +352,7 @@ let gl = null;
 let canvas = null;
 let ready = false;
 let loading = false;
-let model = null; // { pos, nrm, uv, idx }
+let model = null; // { pos, nrm, idx }
 let texture = null;
 let modelProg, warpProg, gizmoProg;
 let modelVao, sceneFbo, sceneTex, sceneDepth;
@@ -427,7 +413,6 @@ async function ensureInit(canvasEl, labels, status) {
     gl.bindVertexArray(modelVao);
     bindAttribBuffer(0, 3, model.pos);
     bindAttribBuffer(1, 3, model.nrm);
-    bindAttribBuffer(2, 2, model.uv);
     const ibo = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, ibo);
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, model.idx, gl.STATIC_DRAW);

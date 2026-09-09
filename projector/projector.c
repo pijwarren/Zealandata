@@ -503,7 +503,6 @@ typedef struct { float x, y, z; } vec3;
 
 static vec3 *m_pos = NULL;
 static vec3 *m_nrm = NULL;
-static float *m_uv = NULL;
 static unsigned *m_idx = NULL;
 static size_t m_nvert = 0, m_nidx = 0;
 
@@ -520,29 +519,16 @@ static const bool INVERT_RELIEF = false;
 static const float BASE_ORIENTATION_Z_DEG = 90.f;
 static const float BASE_ORIENTATION_X_DEG = 180.f;
 
-/* How the video needs turning to land the right way up on the print.
-   Named "clockwise" for continuity with the name orient_uv()'s switch
-   cases use, but confirmed live against the physical print: increasing
-   this value turns the displayed image counter-clockwise as actually
-   seen on the projector, not clockwise -- a flip across the horizontal
-   axis (if enabled) applies on top of that. */
-static const int VIDEO_ROTATION_CW_DEG = 90;
-static const bool VIDEO_FLIP_ACROSS_HORIZONTAL = false;
-
-static void orient_uv(float *u, float *v) {
-    /* Inverse of the described transform: to turn the displayed image
-       clockwise the sample coordinates turn counter-clockwise, and an
-       inverse composition runs its steps in reverse -- hence the flip
-       landing before the rotation here. */
-    if (VIDEO_FLIP_ACROSS_HORIZONTAL) *v = 1.f - *v;
-    float uu = *u, vv = *v;
-    switch (((VIDEO_ROTATION_CW_DEG % 360) + 360) % 360) {
-        case 90:  *u = 1.f - vv; *v = uu;        break;
-        case 180: *u = 1.f - uu; *v = 1.f - vv;  break;
-        case 270: *u = vv;       *v = 1.f - uu;  break;
-        default: break;
-    }
-}
+/* How the video needs turning to land the right way up on the print --
+   confirmed live against it: a 90-degree turn, counter-clockwise as
+   actually seen on the projector (no horizontal flip needed on top of
+   that). Fixed to the physical print, not a calibration slider, so it's
+   baked directly into VS_SRC's vUV computation below rather than a C
+   constant here -- this used to feed a CPU-side orient_uv() step instead,
+   back when vUV came from a static per-vertex attribute; now that it's
+   computed from the live clip-space position every frame (see the
+   uUVMVP comment there), the equivalent rotation has to happen in the
+   shader too. If this ever needs to change, edit the GLSL directly. */
 
 /* OBJ face indices already reference a shared vertex list, so unlike the
    browser path -- where OBJLoader de-indexed the mesh and it had to be
@@ -664,24 +650,6 @@ static int load_obj(const char *path) {
     }
     size.x *= norm; size.y *= norm; size.z *= norm;
 
-    /* Planar top-down UVs from the model's own footprint, not whatever the
-       OBJ carried: raw print exports often have none, or ones meant for a
-       physical texture rather than video projected from above. */
-    m_uv = malloc(m_nvert * 2 * sizeof(float));
-    for (size_t i = 0; i < m_nvert; i++) {
-        float u, v;
-        if (up == 1) {
-            u = size.x > 0 ? (m_pos[i].x + size.x / 2) / size.x : 0.5f;
-            v = size.z > 0 ? (m_pos[i].z + size.z / 2) / size.z : 0.5f;
-        } else {
-            u = size.x > 0 ? (m_pos[i].x + size.x / 2) / size.x : 0.5f;
-            v = size.y > 0 ? (m_pos[i].y + size.y / 2) / size.y : 0.5f;
-        }
-        orient_uv(&u, &v);
-        m_uv[i * 2] = u;
-        m_uv[i * 2 + 1] = v;
-    }
-
     /* Smooth normals, area-weighted by the cross product's magnitude. Only
        the calibration shading uses them; the projection material is unlit. */
     m_nrm = calloc(m_nvert, sizeof(vec3));
@@ -714,7 +682,6 @@ static const char *VS_SRC =
     "#version 300 es\n"
     "layout(location=0) in vec3 aPos;\n"
     "layout(location=1) in vec3 aNrm;\n"
-    "layout(location=2) in vec2 aUV;\n"
     "uniform mat4 uMVP;\n"
     "uniform mat4 uModel;\n"
     /* Deliberately NOT uMVP -- see below. */
@@ -723,8 +690,7 @@ static const char *VS_SRC =
     "out vec3 vNrm;\n"
     "void main(){\n"
     "  gl_Position = uMVP * vec4(aPos,1.0);\n"
-    /* aUV (the static top-down footprint UV computed once at load time,
-       see load_obj) is deliberately unused now: with a true point-source
+    /* No static per-vertex UV attribute any more: with a true point-source
        perspective (see the frustum comment in the render loop), the
        texture coordinate a real light ray carries to a given surface point
        depends on the model's live pose relative to the projector, not just
@@ -745,7 +711,13 @@ static const char *VS_SRC =
        comment) -- so the video's mapping depends only on calibration
        that actually corresponds to something physical. */
     "  vec4 uvClip = uUVMVP * vec4(aPos,1.0);\n"
-    "  vUV = uvClip.xy / uvClip.w * 0.5 + 0.5;\n"
+    "  vec2 uv = uvClip.xy / uvClip.w * 0.5 + 0.5;\n"
+    /* Fixed 90-degree counter-clockwise turn (as seen on the projector) so
+       the video lands right-way-up on this print -- see the comment by
+       BASE_ORIENTATION_Z_DEG/X_DEG on why this lives here now instead of a
+       C-side orient_uv() constant. Edit this directly if that ever needs
+       to change. */
+    "  vUV = vec2(1.0 - uv.y, uv.x);\n"
     "  vNrm = mat3(uModel) * aNrm;\n"
     "}\n";
 
@@ -1538,7 +1510,7 @@ int main(void) {
     mapping_reload();
 
     /* ---- GL objects ---- */
-    GLuint vao, vbo_p, vbo_n, vbo_t, ibo;
+    GLuint vao, vbo_p, vbo_n, ibo;
     glGenVertexArrays(1, &vao); glBindVertexArray(vao);
     glGenBuffers(1, &vbo_p); glBindBuffer(GL_ARRAY_BUFFER, vbo_p);
     glBufferData(GL_ARRAY_BUFFER, m_nvert * sizeof(vec3), m_pos, GL_STATIC_DRAW);
@@ -1546,9 +1518,6 @@ int main(void) {
     glGenBuffers(1, &vbo_n); glBindBuffer(GL_ARRAY_BUFFER, vbo_n);
     glBufferData(GL_ARRAY_BUFFER, m_nvert * sizeof(vec3), m_nrm, GL_STATIC_DRAW);
     glEnableVertexAttribArray(1); glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 0, 0);
-    glGenBuffers(1, &vbo_t); glBindBuffer(GL_ARRAY_BUFFER, vbo_t);
-    glBufferData(GL_ARRAY_BUFFER, m_nvert * 2 * sizeof(float), m_uv, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(2); glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 0, 0);
     glGenBuffers(1, &ibo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ibo);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_nidx * sizeof(unsigned), m_idx, GL_STATIC_DRAW);
 
