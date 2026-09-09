@@ -48,6 +48,10 @@ uniform bool uVidFlipH;
 uniform bool uVidFlipV;
 out vec2 vUV;
 out vec3 vNrm;
+// Eye-space position. uModel has mEye folded into it (see
+// buildMatrices), so this is already relative to the projector's own
+// eye at the origin -- ported from projector.c's VS_SRC.
+out vec3 vPos;
 void main(){
   gl_Position = uMVP * vec4(aPos, 1.0);
   // The texture is glued to the model's own surface in its own local
@@ -77,12 +81,14 @@ void main(){
   if (uVidFlipV) uv.y = 1.0 - uv.y;
   vUV = uv;
   vNrm = mat3(uModel) * aNrm;
+  vPos = (uModel * vec4(aPos, 1.0)).xyz;
 }`;
 
 const MODEL_FS = `#version 300 es
 precision mediump float;
 in vec2 vUV;
 in vec3 vNrm;
+in vec3 vPos;
 uniform sampler2D uTex;
 uniform int uShading;
 uniform vec2 uVideoEdgeLT;
@@ -92,9 +98,20 @@ void main(){
   vec2 uv = uVideoEdgeLT + vUV * (uVideoEdgeRB - uVideoEdgeLT);
   vec4 c = texture(uTex, uv);
   if (uShading == 1) {
-    vec3 L = normalize(vec3(-1.0, 1.6, 1.0));
-    float d = max(dot(normalize(vNrm), L), 0.0);
-    c.rgb *= (0.55 + 1.1 * d);
+    // Square area light centred on the virtual camera, solved
+    // analytically rather than by sampling the square -- ported from
+    // projector.c's FS_SRC, which carries the full explanation of why
+    // (sampling it measured more than twice the frame cost on the Pi,
+    // and affordable sample counts banded at the terminator). Edit both
+    // together: this preview only stays honest while the two match.
+    const float AREA_LIGHT_HALF = 0.45;
+    vec3 N = normalize(vNrm);
+    float dist = max(length(vPos), 1e-4);
+    float ndl = dot(N, -vPos / dist);
+    float w = max(AREA_LIGHT_HALF / dist, 1e-4);
+    float d = (ndl >= w) ? ndl
+            : ((ndl <= -w) ? 0.0 : (ndl + w) * (ndl + w) / (4.0 * w));
+    c.rgb *= (0.2 + 1.1 * d);
   }
   oColor = vec4(c.rgb, 1.0);
 }`;
