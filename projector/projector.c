@@ -33,6 +33,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdbool.h>
 #include <math.h>
 #include <time.h>
@@ -339,6 +340,40 @@ static bool crtc_set;
 static void page_flip_handler(int fd, unsigned frame, unsigned sec, unsigned usec, void *data) {
     (void)fd; (void)frame; (void)sec; (void)usec;
     *(bool *)data = false;
+}
+
+/* Periodically dumps the just-rendered default framebuffer -- the actual
+   physical output, keystone warp and all -- to a tmpfs file server.py's
+   /api/projection/snapshot.jpg endpoint reads and JPEG-encodes on request,
+   for the admin panel's browser-tab mirror of the real HDMI output.
+   Throttled well below frame rate: this is for a human glancing at a
+   second tab, not a video stream, and glReadPixels + a file write both
+   cost real time taken from the render loop. Written to a .tmp path and
+   renamed into place so a concurrent read (from the Flask process, a
+   separate program entirely) never sees a partial write -- rename() is
+   atomic within the same filesystem, which tmpfs is. */
+static void snapshot_maybe_capture(double now, int w, int h) {
+    static double last = 0;
+    static unsigned char *buf = NULL;
+    static size_t bufsz = 0;
+    if (now - last < 0.3) return;
+    last = now;
+    size_t need = (size_t)w * (size_t)h * 4;
+    if (bufsz != need) { free(buf); buf = malloc(need); bufsz = need; }
+    if (!buf) return;
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf);
+    FILE *f = fopen("/dev/shm/zealandata_snapshot.raw.tmp", "wb");
+    if (!f) return;
+    fwrite(buf, 1, need, f);
+    fclose(f);
+    rename("/dev/shm/zealandata_snapshot.raw.tmp", "/dev/shm/zealandata_snapshot.raw");
+    /* Dimensions in a tiny sidecar rather than hardcoded on the reader's
+       side, since they're whatever the connected display's DRM mode is. */
+    f = fopen("/dev/shm/zealandata_snapshot.dims.tmp", "w");
+    if (!f) return;
+    fprintf(f, "%d %d\n", w, h);
+    fclose(f);
+    rename("/dev/shm/zealandata_snapshot.dims.tmp", "/dev/shm/zealandata_snapshot.dims");
 }
 
 static void present(void) {
@@ -919,6 +954,80 @@ static GstSample *cur_sample;
 static GLuint cur_tex;
 static int cur_tex_w = 1, cur_tex_h = 1;
 
+/* Still images (the idle/loading picture) bypass playbin entirely -- see
+   video_load()'s comment on why -- and are held in this separate,
+   permanent texture instead of cur_tex. */
+static GLuint idle_tex;
+static bool   showing_still_image = false;
+/* Set by video_load() (any thread), consumed once by the main thread's
+   render loop, since the actual decode + glTexImage2D upload below needs
+   the EGL context that's only current there. */
+static char   pending_image_path[1024];
+static bool   have_pending_image = false;
+
+static bool path_is_still_image(const char *path) {
+    const char *dot = strrchr(path, '.');
+    if (!dot) return false;
+    static const char *exts[] = { ".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp", NULL };
+    for (int i = 0; exts[i]; i++) if (!strcasecmp(dot, exts[i])) return true;
+    return false;
+}
+
+/* Decodes a still image to raw RGBA and uploads it into idle_tex, via a
+   throwaway pipeline independent of the main GL-context-sharing video
+   pipeline (playbin/gst_app_ctx) -- a one-off image decode has no
+   performance need for that complexity. This replaces routing stills
+   through playbin, which -- lacking an imagefreeze element, never added
+   here since it's the wrong tool for the real multi-frame videos this
+   pipeline otherwise plays -- decodes exactly one frame and hits EOS
+   almost immediately, leaving nothing on screen once that single frame's
+   GL memory gets recycled by the pool. Must run on the main/GL thread. */
+static bool load_idle_image_now(const char *path) {
+    gchar *uri = gst_filename_to_uri(path, NULL);
+    if (!uri) return false;
+    gchar *desc = g_strdup_printf(
+        "uridecodebin uri=%s ! videoconvert ! video/x-raw,format=RGBA ! appsink name=s sync=false",
+        uri);
+    g_free(uri);
+    GError *err = NULL;
+    GstElement *pipe = gst_parse_launch(desc, &err);
+    g_free(desc);
+    if (!pipe) {
+        fprintf(stderr, "[img] %s: %s\n", path, err ? err->message : "?");
+        if (err) g_error_free(err);
+        return false;
+    }
+    GstElement *sink = gst_bin_get_by_name(GST_BIN(pipe), "s");
+    gst_element_set_state(pipe, GST_STATE_PLAYING);
+    GstSample *sample = gst_app_sink_pull_sample(GST_APP_SINK(sink));
+    bool ok = false;
+    if (sample) {
+        GstCaps *caps = gst_sample_get_caps(sample);
+        GstBuffer *buf = gst_sample_get_buffer(sample);
+        GstVideoInfo vinfo;
+        GstMapInfo map;
+        if (caps && gst_video_info_from_caps(&vinfo, caps) && gst_buffer_map(buf, &map, GST_MAP_READ)) {
+            if (!idle_tex) glGenTextures(1, &idle_tex);
+            glBindTexture(GL_TEXTURE_2D, idle_tex);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, vinfo.width, vinfo.height, 0,
+                         GL_RGBA, GL_UNSIGNED_BYTE, map.data);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            gst_buffer_unmap(buf, &map);
+            ok = true;
+            printf("[img] loaded %s (%dx%d)\n", path, vinfo.width, vinfo.height);
+        }
+        gst_sample_unref(sample);
+    }
+    if (!ok) fprintf(stderr, "[img] %s: no sample decoded\n", path);
+    gst_element_set_state(pipe, GST_STATE_NULL);
+    gst_object_unref(sink);
+    gst_object_unref(pipe);
+    return ok;
+}
+
 static GstBusSyncReply bus_sync_handler(GstBus *bus, GstMessage *msg, gpointer data) {
     (void)bus; (void)data;
     if (GST_MESSAGE_TYPE(msg) != GST_MESSAGE_NEED_CONTEXT) return GST_BUS_PASS;
@@ -1071,6 +1180,25 @@ static void video_pipeline_init(void) {
 }
 
 static void video_load(const char *path, double start_sec) {
+    /* Stopping playbin unconditionally, even for a still image, matters:
+       without it a real video already playing when the idle image loads
+       would keep decoding (and showing, until superseded) underneath it. */
+    gst_element_set_state(playbin, GST_STATE_NULL);
+
+    if (path_is_still_image(path)) {
+        pthread_mutex_lock(&play_lock);
+        snprintf(pending_image_path, sizeof pending_image_path, "%s", path);
+        have_pending_image = true;
+        showing_still_image = true;
+        idle_active = false;   /* something is loaded, transport-wise */
+        pthread_mutex_unlock(&play_lock);
+        printf("[img] loadfile %s (deferred to render thread)\n", path);
+        return;
+    }
+    pthread_mutex_lock(&play_lock);
+    showing_still_image = false;
+    pthread_mutex_unlock(&play_lock);
+
     char uri[2048];
     if (strstr(path, "://")) snprintf(uri, sizeof uri, "%s", path);
     else {
@@ -1078,7 +1206,6 @@ static void video_load(const char *path, double start_sec) {
         snprintf(uri, sizeof uri, "%s", u ? u : path);
         g_free(u);
     }
-    gst_element_set_state(playbin, GST_STATE_NULL);
     g_object_set(playbin, "uri", uri, NULL);
     g_object_set(playbin, "mute", FALSE, "volume", volume_pct / 100.0, NULL);
     pthread_mutex_lock(&play_lock);
@@ -1568,6 +1695,18 @@ int main(void) {
         bus_pump();
         video_apply_pending_start();
         video_pump();
+        {
+            /* Consuming the still-image request here rather than in
+               video_load() itself: the decode + glTexImage2D upload below
+               needs the EGL context this (main) thread made current. */
+            char img[sizeof pending_image_path];
+            bool need_img;
+            pthread_mutex_lock(&play_lock);
+            need_img = have_pending_image;
+            if (need_img) { snprintf(img, sizeof img, "%s", pending_image_path); have_pending_image = false; }
+            pthread_mutex_unlock(&play_lock);
+            if (need_img) load_idle_image_now(img);
+        }
         acc_video += now_sec() - tA;
 
 
@@ -1678,7 +1817,7 @@ int main(void) {
         glUniform2f(uVideoEdgeLT, map_cur.vid_left, map_cur.vid_top);
         glUniform2f(uVideoEdgeRB, map_cur.vid_right, map_cur.vid_bottom);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : cur_tex);
+        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_still_image ? idle_tex : cur_tex);
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 
@@ -1751,6 +1890,8 @@ int main(void) {
 
         glFinish();                       /* so the timing splits are real */
         acc_draw += now_sec() - tB;
+
+        snapshot_maybe_capture(now_sec(), drm.mode.hdisplay, drm.mode.vdisplay);
 
         double tC = now_sec();
         present();

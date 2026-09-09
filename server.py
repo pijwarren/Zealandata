@@ -34,7 +34,7 @@ import hashlib
 import shutil
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory, send_file, render_template
+from flask import Flask, jsonify, request, send_from_directory, send_file, render_template, Response
 from werkzeug.utils import secure_filename
 
 # ---------------------------------------------------------------- config ---
@@ -1417,6 +1417,54 @@ def api_projection_stats():
         "position": rep.get("position"),
         "paused": rep.get("paused"),
     })
+
+
+SNAPSHOT_RAW_PATH = "/dev/shm/zealandata_snapshot.raw"
+SNAPSHOT_DIMS_PATH = "/dev/shm/zealandata_snapshot.dims"
+
+
+@app.route("/api/projection/snapshot.jpg")
+def api_projection_snapshot():
+    """A JPEG of the real HDMI output, keystone warp and all -- the native
+    projector's own render loop (projector.c's snapshot_maybe_capture)
+    periodically dumps its just-rendered framebuffer to a tmpfs file; this
+    JPEG-encodes whatever's there right now via ffmpeg (already a
+    dependency, see the thumbnail generation elsewhere) rather than adding
+    an image library just for this. Only meaningful with the native
+    backend -- the mpv one never writes these files, so this just 404s
+    there. Polled by templates/mirror.html to fake a live view without
+    real video streaming infrastructure."""
+    if not os.path.exists(SNAPSHOT_RAW_PATH) or not os.path.exists(SNAPSHOT_DIMS_PATH):
+        return jsonify({"error": "no snapshot available yet"}), 404
+    try:
+        with open(SNAPSHOT_DIMS_PATH) as f:
+            w, h = (int(x) for x in f.read().split())
+    except (OSError, ValueError):
+        return jsonify({"error": "snapshot dimensions unreadable"}), 404
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-f", "rawvideo", "-pixel_format", "rgba",
+                "-video_size", f"{w}x{h}", "-i", SNAPSHOT_RAW_PATH,
+                "-vf", "vflip", "-frames:v", "1", "-f", "image2",
+                "-c:v", "mjpeg", "-q:v", "6", "-",
+            ],
+            capture_output=True, timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "snapshot encode timed out"}), 500
+    if result.returncode != 0 or not result.stdout:
+        return jsonify({"error": "snapshot encode failed"}), 500
+    return Response(result.stdout, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@app.route("/projection/mirror")
+def projection_mirror():
+    """A second-tab view of the real HDMI output -- see
+    api_projection_snapshot's own comment. Not gated behind admin mode:
+    like the /projection page itself, it shows nothing useful without the
+    native backend running, so there's nothing sensitive to protect."""
+    return render_template("mirror.html")
 
 
 @app.route("/api/mapping", methods=["GET"])

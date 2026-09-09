@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Zealandata Output Mirror</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+      overflow: hidden;
+    }
+    #shot {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #000;
+    }
+    /* Only shown until the first snapshot lands, or if the feed drops out
+       (native backend not running / not producing snapshots yet) -- the
+       image itself just keeps showing its last frame otherwise, same as
+       any other stalled <img>. */
+    #status {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #9aa0a6;
+      font: 500 16px/1.4 -apple-system, system-ui, sans-serif;
+      text-align: center;
+      padding: 24px;
+    }
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+  <img id="shot" class="hidden" alt="Projector output" />
+  <div id="status">Waiting for the projector output&hellip;</div>
+  <script>
+    // Polling a still JPEG rather than a real video stream -- this is for
+    // glancing at what's on the projector from a second tab, not frame-
+    // accurate viewing, and it reuses the snapshot ffmpeg already has to
+    // encode per request (see server.py's api_projection_snapshot) rather
+    // than standing up real streaming infrastructure for that.
+    const POLL_MS = 400;
+    const img = document.getElementById("shot");
+    const status = document.getElementById("status");
+    let everLoaded = false;
+
+    function poll() {
+      const probe = new Image();
+      probe.onload = () => {
+        img.src = probe.src;
+        img.classList.remove("hidden");
+        status.classList.add("hidden");
+        everLoaded = true;
+        setTimeout(poll, POLL_MS);
+      };
+      probe.onerror = () => {
+        if (!everLoaded) {
+          status.textContent = "No snapshot yet -- is the native projector service running?";
+        }
+        setTimeout(poll, POLL_MS);
+      };
+      probe.src = "/api/projection/snapshot.jpg?t=" + Date.now();
+    }
+    poll();
+  </script>
+</body>
+</html>
