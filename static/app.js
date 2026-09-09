@@ -676,7 +676,6 @@ function paintAdminMode() {
   mappingField.classList.toggle("hidden", !adminPin);
   if (adminPin) paintUploadCategories();
   else changePinStatus.textContent = "";
-  if (!adminPin) closePreviewLightbox();
   paintSetHeroBtn();
 }
 
