@@ -94,6 +94,18 @@ MAPPING_NUMERIC = {
     # (e.g. Epson EB-770F, ~0.27:1 throw ratio) -- a conventional long-throw
     # projector sitting much further back would want this dialled way up.
     "throw_distance": 0.6,
+    # Lateral position of the (virtual) projector relative to the model,
+    # same normalized units as throw_distance -- separate from offset_x/y
+    # below (which move the *model* within the frame) because this
+    # represents a physical fact about the mount (e.g. an ultra-short-throw
+    # unit sitting off to one side of the model rather than centered above
+    # it, not something to "frame" by eye). Mathematically the two end up
+    # composed together, but keeping this its own control means one can be
+    # reset without disturbing the other. Nudge until elevation lines up
+    # the same way at every point of the model, not just the center --
+    # that's the tell for a real physical offset vs. just needing offset_x/y.
+    "throw_offset_x": 0.0,
+    "throw_offset_y": 0.0,
     # Independent Euler rotation in degrees around each axis, applied in
     # x/y/z order -- not just a single "yaw" around the model's detected
     # up-axis -- since correcting for a projector that isn't perfectly

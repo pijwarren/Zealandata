@@ -82,6 +82,10 @@ struct mapping {
        source projector needs this at all, where the old purely-orthographic
        render didn't. Large values approximate that old behaviour. */
     float throw_dist;
+    /* Lateral projector position -- see server.py's MAPPING_NUMERIC
+       comment on "throw_offset_x/y" for why this is separate from
+       off_x/off_y above despite ending up composed with them. */
+    float throw_off_x, throw_off_y;
     bool shading;
     /* Independent of shading -- either can be toggled without the other,
        matching server.py's MAPPING_BOOLEAN. */
@@ -102,7 +106,7 @@ struct mapping {
     float vid_left, vid_right, vid_top, vid_bottom;
 };
 static struct mapping map_cur = {
-    1, 0, 0, 0, 0, 0, 1, 0.6f, false, false,
+    1, 0, 0, 0, 0, 0, 1, 0.6f, 0, 0, false, false,
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 1, 0, 1,
 };
@@ -160,6 +164,8 @@ static void mapping_reload(void) {
     json_num(buf, "offset_y", &map_cur.off_y);
     json_num(buf, "render_scale", &map_cur.render_scale);
     json_num(buf, "throw_distance", &map_cur.throw_dist);
+    json_num(buf, "throw_offset_x", &map_cur.throw_off_x);
+    json_num(buf, "throw_offset_y", &map_cur.throw_off_y);
     json_bool(buf, "shading", &map_cur.shading);
     json_bool(buf, "gizmo", &map_cur.gizmo);
     json_num(buf, "keystone_tl_x", &map_cur.ks_tl_x);
@@ -179,11 +185,12 @@ static void mapping_reload(void) {
     /* Below this the near plane (see the render loop's frustum setup)
        starts crowding the model itself. */
     if (map_cur.throw_dist < 0.3f) map_cur.throw_dist = 0.3f;
-    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f shading=%d gizmo=%d "
+    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f throw_off=(%.2f,%.2f) shading=%d gizmo=%d "
            "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f) "
            "video_edges=(%.3f,%.3f,%.3f,%.3f)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
            map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.throw_dist,
+           map_cur.throw_off_x, map_cur.throw_off_y,
            map_cur.shading, map_cur.gizmo,
            map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
            map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y,
@@ -1765,7 +1772,14 @@ int main(void) {
         float halfNearX = half * aspect * (near / throwDist);
         mat_frustum(proj, -halfNearX, halfNearX, -halfNearY, halfNearY, near, far);
         mat4 mEye;
-        mat_translate(mEye, 0, 0, -throwDist);
+        /* Lateral projector position: pushing the model the opposite way
+           of where the real projector actually sits, rather than moving
+           the eye itself, since eye position never otherwise appears in
+           this pipeline -- translating the whole scene by -offset instead
+           of the eye by +offset gives identical rays (same relative
+           geometry), so it's just the cheaper way to express the same
+           physical fact. */
+        mat_translate(mEye, -map_cur.throw_off_x, -map_cur.throw_off_y, -throwDist);
         mat_mul(model, mEye, model);
         mat_mul(mvp, proj, model);
 

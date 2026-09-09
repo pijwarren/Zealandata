@@ -551,7 +551,12 @@ function buildMatrices(mapping) {
   const halfNearY = half * (near / throwDist);
   const halfNearX = half * aspect * (near / throwDist);
   const proj = matFrustum(-halfNearX, halfNearX, -halfNearY, halfNearY, near, far);
-  const mEye = matTranslate(0, 0, -throwDist);
+  // Lateral projector position -- pushing the model opposite to where the
+  // real projector sits gives identical rays to moving the eye itself
+  // (see projector.c's matching comment), so it's expressed the same way.
+  const throwOffX = Number(mapping.throw_offset_x) || 0;
+  const throwOffY = Number(mapping.throw_offset_y) || 0;
+  const mEye = matTranslate(-throwOffX, -throwOffY, -throwDist);
   const modelEye = matMul(mEye, modelM);
   const gizmoEye = matMul(mEye, gizmoModel);
   const mvp = matMul(proj, modelEye);

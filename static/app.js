@@ -831,6 +831,8 @@ let mappingFpsEnabled = false;
 const MAPPING_CONTROLS = [
   { key: "scale", range: "mappingScale", number: "mappingScaleNumber", decimals: 2 },
   { key: "throw_distance", range: "mappingThrowDistance", number: "mappingThrowDistanceNumber", decimals: 2 },
+  { key: "throw_offset_x", range: "mappingThrowOffsetX", number: "mappingThrowOffsetXNumber", decimals: 2 },
+  { key: "throw_offset_y", range: "mappingThrowOffsetY", number: "mappingThrowOffsetYNumber", decimals: 2 },
   { key: "rotation_x", range: "mappingRotationX", number: "mappingRotationXNumber", decimals: 0 },
   { key: "rotation_y", range: "mappingRotationY", number: "mappingRotationYNumber", decimals: 0 },
   { key: "rotation_z", range: "mappingRotationZ", number: "mappingRotationZNumber", decimals: 0 },

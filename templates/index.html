@@ -135,11 +135,29 @@
     </div>
     <div class="mapping-row">
       <span class="mapping-row__label">Projector distance</span>
-      <input type="range" id="mappingThrowDistance" min="0.3" max="20" step="0.05" value="0.6">
+      <input type="range" id="mappingThrowDistance" min="0.3" max="2" step="0.05" value="0.6">
       <div class="mapping-row__stepper">
         <button type="button" class="mapping-row__step" data-target="mappingThrowDistance" data-dir="-1" aria-label="Decrease projector distance">−</button>
-        <input type="number" class="mapping-row__number" id="mappingThrowDistanceNumber" min="0.3" max="20" step="0.05" value="0.60">
+        <input type="number" class="mapping-row__number" id="mappingThrowDistanceNumber" min="0.3" max="2" step="0.05" value="0.60">
         <button type="button" class="mapping-row__step" data-target="mappingThrowDistance" data-dir="1" aria-label="Increase projector distance">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Projector offset X</span>
+      <input type="range" id="mappingThrowOffsetX" min="-2" max="2" step="0.01" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetX" data-dir="-1" aria-label="Decrease projector offset X">−</button>
+        <input type="number" class="mapping-row__number" id="mappingThrowOffsetXNumber" min="-2" max="2" step="0.01" value="0.00">
+        <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetX" data-dir="1" aria-label="Increase projector offset X">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Projector offset Y</span>
+      <input type="range" id="mappingThrowOffsetY" min="-2" max="2" step="0.01" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetY" data-dir="-1" aria-label="Decrease projector offset Y">−</button>
+        <input type="number" class="mapping-row__number" id="mappingThrowOffsetYNumber" min="-2" max="2" step="0.01" value="0.00">
+        <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetY" data-dir="1" aria-label="Increase projector offset Y">+</button>
       </div>
     </div>
     <div class="mapping-row">
