@@ -26,9 +26,8 @@
       height: 100%;
       background: #000;
     }
-    /* Same treatment as the admin panel's preview lightbox (see
-       style.css's .preview-lightbox__axis-label): the module sets left/top
-       and opacity itself, so it only needs positioning and colour here. */
+    /* calibration_preview.js positions these itself (left/top/opacity),
+       so they only need to be absolutely positioned and coloured here. */
     .axis-label {
       position: absolute; top: 0; left: 0; z-index: 1;
       transform: translate(-50%, -50%);
@@ -60,10 +59,11 @@
     <div id="status">Loading the projection model&hellip;</div>
   </div>
   <script type="module">
-    // Renders the projector's output client-side, through the very same
-    // module the admin panel's preview lightbox uses (see
-    // static/calibration_preview.js, itself a line-for-line port of
-    // projector.c). This page used to poll a JPEG of the Pi's real
+    // Renders the projector's output client-side, through
+    // static/calibration_preview.js -- itself a line-for-line port of
+    // projector.c. The admin panel's "Open output preview" button opens
+    // this page; it used to drive the same module in a floating overlay
+    // instead. This page used to poll a JPEG of the Pi's real
     // framebuffer instead, which cost the projector a full 1080p
     // glReadPixels every 0.3s plus an ffmpeg encode per poll -- measured
     // at ~16% of its frame rate, and paid whether or not anyone had this

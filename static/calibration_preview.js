@@ -415,12 +415,11 @@ let statusEl = null;
 let lastMapping = null;
 let resizeObserver = null;
 
-// The lightbox itself is CSS-resizable (see style.css's .preview-lightbox)
-// and the canvas fills whatever space that leaves it, so its *drawing
-// buffer* has to track the box's on-screen size -- otherwise it'd stay
-// rendered at its initial 640x360 and just get blurrily upscaled/clipped
-// by the browser as the box grows. Devicepixelratio-aware so it stays
-// sharp on hi-DPI displays too.
+// The canvas is sized by CSS (it fills its page's stage), so its *drawing
+// buffer* has to track whatever on-screen size that works out to --
+// otherwise it'd stay rendered at its initial size and just get blurrily
+// upscaled or clipped by the browser as the window resizes.
+// Devicepixelratio-aware so it stays sharp on hi-DPI displays too.
 function resizeCanvasToDisplaySize() {
   if (!canvas) return;
   const dpr = window.devicePixelRatio || 1;

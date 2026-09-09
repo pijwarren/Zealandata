@@ -26,15 +26,7 @@ const popularVisibilityField = document.getElementById("popularVisibilityField")
 const popularVisibilityBtn = document.getElementById("popularVisibilityBtn");
 const previewField = document.getElementById("previewField");
 const previewToggleBtn = document.getElementById("previewToggleBtn");
-const previewLightbox = document.getElementById("previewLightbox");
-const previewLightboxDrag = document.getElementById("previewLightboxDrag");
-const previewLightboxClose = document.getElementById("previewLightboxClose");
 const previewGizmoBtn = document.getElementById("previewGizmoBtn");
-const previewCanvas = document.getElementById("previewCanvas");
-const previewStatus = document.getElementById("previewStatus");
-const previewLabelX = document.getElementById("previewLabelX");
-const previewLabelY = document.getElementById("previewLabelY");
-const previewLabelZ = document.getElementById("previewLabelZ");
 const mappingField = document.getElementById("mappingField");
 const mappingShadingBtn = document.getElementById("mappingShadingBtn");
 const mappingFpsBtn = document.getElementById("mappingFpsBtn");
@@ -886,62 +878,30 @@ function paintMappingControls(mapping) {
   mappingFlipHBtn.textContent = mappingFlipHEnabled ? "Un-flip video horizontally" : "Flip video horizontally";
   mappingFlipVEnabled = !!mapping.video_flip_v;
   mappingFlipVBtn.textContent = mappingFlipVEnabled ? "Un-flip video vertically" : "Flip video vertically";
-  notifyPreview();
 }
 
 // ------------------------------------------------------- output preview
-// Client-side WebGL mirror of the calibration mapping (see
-// static/calibration_preview.js) -- fed directly off the same slider state
-// as the sliders themselves, not a server round-trip, so it updates in
-// lockstep with every drag instead of lagging behind a poll.
-let previewModule = null;
-let previewLoadPromise = null;
+// The preview opens as its own tab (templates/mirror.html), which renders
+// the calibration client-side through the same module this panel used to
+// drive in an overlay. A separate tab rather than a floating box because
+// it can then sit on a second screen next to the physical print, which is
+// what calibrating against it actually wants.
+//
+// Named target rather than "_blank" so clicking again focuses the tab
+// that's already open instead of piling up new ones.
+//
+// Worth knowing: the old overlay re-rendered straight off this page's
+// slider values, so it moved in lockstep with a drag. The tab polls
+// /api/mapping instead, so it follows a slider within about half a second
+// rather than instantly.
+previewToggleBtn.addEventListener("click", () => {
+  window.open("/projection/mirror", "zealandataOutputMirror");
+});
+
 // Persisted mapping.json field (see server.py's MAPPING_BOOLEAN), not
 // preview-only state -- toggling it here also takes effect on the real
 // HDMI output, same as every other calibration control (shading included).
 let previewGizmoEnabled = false;
-
-function currentMappingSnapshot() {
-  const snap = {
-    shading: mappingShadingEnabled,
-    gizmo: previewGizmoEnabled,
-    video_flip_h: mappingFlipHEnabled,
-    video_flip_v: mappingFlipVEnabled,
-  };
-  MAPPING_CONTROLS.forEach(({ key, rangeEl }) => { snap[key] = Number(rangeEl.value); });
-  return snap;
-}
-
-function notifyPreview() {
-  if (!previewModule || previewLightbox.classList.contains("hidden")) return;
-  previewModule.requestRender(currentMappingSnapshot());
-}
-
-async function openPreviewLightbox() {
-  previewLightbox.classList.remove("hidden");
-  previewToggleBtn.textContent = "Hide output preview";
-  if (!previewLoadPromise) {
-    previewLoadPromise = import("/static/calibration_preview.js");
-  }
-  previewModule = await previewLoadPromise;
-  await previewModule.init(
-    previewCanvas,
-    { x: previewLabelX, y: previewLabelY, z: previewLabelZ },
-    previewStatus,
-    currentMappingSnapshot(),
-  );
-}
-
-function closePreviewLightbox() {
-  previewLightbox.classList.add("hidden");
-  previewToggleBtn.textContent = "Show output preview";
-}
-
-previewToggleBtn.addEventListener("click", () => {
-  if (previewLightbox.classList.contains("hidden")) openPreviewLightbox();
-  else closePreviewLightbox();
-});
-previewLightboxClose.addEventListener("click", closePreviewLightbox);
 
 previewGizmoBtn.addEventListener("click", async () => {
   if (!adminPin) return;
@@ -954,58 +914,6 @@ previewGizmoBtn.addEventListener("click", async () => {
   if (!data.error) paintMappingControls(data);
 });
 
-// Drag-to-reposition via a dedicated handle button (top-left), not the
-// whole box -- a whole-box drag region made it impossible to grab the
-// native resize handle in the opposite (bottom-right) corner without
-// fighting a drag instead.
-(function enableLightboxDrag() {
-  let dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
-  previewLightboxDrag.addEventListener("pointerdown", (e) => {
-    dragging = true;
-    const rect = previewLightbox.getBoundingClientRect();
-    // Default position is centered via left:50%/transform, not a plain
-    // left px -- rect.left already accounts for that, so pin the box to
-    // its current on-screen spot as an explicit left/top and drop the
-    // transform before the first move, or the translateX(-50%) would keep
-    // applying on top of the dragged position and throw it off by half
-    // the box's own width.
-    previewLightbox.style.left = rect.left + "px";
-    previewLightbox.style.transform = "none";
-    startX = e.clientX; startY = e.clientY; startLeft = rect.left; startTop = rect.top;
-    previewLightboxDrag.setPointerCapture(e.pointerId);
-  });
-  previewLightboxDrag.addEventListener("pointermove", (e) => {
-    if (!dragging) return;
-    const left = clamp(startLeft + (e.clientX - startX), 0, window.innerWidth - previewLightbox.offsetWidth);
-    const top = clamp(startTop + (e.clientY - startY), 0, window.innerHeight - 40);
-    previewLightbox.style.left = left + "px";
-    previewLightbox.style.top = top + "px";
-    previewLightbox.style.right = "auto";
-  });
-  previewLightboxDrag.addEventListener("pointerup", () => { dragging = false; });
-})();
-
-// Locks the box to 16:9 even while manually resizing it. CSS aspect-ratio
-// (still set in style.css, for the correct initial/auto size) only
-// constrains sizing when a dimension is left to be derived -- Chromium's
-// own interactive resize handle sets both width and height directly and
-// doesn't respect it, so width and height would otherwise drift apart
-// under the cursor. This snaps height back to match width after every
-// resize tick instead.
-if (typeof ResizeObserver !== "undefined") {
-  const lightboxRatio = new ResizeObserver(() => {
-    const rect = previewLightbox.getBoundingClientRect();
-    const desiredHeight = Math.round((rect.width * 9) / 16);
-    // Guard against a no-op write re-triggering this same callback --
-    // the observer fires again on any size change, including ones it
-    // caused itself.
-    if (Math.abs(rect.height - desiredHeight) > 1) {
-      previewLightbox.style.height = desiredHeight + "px";
-    }
-  });
-  lightboxRatio.observe(previewLightbox);
-}
-
 async function loadMappingState() {
   const res = await fetch("/api/mapping");
   paintMappingControls(await res.json());
@@ -1015,10 +923,6 @@ let mappingPending = {};
 let mappingSendTimer = null;
 function sendMappingUpdate(partial) {
   if (!adminPin) return;
-  // The preview re-renders off the slider's own live value immediately --
-  // it's all client-side, so unlike the debounced POST below it doesn't
-  // need to wait for a round trip.
-  notifyPreview();
   // Sliders fire continuously while dragging -- debounce so each drag only
   // sends a burst of requests, not one per pixel of movement. Pending
   // fields are merged (not replaced) across calls so nudging one slider
