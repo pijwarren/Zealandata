@@ -123,136 +123,141 @@
   </div>
 
   <div class="field hidden" id="mappingField">
-    <label>Projection mapping</label>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Scale</span>
-      <input type="range" id="mappingScale" min="0.2" max="3" step="0.01" value="1">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingScale" data-dir="-1" aria-label="Decrease scale">−</button>
-        <input type="number" class="mapping-row__number" id="mappingScaleNumber" min="0.2" max="3" step="0.01" value="1.00">
-        <button type="button" class="mapping-row__step" data-target="mappingScale" data-dir="1" aria-label="Increase scale">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Projector distance</span>
-      <input type="range" id="mappingThrowDistance" min="0.3" max="2" step="0.05" value="0.6">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingThrowDistance" data-dir="-1" aria-label="Decrease projector distance">−</button>
-        <input type="number" class="mapping-row__number" id="mappingThrowDistanceNumber" min="0.3" max="2" step="0.05" value="0.60">
-        <button type="button" class="mapping-row__step" data-target="mappingThrowDistance" data-dir="1" aria-label="Increase projector distance">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Projector offset X</span>
-      <input type="range" id="mappingThrowOffsetX" min="-1" max="1" step="0.01" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetX" data-dir="-1" aria-label="Decrease projector offset X">−</button>
-        <input type="number" class="mapping-row__number" id="mappingThrowOffsetXNumber" min="-1" max="1" step="0.01" value="0.00">
-        <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetX" data-dir="1" aria-label="Increase projector offset X">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Projector offset Y</span>
-      <input type="range" id="mappingThrowOffsetY" min="-3" max="0" step="0.01" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetY" data-dir="-1" aria-label="Decrease projector offset Y">−</button>
-        <input type="number" class="mapping-row__number" id="mappingThrowOffsetYNumber" min="-3" max="0" step="0.01" value="0.00">
-        <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetY" data-dir="1" aria-label="Increase projector offset Y">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Rotate X</span>
-      <input type="range" id="mappingRotationX" min="-90" max="90" step="0.5" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingRotationX" data-dir="-1" aria-label="Decrease rotate X">−</button>
-        <input type="number" class="mapping-row__number" id="mappingRotationXNumber" min="-90" max="90" step="0.5" value="0">
-        <button type="button" class="mapping-row__step" data-target="mappingRotationX" data-dir="1" aria-label="Increase rotate X">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Rotate Y</span>
-      <input type="range" id="mappingRotationY" min="-90" max="90" step="0.5" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingRotationY" data-dir="-1" aria-label="Decrease rotate Y">−</button>
-        <input type="number" class="mapping-row__number" id="mappingRotationYNumber" min="-90" max="90" step="0.5" value="0">
-        <button type="button" class="mapping-row__step" data-target="mappingRotationY" data-dir="1" aria-label="Increase rotate Y">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Rotate Z</span>
-      <input type="range" id="mappingRotationZ" min="-90" max="90" step="0.5" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingRotationZ" data-dir="-1" aria-label="Decrease rotate Z">−</button>
-        <input type="number" class="mapping-row__number" id="mappingRotationZNumber" min="-90" max="90" step="0.5" value="0">
-        <button type="button" class="mapping-row__step" data-target="mappingRotationZ" data-dir="1" aria-label="Increase rotate Z">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Offset X</span>
-      <input type="range" id="mappingOffsetX" min="-2" max="2" step="0.01" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingOffsetX" data-dir="-1" aria-label="Decrease offset X">−</button>
-        <input type="number" class="mapping-row__number" id="mappingOffsetXNumber" min="-2" max="2" step="0.01" value="0.00">
-        <button type="button" class="mapping-row__step" data-target="mappingOffsetX" data-dir="1" aria-label="Increase offset X">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Offset Y</span>
-      <input type="range" id="mappingOffsetY" min="-2" max="2" step="0.01" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingOffsetY" data-dir="-1" aria-label="Decrease offset Y">−</button>
-        <input type="number" class="mapping-row__number" id="mappingOffsetYNumber" min="-2" max="2" step="0.01" value="0.00">
-        <button type="button" class="mapping-row__step" data-target="mappingOffsetY" data-dir="1" aria-label="Increase offset Y">+</button>
-      </div>
-    </div>
-    <label class="mapping-subheading">Video orientation</label>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Rotation</span>
-      <input type="range" id="mappingVideoRotation" min="0" max="360" step="1" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="-1" aria-label="Decrease rotation">−</button>
-        <input type="number" class="mapping-row__number" id="mappingVideoRotationNumber" min="0" max="360" step="1" value="0">
-        <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="1" aria-label="Increase rotation">+</button>
-      </div>
-    </div>
-    <div class="mapping-actions">
-      <button type="button" class="btn btn-secondary" id="mappingFlipHBtn">Flip video horizontally</button>
-      <button type="button" class="btn btn-secondary" id="mappingFlipVBtn">Flip video vertically</button>
-    </div>
-    <label class="mapping-subheading">Keystone correction</label>
-    <!-- One corner at a time: pick which of the four is being moved, then
-         drag it on the pad. The pad stands for the projected picture seen
-         head-on, so a corner drags the way it moves on the wall -- which
-         the eight separate X/Y sliders this replaced never made obvious.
-         The steppers underneath are the same +/- and numeric entry as
-         every other calibration control, for nudges too small to drag. -->
-    <div class="keystone">
-      <div class="keystone__corners" role="group" aria-label="Corner being adjusted">
-        <button type="button" class="keystone__corner is-selected" data-corner="tl" aria-pressed="true">Top left</button>
-        <button type="button" class="keystone__corner" data-corner="tr" aria-pressed="false">Top right</button>
-        <button type="button" class="keystone__corner" data-corner="bl" aria-pressed="false">Bottom left</button>
-        <button type="button" class="keystone__corner" data-corner="br" aria-pressed="false">Bottom right</button>
-      </div>
-      <!-- Arrows sit on the axis they move: left/right above the pad,
-           up/down beside it, so a nudge is reached in the direction it
-           goes rather than read off a label. -->
-      <div class="keystone__grid">
-        <div class="keystone__arrows keystone__arrows--x">
-          <button type="button" class="mapping-row__step" id="keystoneXDown" aria-label="Move corner left">&larr;</button>
-          <button type="button" class="mapping-row__step" id="keystoneXUp" aria-label="Move corner right">&rarr;</button>
-        </div>
-        <div class="keystone__arrows keystone__arrows--y">
-          <button type="button" class="mapping-row__step" id="keystoneYUp" aria-label="Move corner up">&uarr;</button>
-          <button type="button" class="mapping-row__step" id="keystoneYDown" aria-label="Move corner down">&darr;</button>
-        </div>
-        <div class="keystone__pad" id="keystonePad" tabindex="0" role="application"
-             aria-label="Drag to move the selected corner; arrow keys nudge it">
-          <div class="keystone__crosshair" aria-hidden="true"></div>
-          <div class="keystone__handle" id="keystoneHandle"></div>
+    <details class="mapping-section" id="sectionMapping">
+      <summary class="mapping-section__summary">Projection mapping</summary>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Scale</span>
+        <input type="range" id="mappingScale" min="0.2" max="3" step="0.01" value="1">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingScale" data-dir="-1" aria-label="Decrease scale">−</button>
+          <input type="number" class="mapping-row__number" id="mappingScaleNumber" min="0.2" max="3" step="0.01" value="1.00">
+          <button type="button" class="mapping-row__step" data-target="mappingScale" data-dir="1" aria-label="Increase scale">+</button>
         </div>
       </div>
-    </div>
-    </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Projector distance</span>
+        <input type="range" id="mappingThrowDistance" min="0.3" max="2" step="0.05" value="0.6">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingThrowDistance" data-dir="-1" aria-label="Decrease projector distance">−</button>
+          <input type="number" class="mapping-row__number" id="mappingThrowDistanceNumber" min="0.3" max="2" step="0.05" value="0.60">
+          <button type="button" class="mapping-row__step" data-target="mappingThrowDistance" data-dir="1" aria-label="Increase projector distance">+</button>
+        </div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Projector offset X</span>
+        <input type="range" id="mappingThrowOffsetX" min="-1" max="1" step="0.01" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetX" data-dir="-1" aria-label="Decrease projector offset X">−</button>
+          <input type="number" class="mapping-row__number" id="mappingThrowOffsetXNumber" min="-1" max="1" step="0.01" value="0.00">
+          <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetX" data-dir="1" aria-label="Increase projector offset X">+</button>
+        </div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Projector offset Y</span>
+        <input type="range" id="mappingThrowOffsetY" min="-3" max="0" step="0.01" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetY" data-dir="-1" aria-label="Decrease projector offset Y">−</button>
+          <input type="number" class="mapping-row__number" id="mappingThrowOffsetYNumber" min="-3" max="0" step="0.01" value="0.00">
+          <button type="button" class="mapping-row__step" data-target="mappingThrowOffsetY" data-dir="1" aria-label="Increase projector offset Y">+</button>
+        </div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Rotate X</span>
+        <input type="range" id="mappingRotationX" min="-90" max="90" step="0.5" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingRotationX" data-dir="-1" aria-label="Decrease rotate X">−</button>
+          <input type="number" class="mapping-row__number" id="mappingRotationXNumber" min="-90" max="90" step="0.5" value="0">
+          <button type="button" class="mapping-row__step" data-target="mappingRotationX" data-dir="1" aria-label="Increase rotate X">+</button>
+        </div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Rotate Y</span>
+        <input type="range" id="mappingRotationY" min="-90" max="90" step="0.5" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingRotationY" data-dir="-1" aria-label="Decrease rotate Y">−</button>
+          <input type="number" class="mapping-row__number" id="mappingRotationYNumber" min="-90" max="90" step="0.5" value="0">
+          <button type="button" class="mapping-row__step" data-target="mappingRotationY" data-dir="1" aria-label="Increase rotate Y">+</button>
+        </div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Rotate Z</span>
+        <input type="range" id="mappingRotationZ" min="-90" max="90" step="0.5" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingRotationZ" data-dir="-1" aria-label="Decrease rotate Z">−</button>
+          <input type="number" class="mapping-row__number" id="mappingRotationZNumber" min="-90" max="90" step="0.5" value="0">
+          <button type="button" class="mapping-row__step" data-target="mappingRotationZ" data-dir="1" aria-label="Increase rotate Z">+</button>
+        </div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Offset X</span>
+        <input type="range" id="mappingOffsetX" min="-2" max="2" step="0.01" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingOffsetX" data-dir="-1" aria-label="Decrease offset X">−</button>
+          <input type="number" class="mapping-row__number" id="mappingOffsetXNumber" min="-2" max="2" step="0.01" value="0.00">
+          <button type="button" class="mapping-row__step" data-target="mappingOffsetX" data-dir="1" aria-label="Increase offset X">+</button>
+        </div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Offset Y</span>
+        <input type="range" id="mappingOffsetY" min="-2" max="2" step="0.01" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingOffsetY" data-dir="-1" aria-label="Decrease offset Y">−</button>
+          <input type="number" class="mapping-row__number" id="mappingOffsetYNumber" min="-2" max="2" step="0.01" value="0.00">
+          <button type="button" class="mapping-row__step" data-target="mappingOffsetY" data-dir="1" aria-label="Increase offset Y">+</button>
+        </div>
+      </div>
+    </details>
+    <details class="mapping-section" id="sectionVideo">
+      <summary class="mapping-section__summary">Video orientation</summary>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Rotation</span>
+        <input type="range" id="mappingVideoRotation" min="0" max="360" step="1" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="-1" aria-label="Decrease rotation">−</button>
+          <input type="number" class="mapping-row__number" id="mappingVideoRotationNumber" min="0" max="360" step="1" value="0">
+          <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="1" aria-label="Increase rotation">+</button>
+        </div>
+      </div>
+      <div class="mapping-actions">
+        <button type="button" class="btn btn-secondary" id="mappingFlipHBtn">Flip video horizontally</button>
+        <button type="button" class="btn btn-secondary" id="mappingFlipVBtn">Flip video vertically</button>
+      </div>
+    </details>
+    <details class="mapping-section" id="sectionKeystone">
+      <summary class="mapping-section__summary">Keystone correction</summary>
+      <!-- One corner at a time: pick which of the four is being moved, then
+           drag it on the pad. The pad stands for the projected picture seen
+           head-on, so a corner drags the way it moves on the wall -- which
+           the eight separate X/Y sliders this replaced never made obvious.
+           The steppers underneath are the same +/- and numeric entry as
+           every other calibration control, for nudges too small to drag. -->
+      <div class="keystone">
+        <div class="keystone__corners" role="group" aria-label="Corner being adjusted">
+          <button type="button" class="keystone__corner is-selected" data-corner="tl" aria-pressed="true">Top left</button>
+          <button type="button" class="keystone__corner" data-corner="tr" aria-pressed="false">Top right</button>
+          <button type="button" class="keystone__corner" data-corner="bl" aria-pressed="false">Bottom left</button>
+          <button type="button" class="keystone__corner" data-corner="br" aria-pressed="false">Bottom right</button>
+        </div>
+        <!-- Arrows sit on the axis they move: left/right above the pad,
+             up/down beside it, so a nudge is reached in the direction it
+             goes rather than read off a label. -->
+        <div class="keystone__grid">
+          <div class="keystone__arrows keystone__arrows--x">
+            <button type="button" class="mapping-row__step" id="keystoneXDown" aria-label="Move corner left">&larr;</button>
+            <button type="button" class="mapping-row__step" id="keystoneXUp" aria-label="Move corner right">&rarr;</button>
+          </div>
+          <div class="keystone__arrows keystone__arrows--y">
+            <button type="button" class="mapping-row__step" id="keystoneYUp" aria-label="Move corner up">&uarr;</button>
+            <button type="button" class="mapping-row__step" id="keystoneYDown" aria-label="Move corner down">&darr;</button>
+          </div>
+          <div class="keystone__pad" id="keystonePad" tabindex="0" role="application"
+               aria-label="Drag to move the selected corner; arrow keys nudge it">
+            <div class="keystone__crosshair" aria-hidden="true"></div>
+            <div class="keystone__handle" id="keystoneHandle"></div>
+          </div>
+        </div>
+      </div>
+    </details>
     <div class="mapping-actions">
       <button type="button" class="btn btn-secondary" id="mappingShadingBtn">Turn on calibration shading</button>
       <button type="button" class="btn btn-secondary" id="mappingGridcheckBtn">Play grid check (loop)</button>

@@ -501,6 +501,31 @@ body.admin-mode .settings-grid{
 
 #mappingField{ display:flex; flex-direction:column; gap:14px; width:100%; max-width:none; margin:0; }
 #mappingField label{ margin-bottom:0; }
+/* Collapsible sections, so the calibration panel isn't one long scroll of
+   controls when only one group is being worked on. <details> rather than a
+   scripted show/hide: the disclosure triangle, keyboard operation and
+   find-in-page opening the right section all come with it. */
+.mapping-section{ border-top:1px solid var(--color-divider); padding-top:12px; }
+.mapping-section__summary{
+  cursor:pointer; list-style:none;
+  display:flex; align-items:center; gap:8px;
+  font-size:11px; font-weight:600; text-transform:uppercase;
+  letter-spacing:.5px; color:var(--color-neutral-400);
+}
+.mapping-section__summary::-webkit-details-marker{ display:none; }
+/* Own triangle, so it can sit before the label and turn with the section
+   -- the native marker isn't stylable consistently across browsers. */
+.mapping-section__summary::before{
+  content:""; flex:0 0 auto;
+  border-left:5px solid currentColor;
+  border-top:4px solid transparent; border-bottom:4px solid transparent;
+  transition:transform .15s ease;
+}
+.mapping-section[open] > .mapping-section__summary::before{ transform:rotate(90deg); }
+.mapping-section__summary:hover{ color:var(--color-accent); }
+/* The section's own contents stack the same way the field does. */
+.mapping-section[open]{ display:flex; flex-direction:column; gap:12px; }
+
 .mapping-subheading{
   display:block; font-size:11px; font-weight:600; text-transform:uppercase;
   letter-spacing:.5px; color:var(--color-neutral-400);

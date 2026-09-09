@@ -1080,6 +1080,37 @@ MAPPING_CONTROLS.forEach(({ key, rangeEl, numberEl, decimals }) => {
     sendMappingUpdate({ [key]: value });
   });
 });
+// ------------------------------------------------- collapsible sections
+// Which calibration sections are twirled open is remembered per browser,
+// since the panel gets reopened constantly while calibrating and having
+// them all snap shut on every reload would undo the point of collapsing
+// them in the first place. Closed is the default: the panel is long, and
+// an operator is usually working in one group at a time.
+const SECTION_STATE_KEY = "zealandata.openSections";
+
+(function restoreSectionState() {
+  let open = [];
+  try {
+    open = JSON.parse(localStorage.getItem(SECTION_STATE_KEY) || "[]");
+  } catch (e) {
+    // Unreadable or disabled storage -- fall back to all closed.
+  }
+  document.querySelectorAll(".mapping-section").forEach((section) => {
+    section.open = open.includes(section.id);
+    section.addEventListener("toggle", () => {
+      const ids = [...document.querySelectorAll(".mapping-section")]
+        .filter((s) => s.open)
+        .map((s) => s.id);
+      try {
+        localStorage.setItem(SECTION_STATE_KEY, JSON.stringify(ids));
+      } catch (e) {
+        // Not worth surfacing -- the sections still work, they just won't
+        // be remembered.
+      }
+    });
+  });
+})();
+
 // ----------------------------------------------------- keystone corners
 // The eight X/Y sliders these replaced gave no sense of which corner was
 // which, or which way it would move. One corner is selected at a time and
