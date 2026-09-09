@@ -387,6 +387,68 @@ static void page_flip_handler(int fd, unsigned frame, unsigned sec, unsigned use
     *(bool *)data = false;
 }
 
+/* Dumps the just-rendered default framebuffer -- the actual physical
+   output, keystone warp and all -- to a tmpfs file that server.py's
+   /api/projection/snapshot.jpg endpoint reads and JPEG-encodes on request.
+   The only way to see what the projector is really showing without
+   standing in front of it.
+
+   Strictly on demand. An earlier version captured unconditionally every
+   0.3s, which measured at ~16% of the frame rate (24.9fps against 29.0
+   with it removed) and was paid continuously whether or not anyone was
+   looking -- which was almost always, since nothing polls this now that
+   the output mirror renders client-side. The endpoint touches a marker
+   file before it reads; this skips the whole readback unless that
+   happened in the last few seconds, so an idle projector pays one stat()
+   every quarter second and nothing else.
+
+   Written to a .tmp path and renamed into place so a concurrent read from
+   the Flask process never sees a partial write -- rename() is atomic
+   within a filesystem, which tmpfs is. */
+#define SNAPSHOT_WANT_PATH "/dev/shm/zealandata_snapshot.want"
+
+static bool snapshot_wanted(double now) {
+    /* Cached between checks: the render loop asks every frame, and a stat()
+       per frame would be a silly thing to add while removing a readback. */
+    static double last_check = 0;
+    static bool wanted = false;
+    if (now - last_check < 0.25) return wanted;
+    last_check = now;
+    struct stat st;
+    if (stat(SNAPSHOT_WANT_PATH, &st) != 0) return (wanted = false);
+    /* Generous window: the endpoint touches this once and then waits for a
+       frame, and a request arriving just as a capture finishes should still
+       get a fresh one rather than the previous frame. */
+    wanted = difftime(time(NULL), st.st_mtime) <= 3.0;
+    return wanted;
+}
+
+static void snapshot_maybe_capture(double now, int w, int h) {
+    static double last = 0;
+    static unsigned char *buf = NULL;
+    static size_t bufsz = 0;
+    if (!snapshot_wanted(now)) return;
+    if (now - last < 0.3) return;
+    last = now;
+    size_t need = (size_t)w * (size_t)h * 4;
+    if (bufsz != need) { free(buf); buf = malloc(need); bufsz = need; }
+    if (!buf) return;
+    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf);
+    FILE *f = fopen("/dev/shm/zealandata_snapshot.raw.tmp", "wb");
+    if (!f) return;
+    fwrite(buf, 1, need, f);
+    fclose(f);
+    rename("/dev/shm/zealandata_snapshot.raw.tmp", "/dev/shm/zealandata_snapshot.raw");
+    /* Dimensions in a sidecar rather than hardcoded on the reader's side,
+       since they're whatever the connected display's DRM mode is. */
+    f = fopen("/dev/shm/zealandata_snapshot.dims.tmp", "w");
+    if (!f) return;
+    fprintf(f, "%d %d
+", w, h);
+    fclose(f);
+    rename("/dev/shm/zealandata_snapshot.dims.tmp", "/dev/shm/zealandata_snapshot.dims");
+}
+
 static void present(void) {
     CHECK(eglSwapBuffers(egl_dpy, egl_surf), "eglSwapBuffers");
     struct gbm_bo *next = gbm_surface_lock_front_buffer(gbm_surf);
@@ -2095,6 +2157,8 @@ int main(void) {
 
         glFinish();                       /* so the timing splits are real */
         acc_draw += now_sec() - tB;
+
+        snapshot_maybe_capture(now_sec(), drm.mode.hdisplay, drm.mode.vdisplay);
 
         double tC = now_sec();
         present();

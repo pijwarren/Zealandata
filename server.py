@@ -35,7 +35,7 @@ import secrets
 import shutil
 from pathlib import Path
 
-from flask import Flask, jsonify, request, send_from_directory, send_file, render_template
+from flask import Flask, jsonify, request, send_from_directory, send_file, render_template, Response
 from werkzeug.utils import secure_filename
 
 # ---------------------------------------------------------------- config ---
@@ -1463,6 +1463,68 @@ def api_projection_stats():
         "position": rep.get("position"),
         "paused": rep.get("paused"),
     })
+
+
+SNAPSHOT_RAW_PATH = "/dev/shm/zealandata_snapshot.raw"
+SNAPSHOT_DIMS_PATH = "/dev/shm/zealandata_snapshot.dims"
+SNAPSHOT_WANT_PATH = "/dev/shm/zealandata_snapshot.want"
+
+
+@app.route("/api/projection/snapshot.jpg")
+def api_projection_snapshot():
+    """A JPEG of the real HDMI output, keystone warp and all -- the only way
+    to see what the projector is actually showing without standing in front
+    of it. Native backend only; the mpv one never writes these files.
+
+    Capture is on demand: the projector skips the readback entirely unless
+    this marker was touched recently, because doing it continuously cost
+    ~16% of its frame rate (see projector.c's snapshot_maybe_capture). So
+    touch first, then wait for a frame newer than the request -- otherwise a
+    single call would either 404 or hand back a stale frame from the last
+    time someone looked, and every caller would have to know to ask twice.
+
+    Encoded with ffmpeg, already a dependency for thumbnails, rather than
+    adding an image library for this alone."""
+    started = time.time()
+    try:
+        with open(SNAPSHOT_WANT_PATH, "w") as f:
+            f.write(str(started))
+    except OSError:
+        return jsonify({"error": "cannot request a snapshot"}), 500
+
+    # Long enough for the projector to notice the marker (it checks about
+    # four times a second) and then render a frame.
+    deadline = started + 3.0
+    while time.time() < deadline:
+        try:
+            if os.path.getmtime(SNAPSHOT_RAW_PATH) >= started:
+                break
+        except OSError:
+            pass
+        time.sleep(0.1)
+    else:
+        return jsonify({"error": "projector produced no snapshot"}), 504
+
+    try:
+        with open(SNAPSHOT_DIMS_PATH) as f:
+            w, h = (int(x) for x in f.read().split())
+    except (OSError, ValueError):
+        return jsonify({"error": "snapshot dimensions unreadable"}), 404
+    try:
+        result = subprocess.run(
+            [
+                "ffmpeg", "-f", "rawvideo", "-pixel_format", "rgba",
+                "-video_size", f"{w}x{h}", "-i", SNAPSHOT_RAW_PATH,
+                "-vf", "vflip", "-frames:v", "1", "-f", "image2",
+                "-c:v", "mjpeg", "-q:v", "6", "-",
+            ],
+            capture_output=True, timeout=5,
+        )
+    except subprocess.TimeoutExpired:
+        return jsonify({"error": "snapshot encode timed out"}), 500
+    if result.returncode != 0 or not result.stdout:
+        return jsonify({"error": "snapshot encode failed"}), 500
+    return Response(result.stdout, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
 
 
 @app.route("/projection/mirror")
