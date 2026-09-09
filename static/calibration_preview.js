@@ -36,6 +36,10 @@ uniform mat4 uMVP;
 uniform mat4 uModel;
 // Deliberately NOT uMVP -- see below.
 uniform mat4 uUVMVP;
+// The model's own footprint, in the same uUVMVP-projected 0-1 space --
+// see buildMatrices' uvBoxMin/Max comment.
+uniform vec2 uUVBoxMin;
+uniform vec2 uUVBoxMax;
 out vec2 vUV;
 out vec3 vNrm;
 void main(){
@@ -51,6 +55,11 @@ void main(){
   // gizmoMvp for the same reason.
   vec4 uvClip = uUVMVP * vec4(aPos, 1.0);
   vec2 uv = uvClip.xy / uvClip.w * 0.5 + 0.5;
+  // Re-fit from uUVMVP's fixed frustum onto just the model's own
+  // projected footprint -- 0-1 again means "the model's own bounding
+  // box", same as the old static per-vertex UV, so scale/rotation/offset
+  // stay independent of the video's own framing.
+  uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);
   // Fixed 90-degree counter-clockwise turn (as seen on the projector) so
   // the video lands right-way-up on this print -- ported from
   // projector.c's VS_SRC; edit both together if it ever needs to change.
@@ -322,7 +331,7 @@ function parseObj(text) {
     if (l > 0) { nrm[i * 3] = x / l; nrm[i * 3 + 1] = y / l; nrm[i * 3 + 2] = z / l; }
   }
 
-  return { pos, nrm, idx };
+  return { pos, nrm, idx, sizeX, sizeY, sizeZ };
 }
 
 // -------------------------------------------------------------- gizmo geo
@@ -547,7 +556,27 @@ function buildMatrices(mapping) {
   const gizmoEye = matMul(mEye, gizmoModel);
   const mvp = matMul(proj, modelEye);
   const gizmoMvp = matMul(proj, gizmoEye);
-  return { modelM: modelEye, mvp, gizmoMvp };
+
+  // Re-fits the video onto exactly the model's own footprint -- see
+  // MODEL_VS's uUVBoxMin/Max comment and projector.c's matching render-loop
+  // comment for why. Projecting the (convex) bounding box's 8 corners
+  // through the same mBase-free gizmoMvp and taking their min/max exactly
+  // bounds the model's own projected footprint.
+  let uvBoxMin = [Infinity, Infinity];
+  let uvBoxMax = [-Infinity, -Infinity];
+  for (let c = 0; c < 8; c++) {
+    const bx = (c & 1 ? 1 : -1) * model.sizeX / 2;
+    const by = (c & 2 ? 1 : -1) * model.sizeY / 2;
+    const bz = (c & 4 ? 1 : -1) * model.sizeZ / 2;
+    const [ndcX, ndcY] = projectNdc(gizmoMvp, bx, by, bz);
+    const ux = ndcX * 0.5 + 0.5, uy = ndcY * 0.5 + 0.5;
+    if (ux < uvBoxMin[0]) uvBoxMin[0] = ux;
+    if (ux > uvBoxMax[0]) uvBoxMax[0] = ux;
+    if (uy < uvBoxMin[1]) uvBoxMin[1] = uy;
+    if (uy > uvBoxMax[1]) uvBoxMax[1] = uy;
+  }
+
+  return { modelM: modelEye, mvp, gizmoMvp, uvBoxMin, uvBoxMax };
 }
 
 function setUniformMatrix4(prog, name, m) {
@@ -559,7 +588,7 @@ function render(mapping) {
   lastMapping = mapping;
   if (canvas.width !== sceneW || canvas.height !== sceneH) resizeSceneTarget();
 
-  const { modelM, mvp, gizmoMvp } = buildMatrices(mapping);
+  const { modelM, mvp, gizmoMvp, uvBoxMin, uvBoxMax } = buildMatrices(mapping);
 
   // ---- scene pass: model textured with the static loading image ----
   gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
@@ -571,6 +600,8 @@ function render(mapping) {
   setUniformMatrix4(modelProg, "uMVP", mvp);
   setUniformMatrix4(modelProg, "uModel", modelM);
   setUniformMatrix4(modelProg, "uUVMVP", gizmoMvp);
+  gl.uniform2f(gl.getUniformLocation(modelProg, "uUVBoxMin"), uvBoxMin[0], uvBoxMin[1]);
+  gl.uniform2f(gl.getUniformLocation(modelProg, "uUVBoxMax"), uvBoxMax[0], uvBoxMax[1]);
   // Unlike the native renderer, this preview always shades and always
   // shows the gizmo -- it's a calibration aid, not the real projected
   // picture, so there's no case where the relief/orientation cues showing

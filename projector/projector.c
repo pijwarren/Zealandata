@@ -505,6 +505,11 @@ static vec3 *m_pos = NULL;
 static vec3 *m_nrm = NULL;
 static unsigned *m_idx = NULL;
 static size_t m_nvert = 0, m_nidx = 0;
+/* Full (not half) extent of the normalised, centred mesh -- set once at
+   the end of load_obj. Used every frame to re-fit the video onto exactly
+   the model's own footprint regardless of scale/rotation/offset; see the
+   render loop's uv_box_fit comment. */
+static vec3 m_size;
 
 /* The relief comes out of the OBJ inverted -- what should stand proud sits
    sunken -- so the height axis is mirrored. Kept as constants rather than
@@ -649,6 +654,7 @@ static int load_obj(const char *path) {
         m_pos[i].z = (m_pos[i].z - ctr.z) * norm;
     }
     size.x *= norm; size.y *= norm; size.z *= norm;
+    m_size = size;
 
     /* Smooth normals, area-weighted by the cross product's magnitude. Only
        the calibration shading uses them; the projection material is unlit. */
@@ -686,6 +692,10 @@ static const char *VS_SRC =
     "uniform mat4 uModel;\n"
     /* Deliberately NOT uMVP -- see below. */
     "uniform mat4 uUVMVP;\n"
+    /* The model's own footprint, in the same uUVMVP-projected 0-1 space --
+       see the render loop's uvBoxMin/Max comment. */
+    "uniform vec2 uUVBoxMin;\n"
+    "uniform vec2 uUVBoxMax;\n"
     "out vec2 vUV;\n"
     "out vec3 vNrm;\n"
     "void main(){\n"
@@ -712,6 +722,11 @@ static const char *VS_SRC =
        that actually corresponds to something physical. */
     "  vec4 uvClip = uUVMVP * vec4(aPos,1.0);\n"
     "  vec2 uv = uvClip.xy / uvClip.w * 0.5 + 0.5;\n"
+    /* Re-fit from uUVMVP's fixed frustum onto just the model's own
+       projected footprint -- 0-1 again means "the model's own bounding
+       box", same as the old static per-vertex UV, so scale/rotation/
+       offset stay independent of the video's own framing. */
+    "  uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);\n"
     /* Fixed 90-degree counter-clockwise turn (as seen on the projector) so
        the video lands right-way-up on this print -- see the comment by
        BASE_ORIENTATION_Z_DEG/X_DEG on why this lives here now instead of a
@@ -859,9 +874,9 @@ static void build_gizmo_rings(gizmo_vert out[3 * GIZMO_SEGMENTS]) {
     }
 }
 
-/* Projects a gizmo-space point through mvp down to NDC (w-divide, though
-   with the pipeline's affine-only ortho matrices w is always 1 in
-   practice -- done properly anyway since it's nearly free). */
+/* Projects a gizmo-space point through mvp down to NDC (w-divide -- w is
+   genuinely non-1 now that the render loop uses a real perspective
+   frustum, not the old orthographic one). */
 static void gizmo_project_ndc(const mat4 mvp, float x, float y, float z, float *ndcx, float *ndcy) {
     float cx = mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12];
     float cy = mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13];
@@ -1532,6 +1547,8 @@ int main(void) {
     GLint uMVP = glGetUniformLocation(prog, "uMVP");
     GLint uModel = glGetUniformLocation(prog, "uModel");
     GLint uUVMVP = glGetUniformLocation(prog, "uUVMVP");
+    GLint uUVBoxMin = glGetUniformLocation(prog, "uUVBoxMin");
+    GLint uUVBoxMax = glGetUniformLocation(prog, "uUVBoxMax");
     GLint uShading = glGetUniformLocation(prog, "uShading");
     GLint uVideoEdgeLT = glGetUniformLocation(prog, "uVideoEdgeLT");
     GLint uVideoEdgeRB = glGetUniformLocation(prog, "uVideoEdgeRB");
@@ -1772,6 +1789,31 @@ int main(void) {
         mat_mul(gizmoModel, mEye, gizmoModel);
         mat_mul(gizmoMvp, proj, gizmoModel);
 
+        /* Re-fits the video onto exactly the model's own footprint, same
+           as the old static per-vertex UV used to (always 0-1 across the
+           model's own bounding box, regardless of scale/rotation/offset)
+           -- without this, vUV's 0-1 range would span uUVMVP's fixed
+           frustum instead, and the video would stretch/shrink relative to
+           the model every time scale or offset changed, coupling sliders
+           that used to be independent. Projecting the (convex) bounding
+           box's 8 corners through the same mBase-free transform and
+           taking their min/max exactly bounds the model's own projected
+           footprint -- see gizmo_project_ndc's own comment on why w-divide
+           actually matters now. */
+        float uvBoxMinX = 1e9f, uvBoxMinY = 1e9f, uvBoxMaxX = -1e9f, uvBoxMaxY = -1e9f;
+        for (int c = 0; c < 8; c++) {
+            float bx = (c & 1) ? m_size.x / 2 : -m_size.x / 2;
+            float by = (c & 2) ? m_size.y / 2 : -m_size.y / 2;
+            float bz = (c & 4) ? m_size.z / 2 : -m_size.z / 2;
+            float ndcx, ndcy;
+            gizmo_project_ndc(gizmoMvp, bx, by, bz, &ndcx, &ndcy);
+            float ux = ndcx * 0.5f + 0.5f, uy = ndcy * 0.5f + 0.5f;
+            if (ux < uvBoxMinX) uvBoxMinX = ux;
+            if (ux > uvBoxMaxX) uvBoxMaxX = ux;
+            if (uy < uvBoxMinY) uvBoxMinY = uy;
+            if (uy > uvBoxMaxY) uvBoxMaxY = uy;
+        }
+
         double tB = now_sec();
         glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
         glViewport(0, 0, wantW, wantH);
@@ -1782,6 +1824,8 @@ int main(void) {
         glUniformMatrix4fv(uMVP, 1, GL_FALSE, mvp);
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
         glUniformMatrix4fv(uUVMVP, 1, GL_FALSE, gizmoMvp);
+        glUniform2f(uUVBoxMin, uvBoxMinX, uvBoxMinY);
+        glUniform2f(uUVBoxMax, uvBoxMaxX, uvBoxMaxY);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         glUniform2f(uVideoEdgeLT, map_cur.vid_left, map_cur.vid_top);
         glUniform2f(uVideoEdgeRB, map_cur.vid_right, map_cur.vid_bottom);
