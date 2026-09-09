@@ -32,10 +32,10 @@ layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNrm;
 uniform mat4 uMVP;
 uniform mat4 uModel;
-// The model's own footprint, in the same uMVP-projected 0-1 space --
-// see buildMatrices' uvBoxMin/Max comment.
-uniform vec2 uUVBoxMin;
-uniform vec2 uUVBoxMax;
+// The model's own local footprint extent (X/Y -- Z is elevation, see
+// parseObj), for turning aPos into a plain 0-1 UV below. Fixed for the
+// life of the loaded model, not per-frame calibration state.
+uniform vec2 uModelSize;
 // Manual video orientation -- see server.py's MAPPING_NUMERIC/BOOLEAN
 // comments on why this is plain user input rather than derived from the
 // model/projector geometry. uVidRotation is radians, clockwise as seen on
@@ -47,26 +47,22 @@ out vec2 vUV;
 out vec3 vNrm;
 void main(){
   gl_Position = uMVP * vec4(aPos, 1.0);
-  // No static per-vertex UV any more -- see projector.c's matching VS_SRC
-  // comment. This is a true point-source perspective, so the on-model
-  // texture coordinate has to come from a clip-space position. Reuses
-  // gl_Position's own uMVP rather than a second matrix -- an earlier
-  // version deliberately excluded the model's fixed OBJ-axis correction
-  // from this clip position (to match the calibration gizmo's own
-  // mBase-free transform), compensating with a fixed shader-side UV
-  // rotation, but that correction is not a constant 2-D screen-space
-  // offset once real perspective is involved, so the compensation drifted
-  // out of sync with the mesh as rotation/scale/offset moved the model
-  // around (texture crawling relative to the geometry). The correction is
-  // now baked directly into the parsed vertex data instead (see parseObj),
-  // so uMVP already reflects the model's true pose.
-  vec4 uvClip = uMVP * vec4(aPos, 1.0);
-  vec2 uv = uvClip.xy / uvClip.w * 0.5 + 0.5;
-  // Re-fit from uMVP's fixed frustum onto just the model's own
-  // projected footprint -- 0-1 again means "the model's own bounding
-  // box", same as the old static per-vertex UV, so scale/rotation/offset
-  // stay independent of the video's own framing.
-  uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);
+  // The texture is glued to the model's own surface in its own local
+  // space -- a plain top-down drape, exactly like a UV projection done
+  // once in Blender against the model file itself -- rather than derived
+  // from where each vertex happens to land on screen after calibration.
+  // An earlier version instead sampled a clip-space position (the
+  // "projective texture mapping" trick shadow/spotlight projection uses),
+  // deliberately so a vertex's texture coordinate would shift with
+  // elevation as the calibration sliders moved the model around -- but
+  // that meant the video's own framing was never actually fixed to the
+  // model, only to whatever the live camera/frustum/keystone happened to
+  // be doing that frame, verified wrong against a straightforward Blender
+  // UV check even at default calibration. gl_Position above already
+  // carries the model through that same camera/frustum correctly; the
+  // texture just needs to sit on the model's surface first, the same way
+  // paint would. Ported from projector.c's VS_SRC -- see its comment.
+  vec2 uv = aPos.xy / uModelSize + 0.5;
   // Manual video orientation -- ported from projector.c's VS_SRC (see its
   // comment for why this is a live control rather than a fixed constant);
   // edit both together if the underlying transform ever needs to change.
@@ -584,26 +580,7 @@ function buildMatrices(mapping) {
   const modelEye = matMul(mEye, modelM);
   const mvp = matMul(proj, modelEye);
 
-  // Re-fits the video onto exactly the model's own footprint -- see
-  // MODEL_VS's uUVBoxMin/Max comment and projector.c's matching render-loop
-  // comment for why. Projecting the (convex) bounding box's 8 corners
-  // through the same mvp used to render the mesh and taking their min/max
-  // exactly bounds the model's own projected footprint.
-  let uvBoxMin = [Infinity, Infinity];
-  let uvBoxMax = [-Infinity, -Infinity];
-  for (let c = 0; c < 8; c++) {
-    const bx = (c & 1 ? 1 : -1) * model.sizeX / 2;
-    const by = (c & 2 ? 1 : -1) * model.sizeY / 2;
-    const bz = (c & 4 ? 1 : -1) * model.sizeZ / 2;
-    const [ndcX, ndcY] = projectNdc(mvp, bx, by, bz);
-    const ux = ndcX * 0.5 + 0.5, uy = ndcY * 0.5 + 0.5;
-    if (ux < uvBoxMin[0]) uvBoxMin[0] = ux;
-    if (ux > uvBoxMax[0]) uvBoxMax[0] = ux;
-    if (uy < uvBoxMin[1]) uvBoxMin[1] = uy;
-    if (uy > uvBoxMax[1]) uvBoxMax[1] = uy;
-  }
-
-  return { modelM: modelEye, mvp, uvBoxMin, uvBoxMax };
+  return { modelM: modelEye, mvp };
 }
 
 function setUniformMatrix4(prog, name, m) {
@@ -615,7 +592,7 @@ function render(mapping) {
   lastMapping = mapping;
   if (canvas.width !== sceneW || canvas.height !== sceneH) resizeSceneTarget();
 
-  const { modelM, mvp, uvBoxMin, uvBoxMax } = buildMatrices(mapping);
+  const { modelM, mvp } = buildMatrices(mapping);
 
   // ---- scene pass: model textured with the static loading image ----
   gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
@@ -626,8 +603,7 @@ function render(mapping) {
   gl.useProgram(modelProg);
   setUniformMatrix4(modelProg, "uMVP", mvp);
   setUniformMatrix4(modelProg, "uModel", modelM);
-  gl.uniform2f(gl.getUniformLocation(modelProg, "uUVBoxMin"), uvBoxMin[0], uvBoxMin[1]);
-  gl.uniform2f(gl.getUniformLocation(modelProg, "uUVBoxMax"), uvBoxMax[0], uvBoxMax[1]);
+  gl.uniform2f(gl.getUniformLocation(modelProg, "uModelSize"), model.sizeX, model.sizeY);
   gl.uniform1f(
     gl.getUniformLocation(modelProg, "uVidRotation"),
     ((Number(mapping.video_rotation) || 0) * Math.PI) / 180,

@@ -742,10 +742,10 @@ static const char *VS_SRC =
     "layout(location=1) in vec3 aNrm;\n"
     "uniform mat4 uMVP;\n"
     "uniform mat4 uModel;\n"
-    /* The model's own footprint, in the same uMVP-projected 0-1 space --
-       see the render loop's uvBoxMin/Max comment. */
-    "uniform vec2 uUVBoxMin;\n"
-    "uniform vec2 uUVBoxMax;\n"
+    /* The model's own local footprint extent (X/Y -- Z is elevation, see
+       load_obj), for turning aPos into a plain 0-1 UV below. Fixed for the
+       life of the loaded model, not per-frame calibration state. */
+    "uniform vec2 uModelSize;\n"
     /* Manual video orientation -- see server.py's MAPPING_NUMERIC/BOOLEAN
        comments on why this is plain user input rather than something
        derived from the model/projector geometry like everything else
@@ -757,34 +757,22 @@ static const char *VS_SRC =
     "out vec3 vNrm;\n"
     "void main(){\n"
     "  gl_Position = uMVP * vec4(aPos,1.0);\n"
-    /* No static per-vertex UV attribute any more: with a true point-source
-       perspective (see the frustum comment in the render loop), the
-       texture coordinate a real light ray carries to a given surface point
-       depends on the model's live pose relative to the projector, not just
-       that point's fixed footprint position. Sampling a clip-space
-       position -- the same "projective texture mapping" trick shadow/
-       spotlight projection uses -- is what makes elevation actually track
-       correctly as the calibration sliders (rotation especially) move the
-       model around in the projector's view.
-       Reuses gl_Position's own uMVP rather than a second matrix: an
-       earlier version deliberately excluded the model's fixed OBJ-axis
-       correction from this clip position (to match the calibration
-       gizmo's own mBase-free transform), compensating with a fixed
-       shader-side UV rotation -- but that correction is not a constant
-       2-D screen-space offset once real perspective is involved, so the
-       compensation drifted out of sync with the mesh as rot_x/y/z, scale
-       and offset moved the model around (texture crawling relative to the
-       geometry). The correction is now baked directly into the stored
-       vertex data in load_obj instead (see that comment), so uMVP already
-       reflects the model's true pose and there is no second transform
-       left for the UV to disagree with. */
-    "  vec4 uvClip = uMVP * vec4(aPos,1.0);\n"
-    "  vec2 uv = uvClip.xy / uvClip.w * 0.5 + 0.5;\n"
-    /* Re-fit from uMVP's fixed frustum onto just the model's own
-       projected footprint -- 0-1 again means "the model's own bounding
-       box", same as the old static per-vertex UV, so scale/rotation/
-       offset stay independent of the video's own framing. */
-    "  uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);\n"
+    /* The texture is glued to the model's own surface in its own local
+       space -- a plain top-down drape, exactly like a UV projection done
+       once in Blender against the model file itself -- rather than derived
+       from where each vertex happens to land on screen after calibration.
+       An earlier version instead sampled a clip-space position (the
+       "projective texture mapping" trick shadow/spotlight projection
+       uses), deliberately so a vertex's texture coordinate would shift
+       with elevation as the calibration sliders moved the model around --
+       but that meant the video's own framing was never actually fixed to
+       the model, only to whatever the live camera/frustum/keystone
+       ("projection warping") happened to be doing that frame, verified
+       wrong against a straightforward Blender UV check even at default
+       calibration. gl_Position above already carries the model through
+       that same camera/frustum correctly; the texture just needs to sit
+       on the model's surface first, the same way paint would. */
+    "  vec2 uv = aPos.xy / uModelSize + 0.5;\n"
     /* Manual video orientation: how a given video file needs turning to
        land the right way up on this print isn't something derivable from
        the model/projector geometry -- it depends on how that file happened
@@ -1614,8 +1602,7 @@ int main(void) {
     glUseProgram(prog);
     GLint uMVP = glGetUniformLocation(prog, "uMVP");
     GLint uModel = glGetUniformLocation(prog, "uModel");
-    GLint uUVBoxMin = glGetUniformLocation(prog, "uUVBoxMin");
-    GLint uUVBoxMax = glGetUniformLocation(prog, "uUVBoxMax");
+    GLint uModelSize = glGetUniformLocation(prog, "uModelSize");
     GLint uVidRotation = glGetUniformLocation(prog, "uVidRotation");
     GLint uVidFlipH = glGetUniformLocation(prog, "uVidFlipH");
     GLint uVidFlipV = glGetUniformLocation(prog, "uVidFlipV");
@@ -1866,31 +1853,6 @@ int main(void) {
         mat_mul(model, mEye, model);
         mat_mul(mvp, proj, model);
 
-        /* Re-fits the video onto exactly the model's own footprint, same
-           as the old static per-vertex UV used to (always 0-1 across the
-           model's own bounding box, regardless of scale/rotation/offset)
-           -- without this, vUV's 0-1 range would span uMVP's fixed
-           frustum instead, and the video would stretch/shrink relative to
-           the model every time scale or offset changed, coupling sliders
-           that used to be independent. Projecting the (convex) bounding
-           box's 8 corners through the same mvp used to render the mesh and
-           taking their min/max exactly bounds the model's own projected
-           footprint -- see gizmo_project_ndc's own comment on why w-divide
-           actually matters now. */
-        float uvBoxMinX = 1e9f, uvBoxMinY = 1e9f, uvBoxMaxX = -1e9f, uvBoxMaxY = -1e9f;
-        for (int c = 0; c < 8; c++) {
-            float bx = (c & 1) ? m_size.x / 2 : -m_size.x / 2;
-            float by = (c & 2) ? m_size.y / 2 : -m_size.y / 2;
-            float bz = (c & 4) ? m_size.z / 2 : -m_size.z / 2;
-            float ndcx, ndcy;
-            gizmo_project_ndc(mvp, bx, by, bz, &ndcx, &ndcy);
-            float ux = ndcx * 0.5f + 0.5f, uy = ndcy * 0.5f + 0.5f;
-            if (ux < uvBoxMinX) uvBoxMinX = ux;
-            if (ux > uvBoxMaxX) uvBoxMaxX = ux;
-            if (uy < uvBoxMinY) uvBoxMinY = uy;
-            if (uy > uvBoxMaxY) uvBoxMaxY = uy;
-        }
-
         double tB = now_sec();
         glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
         glViewport(0, 0, wantW, wantH);
@@ -1900,8 +1862,7 @@ int main(void) {
         glUseProgram(prog);
         glUniformMatrix4fv(uMVP, 1, GL_FALSE, mvp);
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
-        glUniform2f(uUVBoxMin, uvBoxMinX, uvBoxMinY);
-        glUniform2f(uUVBoxMax, uvBoxMaxX, uvBoxMaxY);
+        glUniform2f(uModelSize, m_size.x, m_size.y);
         glUniform1f(uVidRotation, map_cur.vid_rotation * (float)M_PI / 180.f);
         glUniform1i(uVidFlipH, map_cur.vid_flip_h ? 1 : 0);
         glUniform1i(uVidFlipV, map_cur.vid_flip_v ? 1 : 0);
