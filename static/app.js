@@ -940,14 +940,6 @@ const MAPPING_CONTROLS = [
   { key: "video_right", range: "mappingVideoRight", number: "mappingVideoRightNumber", decimals: 3 },
   { key: "video_top", range: "mappingVideoTop", number: "mappingVideoTopNumber", decimals: 3 },
   { key: "video_bottom", range: "mappingVideoBottom", number: "mappingVideoBottomNumber", decimals: 3 },
-  { key: "keystone_tl_x", range: "mappingKeystoneTLX", number: "mappingKeystoneTLXNumber", decimals: 3 },
-  { key: "keystone_tl_y", range: "mappingKeystoneTLY", number: "mappingKeystoneTLYNumber", decimals: 3 },
-  { key: "keystone_tr_x", range: "mappingKeystoneTRX", number: "mappingKeystoneTRXNumber", decimals: 3 },
-  { key: "keystone_tr_y", range: "mappingKeystoneTRY", number: "mappingKeystoneTRYNumber", decimals: 3 },
-  { key: "keystone_bl_x", range: "mappingKeystoneBLX", number: "mappingKeystoneBLXNumber", decimals: 3 },
-  { key: "keystone_bl_y", range: "mappingKeystoneBLY", number: "mappingKeystoneBLYNumber", decimals: 3 },
-  { key: "keystone_br_x", range: "mappingKeystoneBRX", number: "mappingKeystoneBRXNumber", decimals: 3 },
-  { key: "keystone_br_y", range: "mappingKeystoneBRY", number: "mappingKeystoneBRYNumber", decimals: 3 },
 ].map((c) => ({
   ...c,
   rangeEl: document.getElementById(c.range),
@@ -974,6 +966,10 @@ function paintMappingControls(mapping) {
   mappingFpsBtn.textContent = mappingFpsEnabled ? "Hide FPS on output" : "Show FPS on output";
   mappingFlipHEnabled = !!mapping.video_flip_h;
   mappingFlipHBtn.textContent = mappingFlipHEnabled ? "Un-flip video horizontally" : "Flip video horizontally";
+  for (const key of Object.keys(keystoneValues)) {
+    if (mapping[key] !== undefined) keystoneValues[key] = Number(mapping[key]) || 0;
+  }
+  paintKeystone();
   mappingFlipVEnabled = !!mapping.video_flip_v;
   mappingFlipVBtn.textContent = mappingFlipVEnabled ? "Un-flip video vertically" : "Flip video vertically";
   broadcastMapping();
@@ -1014,6 +1010,10 @@ function currentMappingSnapshot() {
     gizmo: previewGizmoEnabled,
     video_flip_h: mappingFlipHEnabled,
     video_flip_v: mappingFlipVEnabled,
+    // No slider of their own to read back, so they come from the store the
+    // pad writes to -- without these the mirror would draw an un-keystoned
+    // picture while a corner was being dragged.
+    ...keystoneValues,
   };
   MAPPING_CONTROLS.forEach(({ key, rangeEl }) => { snap[key] = Number(rangeEl.value); });
   return snap;
@@ -1084,6 +1084,120 @@ MAPPING_CONTROLS.forEach(({ key, rangeEl, numberEl, decimals }) => {
     sendMappingUpdate({ [key]: value });
   });
 });
+// ----------------------------------------------------- keystone corners
+// The eight X/Y sliders these replaced gave no sense of which corner was
+// which, or which way it would move. One corner is selected at a time and
+// dragged on a pad standing for the projected picture, so the gesture
+// matches what happens on the wall.
+//
+// Kept out of MAPPING_CONTROLS (which pairs a range input with a number
+// input) since there are no sliders here -- but the values still have to
+// reach both the server and the mirror tab, so they live in this object
+// and are folded into currentMappingSnapshot.
+const KEYSTONE_RANGE = 0.3;   // matches the number inputs' min/max
+const KEYSTONE_STEP = 0.005;  // and their step, for the +/- buttons
+const keystonePad = document.getElementById("keystonePad");
+const keystoneHandle = document.getElementById("keystoneHandle");
+const keystoneXNumber = document.getElementById("keystoneXNumber");
+const keystoneYNumber = document.getElementById("keystoneYNumber");
+let keystoneCorner = "tl";
+const keystoneValues = {
+  keystone_tl_x: 0, keystone_tl_y: 0, keystone_tr_x: 0, keystone_tr_y: 0,
+  keystone_bl_x: 0, keystone_bl_y: 0, keystone_br_x: 0, keystone_br_y: 0,
+};
+
+function keystoneKey(axis) {
+  return `keystone_${keystoneCorner}_${axis}`;
+}
+
+// The pad reads like the projected picture: +Y is up on the wall, and up
+// the screen is a smaller CSS top, so the Y axis flips on the way out.
+function paintKeystone() {
+  const x = keystoneValues[keystoneKey("x")];
+  const y = keystoneValues[keystoneKey("y")];
+  keystoneHandle.style.left = `${((x + KEYSTONE_RANGE) / (2 * KEYSTONE_RANGE)) * 100}%`;
+  keystoneHandle.style.top = `${((KEYSTONE_RANGE - y) / (2 * KEYSTONE_RANGE)) * 100}%`;
+  if (document.activeElement !== keystoneXNumber) keystoneXNumber.value = x.toFixed(3);
+  if (document.activeElement !== keystoneYNumber) keystoneYNumber.value = y.toFixed(3);
+}
+
+function setKeystone(x, y) {
+  const nx = clamp(x, -KEYSTONE_RANGE, KEYSTONE_RANGE);
+  const ny = clamp(y, -KEYSTONE_RANGE, KEYSTONE_RANGE);
+  keystoneValues[keystoneKey("x")] = nx;
+  keystoneValues[keystoneKey("y")] = ny;
+  paintKeystone();
+  sendMappingUpdate({ [keystoneKey("x")]: nx, [keystoneKey("y")]: ny });
+}
+
+document.querySelectorAll(".keystone__corner").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    keystoneCorner = btn.dataset.corner;
+    document.querySelectorAll(".keystone__corner").forEach((other) => {
+      const on = other === btn;
+      other.classList.toggle("is-selected", on);
+      other.setAttribute("aria-pressed", String(on));
+    });
+    paintKeystone();
+  });
+});
+
+// Pointer events rather than mouse ones so a finger on the admin tablet
+// drags the same way a mouse does.
+(function enableKeystonePadDrag() {
+  let dragging = false;
+  const valueFromEvent = (e) => {
+    const rect = keystonePad.getBoundingClientRect();
+    const fx = clamp((e.clientX - rect.left) / rect.width, 0, 1);
+    const fy = clamp((e.clientY - rect.top) / rect.height, 0, 1);
+    // Rounded to a thousandth: finer than the +/- step, but not so fine
+    // that a drag spams distinct values the debounce then has to coalesce.
+    const round = (v) => Math.round(v * 1000) / 1000;
+    return [round(fx * 2 * KEYSTONE_RANGE - KEYSTONE_RANGE),
+            round(KEYSTONE_RANGE - fy * 2 * KEYSTONE_RANGE)];
+  };
+  keystonePad.addEventListener("pointerdown", (e) => {
+    dragging = true;
+    keystonePad.setPointerCapture(e.pointerId);
+    setKeystone(...valueFromEvent(e));
+    e.preventDefault();
+  });
+  keystonePad.addEventListener("pointermove", (e) => {
+    if (dragging) setKeystone(...valueFromEvent(e));
+  });
+  const end = () => { dragging = false; };
+  keystonePad.addEventListener("pointerup", end);
+  keystonePad.addEventListener("pointercancel", end);
+  // Arrow keys nudge by exactly the same step the +/- buttons use, so the
+  // pad is usable without a steady hand.
+  keystonePad.addEventListener("keydown", (e) => {
+    const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
+    if (!d) return;
+    e.preventDefault();
+    setKeystone(keystoneValues[keystoneKey("x")] + d[0] * KEYSTONE_STEP,
+                keystoneValues[keystoneKey("y")] + d[1] * KEYSTONE_STEP);
+  });
+})();
+
+[["keystoneXDown", "x", -1], ["keystoneXUp", "x", 1],
+ ["keystoneYDown", "y", -1], ["keystoneYUp", "y", 1]].forEach(([id, axis, dir]) => {
+  document.getElementById(id).addEventListener("click", () => {
+    const x = keystoneValues[keystoneKey("x")];
+    const y = keystoneValues[keystoneKey("y")];
+    if (axis === "x") setKeystone(x + dir * KEYSTONE_STEP, y);
+    else setKeystone(x, y + dir * KEYSTONE_STEP);
+  });
+});
+
+[[keystoneXNumber, "x"], [keystoneYNumber, "y"]].forEach(([el, axis]) => {
+  el.addEventListener("change", () => {
+    const v = clamp(Number(el.value) || 0, -KEYSTONE_RANGE, KEYSTONE_RANGE);
+    const x = keystoneValues[keystoneKey("x")];
+    const y = keystoneValues[keystoneKey("y")];
+    if (axis === "x") setKeystone(v, y); else setKeystone(x, v);
+  });
+});
+
 document.querySelectorAll(".mapping-row__step").forEach((btn) => {
   const control = MAPPING_CONTROLS.find((c) => c.range === btn.dataset.target);
   if (!control) return;

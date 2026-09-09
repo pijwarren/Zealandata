@@ -257,77 +257,41 @@
       </div>
     </div>
     <label class="mapping-subheading">Keystone correction</label>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Top-left X</span>
-      <input type="range" id="mappingKeystoneTLX" min="-0.3" max="0.3" step="0.005" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTLX" data-dir="-1" aria-label="Decrease top-left X">−</button>
-        <input type="number" class="mapping-row__number" id="mappingKeystoneTLXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTLX" data-dir="1" aria-label="Increase top-left X">+</button>
+    <!-- One corner at a time: pick which of the four is being moved, then
+         drag it on the pad. The pad stands for the projected picture seen
+         head-on, so a corner drags the way it moves on the wall -- which
+         the eight separate X/Y sliders this replaced never made obvious.
+         The steppers underneath are the same +/- and numeric entry as
+         every other calibration control, for nudges too small to drag. -->
+    <div class="keystone">
+      <div class="keystone__corners" role="group" aria-label="Corner being adjusted">
+        <button type="button" class="keystone__corner is-selected" data-corner="tl" aria-pressed="true">Top left</button>
+        <button type="button" class="keystone__corner" data-corner="tr" aria-pressed="false">Top right</button>
+        <button type="button" class="keystone__corner" data-corner="bl" aria-pressed="false">Bottom left</button>
+        <button type="button" class="keystone__corner" data-corner="br" aria-pressed="false">Bottom right</button>
+      </div>
+      <div class="keystone__pad" id="keystonePad" tabindex="0" role="application"
+           aria-label="Drag to move the selected corner; arrow keys nudge it">
+        <div class="keystone__crosshair" aria-hidden="true"></div>
+        <div class="keystone__handle" id="keystoneHandle"></div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Corner X</span>
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" id="keystoneXDown" aria-label="Move corner left">&minus;</button>
+          <input type="number" class="mapping-row__number" id="keystoneXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+          <button type="button" class="mapping-row__step" id="keystoneXUp" aria-label="Move corner right">+</button>
+        </div>
+      </div>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Corner Y</span>
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" id="keystoneYDown" aria-label="Move corner down">&minus;</button>
+          <input type="number" class="mapping-row__number" id="keystoneYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
+          <button type="button" class="mapping-row__step" id="keystoneYUp" aria-label="Move corner up">+</button>
+        </div>
       </div>
     </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Top-left Y</span>
-      <input type="range" id="mappingKeystoneTLY" min="-0.3" max="0.3" step="0.005" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTLY" data-dir="-1" aria-label="Decrease top-left Y">−</button>
-        <input type="number" class="mapping-row__number" id="mappingKeystoneTLYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTLY" data-dir="1" aria-label="Increase top-left Y">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Top-right X</span>
-      <input type="range" id="mappingKeystoneTRX" min="-0.3" max="0.3" step="0.005" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTRX" data-dir="-1" aria-label="Decrease top-right X">−</button>
-        <input type="number" class="mapping-row__number" id="mappingKeystoneTRXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTRX" data-dir="1" aria-label="Increase top-right X">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Top-right Y</span>
-      <input type="range" id="mappingKeystoneTRY" min="-0.3" max="0.3" step="0.005" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTRY" data-dir="-1" aria-label="Decrease top-right Y">−</button>
-        <input type="number" class="mapping-row__number" id="mappingKeystoneTRYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneTRY" data-dir="1" aria-label="Increase top-right Y">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Bottom-left X</span>
-      <input type="range" id="mappingKeystoneBLX" min="-0.3" max="0.3" step="0.005" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBLX" data-dir="-1" aria-label="Decrease bottom-left X">−</button>
-        <input type="number" class="mapping-row__number" id="mappingKeystoneBLXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBLX" data-dir="1" aria-label="Increase bottom-left X">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Bottom-left Y</span>
-      <input type="range" id="mappingKeystoneBLY" min="-0.3" max="0.3" step="0.005" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBLY" data-dir="-1" aria-label="Decrease bottom-left Y">−</button>
-        <input type="number" class="mapping-row__number" id="mappingKeystoneBLYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBLY" data-dir="1" aria-label="Increase bottom-left Y">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Bottom-right X</span>
-      <input type="range" id="mappingKeystoneBRX" min="-0.3" max="0.3" step="0.005" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBRX" data-dir="-1" aria-label="Decrease bottom-right X">−</button>
-        <input type="number" class="mapping-row__number" id="mappingKeystoneBRXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBRX" data-dir="1" aria-label="Increase bottom-right X">+</button>
-      </div>
-    </div>
-    <div class="mapping-row">
-      <span class="mapping-row__label">Bottom-right Y</span>
-      <input type="range" id="mappingKeystoneBRY" min="-0.3" max="0.3" step="0.005" value="0">
-      <div class="mapping-row__stepper">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBRY" data-dir="-1" aria-label="Decrease bottom-right Y">−</button>
-        <input type="number" class="mapping-row__number" id="mappingKeystoneBRYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-        <button type="button" class="mapping-row__step" data-target="mappingKeystoneBRY" data-dir="1" aria-label="Increase bottom-right Y">+</button>
-      </div>
     </div>
     <div class="mapping-actions">
       <button type="button" class="btn btn-secondary" id="mappingShadingBtn">Turn on calibration shading</button>
