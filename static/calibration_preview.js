@@ -548,15 +548,23 @@ function buildMatrices(mapping) {
   // grows large, so it's a no-op until actually dialled in.
   const throwDist = Math.max(0.3, Number(mapping.throw_distance) || 0.6);
   const near = 0.05, far = throwDist + 20;
-  const halfNearY = half * (near / throwDist);
-  const halfNearX = half * aspect * (near / throwDist);
-  const proj = matFrustum(-halfNearX, halfNearX, -halfNearY, halfNearY, near, far);
-  // Lateral projector position -- pushing the model opposite to where the
-  // real projector sits gives identical rays to moving the eye itself
-  // (see projector.c's matching comment), so it's expressed the same way.
+  const halfY = half;
+  const halfX = half * aspect;
+  const ratio = near / throwDist;
+  // Lateral projector position: an *asymmetric* frustum, not a translated
+  // scene -- see server.py's MAPPING_NUMERIC comment on "throw_offset_x/y"
+  // and projector.c's matching render-loop comment for the full physical
+  // reasoning. The span stays the same regardless of the offset (so the
+  // model keeps the same on-screen framing); only where it sits shifts,
+  // which is what skews the ray angles per side.
   const throwOffX = Number(mapping.throw_offset_x) || 0;
   const throwOffY = Number(mapping.throw_offset_y) || 0;
-  const mEye = matTranslate(-throwOffX, -throwOffY, -throwDist);
+  const proj = matFrustum(
+    ratio * (-halfX - throwOffX), ratio * (halfX - throwOffX),
+    ratio * (-halfY - throwOffY), ratio * (halfY - throwOffY),
+    near, far,
+  );
+  const mEye = matTranslate(0, 0, -throwDist);
   const modelEye = matMul(mEye, modelM);
   const gizmoEye = matMul(mEye, gizmoModel);
   const mvp = matMul(proj, modelEye);

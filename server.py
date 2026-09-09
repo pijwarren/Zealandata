@@ -95,15 +95,17 @@ MAPPING_NUMERIC = {
     # projector sitting much further back would want this dialled way up.
     "throw_distance": 0.6,
     # Lateral position of the (virtual) projector relative to the model,
-    # same normalized units as throw_distance -- separate from offset_x/y
-    # below (which move the *model* within the frame) because this
-    # represents a physical fact about the mount (e.g. an ultra-short-throw
-    # unit sitting off to one side of the model rather than centered above
-    # it, not something to "frame" by eye). Mathematically the two end up
-    # composed together, but keeping this its own control means one can be
-    # reset without disturbing the other. Nudge until elevation lines up
-    # the same way at every point of the model, not just the center --
-    # that's the tell for a real physical offset vs. just needing offset_x/y.
+    # same normalized units as throw_distance -- e.g. an ultra-short-throw
+    # unit mounted off to one side rather than centered above the model.
+    # Deliberately NOT a translation of the model (that's offset_x/y's
+    # job, and just shifts the whole picture): this shears the render's
+    # frustum instead, an off-axis/"lens-shift" projection, so the model's
+    # on-screen framing doesn't move at all -- only the ray angles reaching
+    # each side of it do, more oblique (more foreshortened) on whichever
+    # side sits farther from the projector's true position. Nudge until
+    # elevation lines up the same way at every point of the model, not
+    # just the center -- that's the tell for a real physical offset vs.
+    # just needing offset_x/y.
     "throw_offset_x": 0.0,
     "throw_offset_y": 0.0,
     # Independent Euler rotation in degrees around each axis, applied in

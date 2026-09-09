@@ -1768,18 +1768,33 @@ int main(void) {
            jump when this is first dialled in from a big value. */
         float throwDist = map_cur.throw_dist;
         float near = 0.05f, far = throwDist + 20.f;
-        float halfNearY = half * (near / throwDist);
-        float halfNearX = half * aspect * (near / throwDist);
-        mat_frustum(proj, -halfNearX, halfNearX, -halfNearY, halfNearY, near, far);
+        float halfY = half;
+        float halfX = half * aspect;
+        float ratio = near / throwDist;
+        /* Lateral projector position: an *asymmetric* frustum, not a
+           translated scene -- see server.py's MAPPING_NUMERIC comment on
+           "throw_offset_x/y". The model's on-screen framing is entirely
+           scale/rotation/offset_x/y's job; this only changes how obliquely
+           the light reaches each side of it, which a scene translation
+           can't do (that shifts the whole picture, reported as exactly
+           that -- "should only change ray angles, not shift the image").
+           Physically: the eye sits off-axis at world (throw_off_x,
+           throw_off_y) while still looking straight down -Z (a real
+           short-throw unit's mount doesn't rotate to re-aim at the
+           model's centre, its optics are just asymmetric to begin with).
+           Similar triangles from that eye to the fixed target rectangle
+           at z=0 give the near-plane bounds below: the span (r-l, t-b)
+           stays exactly halfX*2/halfY*2 regardless of the offset -- only
+           where that span sits shifts -- so the model still fills the
+           same frame, just via more skewed rays on whichever side is
+           farther from the true eye position. */
+        float frL = ratio * (-halfX - map_cur.throw_off_x);
+        float frR = ratio * ( halfX - map_cur.throw_off_x);
+        float frB = ratio * (-halfY - map_cur.throw_off_y);
+        float frT = ratio * ( halfY - map_cur.throw_off_y);
+        mat_frustum(proj, frL, frR, frB, frT, near, far);
         mat4 mEye;
-        /* Lateral projector position: pushing the model the opposite way
-           of where the real projector actually sits, rather than moving
-           the eye itself, since eye position never otherwise appears in
-           this pipeline -- translating the whole scene by -offset instead
-           of the eye by +offset gives identical rays (same relative
-           geometry), so it's just the cheaper way to express the same
-           physical fact. */
-        mat_translate(mEye, -map_cur.throw_off_x, -map_cur.throw_off_y, -throwDist);
+        mat_translate(mEye, 0, 0, -throwDist);
         mat_mul(model, mEye, model);
         mat_mul(mvp, proj, model);
 
