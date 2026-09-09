@@ -15,14 +15,12 @@
 const MODEL_URL = "/api/projection/model";
 const TEXTURE_URL = "/api/loading-image";
 
-// Mirrors projector.c's BASE_ORIENTATION_*_DEG / INVERT_RELIEF exactly --
-// fixed properties of this model file and the native renderer's fixed
-// camera, not calibration knobs, so they're hardcoded here the same way.
-// The video's own fixed 90-degree-CCW orientation correction is baked
-// directly into MODEL_VS below instead (see its comment) -- ported from
-// projector.c's VS_SRC the same way.
-const BASE_ORIENTATION_Z_DEG = 90;
-const BASE_ORIENTATION_X_DEG = 180;
+// The model's own fixed 90-degree-Z/180-degree-X OBJ-axis correction is
+// baked directly into the vertex data by parseObj below (mirroring
+// projector.c's load_obj -- see its comment there for why this moved out
+// of a per-frame matrix). The video's own separate fixed 90-degree-CCW
+// orientation correction is baked directly into MODEL_VS below instead
+// (see its comment) -- ported from projector.c's VS_SRC the same way.
 
 const GIZMO_SEGMENTS = 64;
 const GIZMO_RADIUS = 0.4;
@@ -34,9 +32,7 @@ layout(location=0) in vec3 aPos;
 layout(location=1) in vec3 aNrm;
 uniform mat4 uMVP;
 uniform mat4 uModel;
-// Deliberately NOT uMVP -- see below.
-uniform mat4 uUVMVP;
-// The model's own footprint, in the same uUVMVP-projected 0-1 space --
+// The model's own footprint, in the same uMVP-projected 0-1 space --
 // see buildMatrices' uvBoxMin/Max comment.
 uniform vec2 uUVBoxMin;
 uniform vec2 uUVBoxMax;
@@ -45,17 +41,21 @@ out vec3 vNrm;
 void main(){
   gl_Position = uMVP * vec4(aPos, 1.0);
   // No static per-vertex UV any more -- see projector.c's matching VS_SRC
-  // comment. uUVMVP is a true point-source perspective, so the on-model
-  // texture coordinate has to come from a clip-space position -- but not
-  // uMVP's: that includes mBase (the fixed cosmetic correction for this
-  // OBJ export's raw axes), which has no real-world meaning and would
-  // rotate/mirror the video against the model exactly as much as mBase
-  // reorients the mesh on screen. uUVMVP is the same rotation/scale/
-  // offset/eye/frustum stack with mBase left out -- already computed as
-  // gizmoMvp for the same reason.
-  vec4 uvClip = uUVMVP * vec4(aPos, 1.0);
+  // comment. This is a true point-source perspective, so the on-model
+  // texture coordinate has to come from a clip-space position. Reuses
+  // gl_Position's own uMVP rather than a second matrix -- an earlier
+  // version deliberately excluded the model's fixed OBJ-axis correction
+  // from this clip position (to match the calibration gizmo's own
+  // mBase-free transform), compensating with a fixed shader-side UV
+  // rotation, but that correction is not a constant 2-D screen-space
+  // offset once real perspective is involved, so the compensation drifted
+  // out of sync with the mesh as rotation/scale/offset moved the model
+  // around (texture crawling relative to the geometry). The correction is
+  // now baked directly into the parsed vertex data instead (see parseObj),
+  // so uMVP already reflects the model's true pose.
+  vec4 uvClip = uMVP * vec4(aPos, 1.0);
   vec2 uv = uvClip.xy / uvClip.w * 0.5 + 0.5;
-  // Re-fit from uUVMVP's fixed frustum onto just the model's own
+  // Re-fit from uMVP's fixed frustum onto just the model's own
   // projected footprint -- 0-1 again means "the model's own bounding
   // box", same as the old static per-vertex UV, so scale/rotation/offset
   // stay independent of the video's own framing.
@@ -309,6 +309,19 @@ function parseObj(text) {
   }
   sizeX *= norm; sizeY *= norm; sizeZ *= norm;
 
+  // This particular OBJ export's raw axes need a further fixed 90-degree
+  // Z then 180-degree X turn on top of the up-axis remap above, matching
+  // projector.c's load_obj exactly (see its comment there for the full
+  // reasoning) -- equivalent to rot_z(90) * rot_x(180) applied to each
+  // vertex, worked out as (x,y,z) -> (y,x,-z).
+  for (let i = 0; i < nvert; i++) {
+    const x = pos[i * 3], y = pos[i * 3 + 1], z = pos[i * 3 + 2];
+    pos[i * 3] = y;
+    pos[i * 3 + 1] = x;
+    pos[i * 3 + 2] = -z;
+  }
+  { const t = sizeX; sizeX = sizeY; sizeY = t; }
+
   const idx = new Uint32Array(indices);
   const nrm = new Float32Array(nvert * 3);
   for (let i = 0; i + 2 < idx.length; i += 3) {
@@ -514,31 +527,23 @@ function setStatus(msg) {
   else { statusEl.classList.add("hidden"); }
 }
 
-// Ported from projector.c's render loop: base orientation underneath the
-// live calibration rotations (rotation_z applied right above it, then
-// y, then x -- see that file's comment on why z has to be innermost), then
-// scale, then offset. gizmoModel is the same stack minus the base
-// orientation, exactly mirroring the native gizmo fix.
+// Ported from projector.c's render loop: rotation_z applied innermost,
+// then y, then x -- see that file's comment on why z has to be innermost --
+// then scale, then offset.
 function buildMatrices(mapping) {
-  const mBaseZ = matRotZ((BASE_ORIENTATION_Z_DEG * Math.PI) / 180);
-  const mBaseX = matRotX((BASE_ORIENTATION_X_DEG * Math.PI) / 180);
-  const mBase = matMul(mBaseZ, mBaseX);
+  // No base-orientation matrix here -- the model's fixed OBJ-axis quirk is
+  // baked into the parsed vertex data now (see parseObj), matching
+  // projector.c's load_obj.
   const mRx = matRotX((Number(mapping.rotation_x) * Math.PI) / 180);
   const mRy = matRotY((Number(mapping.rotation_y) * Math.PI) / 180);
   const mRz = matRotZ((Number(mapping.rotation_z) * Math.PI) / 180);
   const mS = matScale(Number(mapping.scale) || 1);
   const mT = matTranslate(Number(mapping.offset_x) || 0, Number(mapping.offset_y) || 0, 0);
 
-  let tmp = matMul(mRz, mBase);
-  tmp = matMul(mRy, tmp);
+  let tmp = matMul(mRy, mRz);
   tmp = matMul(mRx, tmp);
   tmp = matMul(mS, tmp);
   const modelM = matMul(mT, tmp);
-
-  let gtmp = matMul(mRy, mRz);
-  gtmp = matMul(mRx, gtmp);
-  gtmp = matMul(mS, gtmp);
-  let gizmoModel = matMul(mT, gtmp);
 
   const half = 1.15;
   const aspect = sceneW / sceneH;
@@ -564,22 +569,20 @@ function buildMatrices(mapping) {
   );
   const mEye = matTranslate(-throwOffX, -throwOffY, -throwDist);
   const modelEye = matMul(mEye, modelM);
-  const gizmoEye = matMul(mEye, gizmoModel);
   const mvp = matMul(proj, modelEye);
-  const gizmoMvp = matMul(proj, gizmoEye);
 
   // Re-fits the video onto exactly the model's own footprint -- see
   // MODEL_VS's uUVBoxMin/Max comment and projector.c's matching render-loop
   // comment for why. Projecting the (convex) bounding box's 8 corners
-  // through the same mBase-free gizmoMvp and taking their min/max exactly
-  // bounds the model's own projected footprint.
+  // through the same mvp used to render the mesh and taking their min/max
+  // exactly bounds the model's own projected footprint.
   let uvBoxMin = [Infinity, Infinity];
   let uvBoxMax = [-Infinity, -Infinity];
   for (let c = 0; c < 8; c++) {
     const bx = (c & 1 ? 1 : -1) * model.sizeX / 2;
     const by = (c & 2 ? 1 : -1) * model.sizeY / 2;
     const bz = (c & 4 ? 1 : -1) * model.sizeZ / 2;
-    const [ndcX, ndcY] = projectNdc(gizmoMvp, bx, by, bz);
+    const [ndcX, ndcY] = projectNdc(mvp, bx, by, bz);
     const ux = ndcX * 0.5 + 0.5, uy = ndcY * 0.5 + 0.5;
     if (ux < uvBoxMin[0]) uvBoxMin[0] = ux;
     if (ux > uvBoxMax[0]) uvBoxMax[0] = ux;
@@ -587,7 +590,7 @@ function buildMatrices(mapping) {
     if (uy > uvBoxMax[1]) uvBoxMax[1] = uy;
   }
 
-  return { modelM: modelEye, mvp, gizmoMvp, uvBoxMin, uvBoxMax };
+  return { modelM: modelEye, mvp, uvBoxMin, uvBoxMax };
 }
 
 function setUniformMatrix4(prog, name, m) {
@@ -599,7 +602,7 @@ function render(mapping) {
   lastMapping = mapping;
   if (canvas.width !== sceneW || canvas.height !== sceneH) resizeSceneTarget();
 
-  const { modelM, mvp, gizmoMvp, uvBoxMin, uvBoxMax } = buildMatrices(mapping);
+  const { modelM, mvp, uvBoxMin, uvBoxMax } = buildMatrices(mapping);
 
   // ---- scene pass: model textured with the static loading image ----
   gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
@@ -610,7 +613,6 @@ function render(mapping) {
   gl.useProgram(modelProg);
   setUniformMatrix4(modelProg, "uMVP", mvp);
   setUniformMatrix4(modelProg, "uModel", modelM);
-  setUniformMatrix4(modelProg, "uUVMVP", gizmoMvp);
   gl.uniform2f(gl.getUniformLocation(modelProg, "uUVBoxMin"), uvBoxMin[0], uvBoxMin[1]);
   gl.uniform2f(gl.getUniformLocation(modelProg, "uUVBoxMax"), uvBoxMax[0], uvBoxMax[1]);
   // Unlike the native renderer, this preview always shades and always
@@ -669,22 +671,26 @@ function render(mapping) {
   // into skewed ellipses. Independent of shading (which stays permanently
   // on here, unlike the native renderer -- see the uShading comment
   // above): gated on mapping.gizmo instead, same persisted mapping.json
-  // field the native renderer reads, so the toggle affects both. ----
+  // field the native renderer reads, so the toggle affects both. Uses the
+  // same mvp as the mesh itself -- now that the model's fixed OBJ-axis
+  // quirk is baked into the vertex data rather than a separate runtime
+  // matrix (see parseObj), there's no longer a second "mBase-free"
+  // transform for the rings to need. ----
   const showGizmo = !!mapping.gizmo;
   if (showGizmo) {
     gl.useProgram(gizmoProg);
-    setUniformMatrix4(gizmoProg, "uMVP", gizmoMvp);
+    setUniformMatrix4(gizmoProg, "uMVP", mvp);
     gl.bindVertexArray(gizmoVao);
     for (let ring = 0; ring < 3; ring++) gl.drawArrays(gl.LINE_LOOP, ring * GIZMO_SEGMENTS, GIZMO_SEGMENTS);
   }
-  positionLabels(gizmoMvp, showGizmo);
+  positionLabels(mvp, showGizmo);
 }
 
 // Labels are plain HTML overlaid on the canvas (positioned from the same
-// gizmoMvp the rings use) rather than hand-drawn glyphs like the native
+// mvp the rings use) rather than hand-drawn glyphs like the native
 // renderer's -- simpler, crisper, and this preview never needs to survive
 // without a DOM the way the native binary's raw-GL text does.
-function positionLabels(gizmoMvp, visible) {
+function positionLabels(mvp, visible) {
   if (!labelEls) return;
   const anchors = [
     { el: labelEls.x, p: [0, GIZMO_RADIUS * 1.3 * 0.7071068, GIZMO_RADIUS * 1.3 * 0.7071068] },
@@ -700,7 +706,7 @@ function positionLabels(gizmoMvp, visible) {
   const ox = canvas.offsetLeft, oy = canvas.offsetTop;
   for (const { el, p } of anchors) {
     if (!visible) { el.style.opacity = "0"; continue; }
-    const [ndcX, ndcY] = projectNdc(gizmoMvp, p[0], p[1], p[2]);
+    const [ndcX, ndcY] = projectNdc(mvp, p[0], p[1], p[2]);
     el.style.left = (ox + ((ndcX + 1) / 2) * cw) + "px";
     el.style.top = (oy + ((1 - ndcY) / 2) * ch) + "px";
     el.style.opacity = "1";

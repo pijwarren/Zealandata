@@ -527,9 +527,10 @@ static const bool INVERT_RELIEF = false;
    folded height into depth, an "as seen on screen" spin lives on the Z
    axis, not Y -- rotating a positive angle about Z is counter-clockwise
    from the camera's side (standard GL convention), so clockwise needs a
-   negative value here. */
-static const float BASE_ORIENTATION_Z_DEG = 90.f;
-static const float BASE_ORIENTATION_X_DEG = 180.f;
+   negative value here. This particular OBJ's own fixed 90/180-degree
+   correction is baked directly into the stored vertex data at the end of
+   load_obj now (see that comment) rather than kept as a separate runtime
+   matrix -- these two constants used to drive it there. */
 
 /* How the video needs turning to land the right way up on the print --
    confirmed live against it: a 90-degree turn, counter-clockwise as
@@ -538,9 +539,11 @@ static const float BASE_ORIENTATION_X_DEG = 180.f;
    baked directly into VS_SRC's vUV computation below rather than a C
    constant here -- this used to feed a CPU-side orient_uv() step instead,
    back when vUV came from a static per-vertex attribute; now that it's
-   computed from the live clip-space position every frame (see the
-   uUVMVP comment there), the equivalent rotation has to happen in the
-   shader too. If this ever needs to change, edit the GLSL directly. */
+   computed from the live clip-space position every frame, the equivalent
+   rotation has to happen in the shader too. Unrelated to the OBJ's own
+   axis correction above -- this is purely about which edge of the video
+   frame the print calls "up". If this ever needs to change, edit the
+   GLSL directly. */
 
 /* OBJ face indices already reference a shared vertex list, so unlike the
    browser path -- where OBJLoader de-indexed the mesh and it had to be
@@ -661,6 +664,32 @@ static int load_obj(const char *path) {
         m_pos[i].z = (m_pos[i].z - ctr.z) * norm;
     }
     size.x *= norm; size.y *= norm; size.z *= norm;
+
+    /* This particular OBJ export's raw axes need a further fixed 90-degree
+       Z then 180-degree X turn on top of the up-axis remap above to sit
+       the way the physical print actually sits under the (fixed) camera.
+       Used to be applied at render time instead, as a separate "mBase"
+       matrix baked underneath the live rotation sliders -- but that meant
+       the mesh's real render transform (mBase included) and the video's
+       projective-UV source transform (mBase deliberately excluded, so the
+       calibration gizmo's rings track their own same-named slider)
+       disagreed about the model's own pose by exactly this rotation. Under
+       a true point-source perspective that disagreement isn't a fixed 2-D
+       screen-space offset -- it warps differently as rot_x/y/z, scale and
+       offset move the model around in the projector's view, which is
+       exactly the "texture crawls relative to the geometry as calibration
+       changes" bug this fixes. Baking it into the stored vertex data
+       instead makes it the mesh's actual resting orientation: there is no
+       longer a second, disagreeing transform for the render and the UV to
+       diverge from. Equivalent to rot_z(90) * rot_x(180) applied to each
+       vertex, worked out directly as (x,y,z) -> (y,x,-z). */
+    for (size_t i = 0; i < m_nvert; i++) {
+        float x = m_pos[i].x, y = m_pos[i].y, z = m_pos[i].z;
+        m_pos[i].x = y;
+        m_pos[i].y = x;
+        m_pos[i].z = -z;
+    }
+    { float t = size.x; size.x = size.y; size.y = t; }
     m_size = size;
 
     /* Smooth normals, area-weighted by the cross product's magnitude. Only
@@ -697,9 +726,7 @@ static const char *VS_SRC =
     "layout(location=1) in vec3 aNrm;\n"
     "uniform mat4 uMVP;\n"
     "uniform mat4 uModel;\n"
-    /* Deliberately NOT uMVP -- see below. */
-    "uniform mat4 uUVMVP;\n"
-    /* The model's own footprint, in the same uUVMVP-projected 0-1 space --
+    /* The model's own footprint, in the same uMVP-projected 0-1 space --
        see the render loop's uvBoxMin/Max comment. */
     "uniform vec2 uUVBoxMin;\n"
     "uniform vec2 uUVBoxMax;\n"
@@ -716,27 +743,28 @@ static const char *VS_SRC =
        spotlight projection uses -- is what makes elevation actually track
        correctly as the calibration sliders (rotation especially) move the
        model around in the projector's view.
-       That clip position comes from uUVMVP, not uMVP: uMVP includes
-       mBase (the fixed 90/180-degree correction for how this particular
-       OBJ export's raw axes happen to sit -- see mBase's own comment),
-       which is a cosmetic fixup with no real-world meaning, not part of
-       the model's actual pose relative to the projector. Feeding it into
-       the UV too would rotate/mirror the video against the model exactly
-       as much as mBase reorients the mesh on screen. uUVMVP is the same
-       rotation/scale/offset/eye/frustum stack with mBase left out --
-       already computed as gizmoMvp for the same reason (see its own
-       comment) -- so the video's mapping depends only on calibration
-       that actually corresponds to something physical. */
-    "  vec4 uvClip = uUVMVP * vec4(aPos,1.0);\n"
+       Reuses gl_Position's own uMVP rather than a second matrix: an
+       earlier version deliberately excluded the model's fixed OBJ-axis
+       correction from this clip position (to match the calibration
+       gizmo's own mBase-free transform), compensating with a fixed
+       shader-side UV rotation -- but that correction is not a constant
+       2-D screen-space offset once real perspective is involved, so the
+       compensation drifted out of sync with the mesh as rot_x/y/z, scale
+       and offset moved the model around (texture crawling relative to the
+       geometry). The correction is now baked directly into the stored
+       vertex data in load_obj instead (see that comment), so uMVP already
+       reflects the model's true pose and there is no second transform
+       left for the UV to disagree with. */
+    "  vec4 uvClip = uMVP * vec4(aPos,1.0);\n"
     "  vec2 uv = uvClip.xy / uvClip.w * 0.5 + 0.5;\n"
-    /* Re-fit from uUVMVP's fixed frustum onto just the model's own
+    /* Re-fit from uMVP's fixed frustum onto just the model's own
        projected footprint -- 0-1 again means "the model's own bounding
        box", same as the old static per-vertex UV, so scale/rotation/
        offset stay independent of the video's own framing. */
     "  uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);\n"
     /* Fixed 90-degree counter-clockwise turn (as seen on the projector) so
-       the video lands right-way-up on this print -- see the comment by
-       BASE_ORIENTATION_Z_DEG/X_DEG on why this lives here now instead of a
+       the video lands right-way-up on this print -- see load_obj's "video
+       needs turning" comment on why this lives here now instead of a
        C-side orient_uv() constant. Edit this directly if that ever needs
        to change. */
     "  vUV = vec2(1.0 - uv.y, uv.x);\n"
@@ -1553,7 +1581,6 @@ int main(void) {
     glUseProgram(prog);
     GLint uMVP = glGetUniformLocation(prog, "uMVP");
     GLint uModel = glGetUniformLocation(prog, "uModel");
-    GLint uUVMVP = glGetUniformLocation(prog, "uUVMVP");
     GLint uUVBoxMin = glGetUniformLocation(prog, "uUVBoxMin");
     GLint uUVBoxMax = glGetUniformLocation(prog, "uUVBoxMax");
     GLint uShading = glGetUniformLocation(prog, "uShading");
@@ -1728,30 +1755,29 @@ int main(void) {
             printf("[gl ] scene target %dx%d (render_scale %.2f)\n", sceneW, sceneH, map_cur.render_scale);
         }
 
-        /* ---- transform: base orientation, then calibration on top ---- */
-        mat4 mBaseZ, mBaseX, mBase, mRx, mRy, mRz, mS, mT, tmp, model, proj, mvp, gizmoModel, gizmoMvp;
-        mat_rot_z(mBaseZ, BASE_ORIENTATION_Z_DEG * (float)M_PI / 180.f);
-        mat_rot_x(mBaseX, BASE_ORIENTATION_X_DEG * (float)M_PI / 180.f);
-        mat_mul(mBase, mBaseZ, mBaseX);
+        /* ---- transform: calibration only -- the model's own fixed OBJ-
+           axis quirk is baked into the stored vertex data now (see
+           load_obj), so there is no separate base-orientation matrix to
+           apply here any more. ---- */
+        mat4 mRx, mRy, mRz, mS, mT, tmp, model, proj, mvp;
         mat_rot_x(mRx, map_cur.rot_x * (float)M_PI / 180.f);
         mat_rot_y(mRy, map_cur.rot_y * (float)M_PI / 180.f);
         mat_rot_z(mRz, map_cur.rot_z * (float)M_PI / 180.f);
         mat_scale(mS, map_cur.scale);
         mat_translate(mT, map_cur.off_x, map_cur.off_y, 0);
 
-        /* rotation_z applied right above the base orientation (before x/y)
-           so it spins the model's own current up-axis -- what an operator
-           reads as "turn the print" -- rather than the camera's fixed view
-           axis. Applying it last (outermost, as this used to) instead
-           rotates the *already x/y-tilted* result about the camera's own
-           axis regardless of that tilt, which looks like the picture
-           spinning in place rather than the model turning -- exactly the
-           "z rotation looks pinned to the camera, not the model" report
-           this reordering fixes. rotation_x/y stay outermost: they exist
-           to correct the projector's own perpendicularity relative to the
+        /* rotation_z applied innermost (before x/y) so it spins the
+           model's own current up-axis -- what an operator reads as "turn
+           the print" -- rather than the camera's fixed view axis. Applying
+           it last (outermost, as this used to) instead rotates the
+           *already x/y-tilted* result about the camera's own axis
+           regardless of that tilt, which looks like the picture spinning
+           in place rather than the model turning -- exactly the "z
+           rotation looks pinned to the camera, not the model" report this
+           reordering fixes. rotation_x/y stay outermost: they exist to
+           correct the projector's own perpendicularity relative to the
            screen, which is inherently a camera-relative correction. */
-        mat_mul(tmp, mRz, mBase);
-        mat_mul(tmp, mRy, tmp);
+        mat_mul(tmp, mRy, mRz);
         mat_mul(tmp, mRx, tmp);
         mat_mul(tmp, mS, tmp);
         mat_mul(model, mT, tmp);
@@ -1804,34 +1830,14 @@ int main(void) {
         mat_mul(model, mEye, model);
         mat_mul(mvp, proj, model);
 
-        /* The gizmo needs its own model matrix, built the same way but with
-           mBase left out. mBase is a fixed correction for how this OBJ
-           happens to be exported (see its own comment above) -- baking it
-           underneath the live rotations, as the mesh's model matrix does,
-           means Rx/Ry/Rz each end up spinning things about whatever axis
-           mBase happened to leave pointing that way (mBase's 90-degree Z
-           term alone swaps X and Y), not about the axis their name and
-           slider suggest. Dropping mBase here is what makes the red/green/
-           blue rings actually turn with their own same-named slider,
-           independent of this model's particular resting-orientation
-           quirk. Same rz-then-ry-then-rx order as the real model matrix
-           above, for the same reason: keeps the blue ring's spin attached
-           to the gizmo's own current tilt instead of the camera. */
-        mat_mul(tmp, mRy, mRz);
-        mat_mul(tmp, mRx, tmp);
-        mat_mul(tmp, mS, tmp);
-        mat_mul(gizmoModel, mT, tmp);
-        mat_mul(gizmoModel, mEye, gizmoModel);
-        mat_mul(gizmoMvp, proj, gizmoModel);
-
         /* Re-fits the video onto exactly the model's own footprint, same
            as the old static per-vertex UV used to (always 0-1 across the
            model's own bounding box, regardless of scale/rotation/offset)
-           -- without this, vUV's 0-1 range would span uUVMVP's fixed
+           -- without this, vUV's 0-1 range would span uMVP's fixed
            frustum instead, and the video would stretch/shrink relative to
            the model every time scale or offset changed, coupling sliders
            that used to be independent. Projecting the (convex) bounding
-           box's 8 corners through the same mBase-free transform and
+           box's 8 corners through the same mvp used to render the mesh and
            taking their min/max exactly bounds the model's own projected
            footprint -- see gizmo_project_ndc's own comment on why w-divide
            actually matters now. */
@@ -1841,7 +1847,7 @@ int main(void) {
             float by = (c & 2) ? m_size.y / 2 : -m_size.y / 2;
             float bz = (c & 4) ? m_size.z / 2 : -m_size.z / 2;
             float ndcx, ndcy;
-            gizmo_project_ndc(gizmoMvp, bx, by, bz, &ndcx, &ndcy);
+            gizmo_project_ndc(mvp, bx, by, bz, &ndcx, &ndcy);
             float ux = ndcx * 0.5f + 0.5f, uy = ndcy * 0.5f + 0.5f;
             if (ux < uvBoxMinX) uvBoxMinX = ux;
             if (ux > uvBoxMaxX) uvBoxMaxX = ux;
@@ -1858,7 +1864,6 @@ int main(void) {
         glUseProgram(prog);
         glUniformMatrix4fv(uMVP, 1, GL_FALSE, mvp);
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
-        glUniformMatrix4fv(uUVMVP, 1, GL_FALSE, gizmoMvp);
         glUniform2f(uUVBoxMin, uvBoxMinX, uvBoxMinY);
         glUniform2f(uUVBoxMax, uvBoxMaxX, uvBoxMaxY);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
@@ -1898,33 +1903,33 @@ int main(void) {
         glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
 
         /* ---- calibration gizmo: drawn after the warp, deliberately
-           bypassing it -- see the comment above GIZMO_VS_SRC. Uses
-           gizmoMvp (model's transform minus mBase -- see its own comment
-           above) rather than mvp, so each ring turns with its own
-           same-named slider instead of whichever one mBase's fixed
-           90-degree Z term happens to alias it to. Gated on its own
+           bypassing it -- see the comment above GIZMO_VS_SRC. Uses the same
+           mvp as the mesh itself -- now that the model's fixed OBJ-axis
+           quirk is baked into the vertex data rather than a separate
+           runtime matrix (see load_obj), there's no longer a second
+           "mBase-free" transform for the rings to need. Gated on its own
            mapping.gizmo flag, independent of shading -- see MAPPING_BOOLEAN
            in server.py. */
         if (map_cur.gizmo) {
             glUseProgram(gizmoProg);
-            glUniformMatrix4fv(uGizmoMVP, 1, GL_FALSE, gizmoMvp);
+            glUniformMatrix4fv(uGizmoMVP, 1, GL_FALSE, mvp);
             glBindVertexArray(gizmoVao);
             for (int ring = 0; ring < 3; ring++)
                 glDrawArrays(GL_LINE_LOOP, ring * GIZMO_SEGMENTS, GIZMO_SEGMENTS);
 
             /* Each label anchors on its own ring at a fixed 45-degree
                point, nudged past the ring radius, then projected through
-               the same gizmoMvp -- see gizmo_project_ndc/gizmo_append_glyph. */
+               the same mvp -- see gizmo_project_ndc/gizmo_append_glyph. */
             label_vert labelVerts[GIZMO_LABEL_MAX_VERTS];
             int lc = 0;
             float ndcx, ndcy;
             const float ANCHOR = GIZMO_RADIUS * 1.3f;
             const float S = 0.7071068f; /* sin/cos of 45 degrees */
-            gizmo_project_ndc(gizmoMvp, 0, ANCHOR * S, ANCHOR * S, &ndcx, &ndcy);
+            gizmo_project_ndc(mvp, 0, ANCHOR * S, ANCHOR * S, &ndcx, &ndcy);
             lc = gizmo_append_glyph(labelVerts, lc, GLYPH_X, 2, ndcx, ndcy, 0.06f, aspect, 1.f, 0.25f, 0.25f);
-            gizmo_project_ndc(gizmoMvp, ANCHOR * S, 0, -ANCHOR * S, &ndcx, &ndcy);
+            gizmo_project_ndc(mvp, ANCHOR * S, 0, -ANCHOR * S, &ndcx, &ndcy);
             lc = gizmo_append_glyph(labelVerts, lc, GLYPH_Y, 3, ndcx, ndcy, 0.06f, aspect, 0.25f, 1.f, 0.25f);
-            gizmo_project_ndc(gizmoMvp, ANCHOR * S, ANCHOR * S, 0, &ndcx, &ndcy);
+            gizmo_project_ndc(mvp, ANCHOR * S, ANCHOR * S, 0, &ndcx, &ndcy);
             lc = gizmo_append_glyph(labelVerts, lc, GLYPH_Z, 3, ndcx, ndcy, 0.06f, aspect, 0.35f, 0.55f, 1.f);
 
             glUseProgram(labelProg);
