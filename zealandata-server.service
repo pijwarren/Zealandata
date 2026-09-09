@@ -1,11 +1,11 @@
 [Unit]
 Description=Zealandata projection server (native GStreamer backend)
-After=network.target sound.target zealandata-warped-native.service
-Wants=zealandata-warped-native.service
+After=network.target sound.target zealandata-projector.service
+Wants=zealandata-projector.service
 
 [Service]
 # This one needs no TTY binding either: HDMI is owned entirely by
-# zealandata-warped-native.service (DRM/GBM/EGL + GStreamer hardware
+# zealandata-projector.service (DRM/GBM/EGL + GStreamer hardware
 # decode), which also creates the IPC socket this connects to as an
 # external mpv-compatible endpoint -- see ZEALANDATA_MPV_EXTERNAL below.
 User=pj

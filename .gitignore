@@ -13,6 +13,13 @@ play_counts.json
 mapping.json
 admin_pin.json
 
+# Compiled native projector -- built on the Pi from projector.c by its
+# Makefile, and architecture-specific, so it never belongs in the repo.
+projector/projector
+
+# Runtime logs
+*.log
+
 # Python
 __pycache__/
 *.pyc
