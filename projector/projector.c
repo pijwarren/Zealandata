@@ -823,17 +823,43 @@ static const char *FS_SRC =
     "  vec2 uv = uVideoEdgeLT + vUV * (uVideoEdgeRB - uVideoEdgeLT);\n"
     "  vec4 c = texture(uTex, uv);\n"
     "  if (uShading == 1) {\n"
-    /* Sits on the virtual camera: a point light at the eye, which is at
-       the origin in the eye space vPos is expressed in, so the direction
-       to it is just -vPos. Matching the projector's own point source,
-       rather than a fixed oblique direction, means the shading shows the
-       relief the way the projector itself sees it. This does flatten the
-       relief compared to an off-axis light -- everything facing the
-       projector lights up much the same -- which is the deliberate
-       tradeoff of aligning the two. */
-    "    vec3 L = normalize(-vPos);\n"
-    "    float d = max(dot(normalize(vNrm), L), 0.0);\n"
-    "    c.rgb *= (0.55 + 1.1 * d);\n"
+    /* A square area light centred on the virtual camera, rather than a
+       point at it: the eye is the origin in the eye space vPos is
+       expressed in, so the light is just a square in the z=0 plane
+       there, facing the model down the view axis. Sampled on a regular
+       grid and averaged -- the softness comes from the samples near a
+       terminator disagreeing about how much of the light is visible,
+       which a single direction cannot express however it is weighted.
+       Regular rather than stochastic sampling because this shades a
+       static calibration image: jitter would crawl frame to frame,
+       and a fixed grid just settles.
+
+       AREA_LIGHT_HALF is in the same units as the normalised mesh (see
+       load_obj), so ~0.45 is a light roughly as wide as the model, at
+       the default throw_distance of 1.0. Larger = softer and flatter,
+       smaller = back towards the hard point-source look. Deliberately a
+       constant and not a mapping parameter: it changes how the
+       calibration aid reads, not how the projection itself lands. */
+    "    const float AREA_LIGHT_HALF = 0.45;\n"
+    "    const int AREA_LIGHT_SAMPLES = 4;\n"
+    "    vec3 N = normalize(vNrm);\n"
+    "    float d = 0.0;\n"
+    "    for (int sy = 0; sy < AREA_LIGHT_SAMPLES; sy++) {\n"
+    "      for (int sx = 0; sx < AREA_LIGHT_SAMPLES; sx++) {\n"
+    /* Sample centres, hence the +0.5: puts the grid symmetrically
+       across the square instead of biasing it to one corner. */
+    "        vec2 g = (vec2(float(sx), float(sy)) + 0.5)\n"
+    "                 / float(AREA_LIGHT_SAMPLES) * 2.0 - 1.0;\n"
+    "        vec3 lp = vec3(g * AREA_LIGHT_HALF, 0.0);\n"
+    "        d += max(dot(N, normalize(lp - vPos)), 0.0);\n"
+    "      }\n"
+    "    }\n"
+    "    d /= float(AREA_LIGHT_SAMPLES * AREA_LIGHT_SAMPLES);\n"
+    /* Ambient floor: what a surface facing fully away from the light
+       still gets. Low on purpose so the relief reads with real contrast
+       -- the area light above already lifts the shadow terminator, and
+       a high floor on top of that washed the shape out. */
+    "    c.rgb *= (0.2 + 1.1 * d);\n"
     "  }\n"
     "  oColor = vec4(c.rgb, 1.0);\n"
     "}\n";

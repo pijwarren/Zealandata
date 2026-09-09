@@ -80,7 +80,12 @@ scene.add(calibrationKeyLight);
 // A DirectionalLight shines from its position towards its target, and the
 // target only counts once it's in the scene graph itself.
 scene.add(calibrationKeyLight.target);
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+// Matches the native projector shader's ambient floor (see projector.c's
+// FS_SRC): low so the relief keeps its contrast. The two renderers are
+// only loosely comparable -- this one is an orthographic camera with a
+// directional light, the projector a perspective frustum with a square
+// area light -- but the ambient level at least reads the same.
+scene.add(new THREE.AmbientLight(0xffffff, 0.2));
 
 function fitOrthoCamera(box) {
   const size = new THREE.Vector3();
