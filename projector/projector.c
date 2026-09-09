@@ -443,8 +443,7 @@ static void snapshot_maybe_capture(double now, int w, int h) {
        since they're whatever the connected display's DRM mode is. */
     f = fopen("/dev/shm/zealandata_snapshot.dims.tmp", "w");
     if (!f) return;
-    fprintf(f, "%d %d
-", w, h);
+    fprintf(f, "%d %d\n", w, h);
     fclose(f);
     rename("/dev/shm/zealandata_snapshot.dims.tmp", "/dev/shm/zealandata_snapshot.dims");
 }
