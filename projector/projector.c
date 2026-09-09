@@ -127,11 +127,21 @@ struct mapping {
     float vid_rotation;
     bool vid_flip_h, vid_flip_v;
 };
+/* Designated rather than positional: these defaults used to be a bare list
+   in struct order, which meant inserting a field anywhere but the end
+   silently shifted every value after it onto the wrong member. Naming them
+   makes the order irrelevant, and anything left out is zero-initialised.
+   Mostly a safety net either way -- mapping_reload overwrites all of these
+   from mapping.json at startup -- but it is what a partial or missing
+   mapping file falls back to. */
 static struct mapping map_cur = {
-    1, 0, 0, 0, 0, 0, 1, 0.6f, 0, 0, false, false,
-    0, 0, 0, 0, 0, 0, 0, 0,
-    0, 1, 0, 1,
-    0, false, true,
+    .scale = 1, .rot_x = 0, .rot_y = 0, .rot_z = 0, .off_x = 0, .off_y = 0,
+    .render_scale = 1, .throw_dist = 0.6f, .throw_off_x = 0, .throw_off_y = 0,
+    .shading = false, .gizmo = false, .fps_overlay = false,
+    .ks_tl_x = 0, .ks_tl_y = 0, .ks_tr_x = 0, .ks_tr_y = 0,
+    .ks_bl_x = 0, .ks_bl_y = 0, .ks_br_x = 0, .ks_br_y = 0,
+    .vid_left = 0, .vid_right = 1, .vid_top = 0, .vid_bottom = 1,
+    .vid_rotation = 0, .vid_flip_h = false, .vid_flip_v = true,
 };
 static const char *mapping_path = "/home/pj/zealandata/mapping.json";
 /* Sub-second resolution matters here: st_mtime alone is whole seconds, so
