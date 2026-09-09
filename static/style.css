@@ -535,7 +535,13 @@ body.admin-mode .settings-grid{
 
 /* Keystone: four corner buttons over a drag pad, replacing eight X/Y
    sliders that never showed which corner was which. */
-.keystone{ display:flex; flex-direction:column; gap:12px; }
+.keystone{
+  display:flex; flex-direction:column; gap:12px;
+  /* Size and gutter in one place: the pad's balancing padding below is
+     derived from these, so the two can't drift apart. */
+  --keystone-arrow:56px;
+  --keystone-gap:8px;
+}
 /* Laid out 2x2 in the corners' own arrangement, so "top left" is the
    button in the top left -- the whole point of the redesign is that the
    controls sit where the thing they move sits. */
@@ -562,10 +568,20 @@ body.admin-mode .settings-grid{
   display:grid;
   grid-template-columns:auto 1fr;
   grid-template-rows:auto 1fr;
-  gap:8px;
+  gap:var(--keystone-gap);
   align-items:center;
+  /* Mirrors the up/down column on the other side, so the pad sits centred
+     in the panel rather than pushed right by the arrows beside it. */
+  padding-right:calc(var(--keystone-arrow) + var(--keystone-gap));
 }
-.keystone__arrows{ display:flex; gap:8px; }
+.keystone__arrows{ display:flex; gap:var(--keystone-gap); }
+/* Bigger than the row steppers elsewhere: these are aimed at while looking
+   at the print rather than the screen, so they want to be hit without
+   being found first. */
+.keystone__arrows .mapping-row__step{
+  width:var(--keystone-arrow); height:var(--keystone-arrow);
+  font-size:22px;
+}
 .keystone__arrows--x{ grid-column:2; grid-row:1; justify-content:center; }
 .keystone__arrows--y{ grid-column:1; grid-row:2; flex-direction:column; }
 
