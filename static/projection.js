@@ -257,18 +257,6 @@ const textureLoader = new THREE.TextureLoader();
 let imageTexture = null;
 let imageTextureUrl = null;
 
-// Latest video_left/right/top/bottom from the mapping, held so a texture
-// created later (the idle image) can be brought up to date on arrival
-// rather than waiting for the next poll to notice it exists.
-let textureWindow = { left: 0, right: 1, top: 0, bottom: 1 };
-
-function applyTextureWindow(texture) {
-  if (!texture) return;
-  const { left, right, top, bottom } = textureWindow;
-  texture.offset.set(left, top);
-  texture.repeat.set(right - left, bottom - top);
-}
-
 function setActiveMap(texture) {
   if (!texture) return;
   for (const material of [flatMaterial, shadedMaterial]) {
@@ -291,7 +279,6 @@ function showImageOnModel(url) {
       if (imageTexture) imageTexture.dispose();
       imageTexture = texture;
       imageTextureUrl = url;
-      applyTextureWindow(imageTexture);
       setActiveMap(imageTexture);
     },
     undefined,
@@ -436,14 +423,6 @@ function applyMapping(mapping) {
   // through the same UVs, so an edge-stretch dialled in against one is
   // just as correct for the other -- and doing it here means a swap never
   // has to re-derive it.
-  textureWindow = {
-    left: Number(mapping.video_left) || 0,
-    right: mapping.video_right === undefined ? 1 : Number(mapping.video_right) || 0,
-    top: Number(mapping.video_top) || 0,
-    bottom: mapping.video_bottom === undefined ? 1 : Number(mapping.video_bottom) || 0,
-  };
-  applyTextureWindow(videoTexture);
-  applyTextureWindow(imageTexture);
 
   if (modelMesh) {
     const wantShaded = !!mapping.shading;

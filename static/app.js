@@ -936,10 +936,6 @@ const MAPPING_CONTROLS = [
   { key: "offset_x", range: "mappingOffsetX", number: "mappingOffsetXNumber", decimals: 2 },
   { key: "offset_y", range: "mappingOffsetY", number: "mappingOffsetYNumber", decimals: 2 },
   { key: "video_rotation", range: "mappingVideoRotation", number: "mappingVideoRotationNumber", decimals: 0 },
-  { key: "video_left", range: "mappingVideoLeft", number: "mappingVideoLeftNumber", decimals: 3 },
-  { key: "video_right", range: "mappingVideoRight", number: "mappingVideoRightNumber", decimals: 3 },
-  { key: "video_top", range: "mappingVideoTop", number: "mappingVideoTopNumber", decimals: 3 },
-  { key: "video_bottom", range: "mappingVideoBottom", number: "mappingVideoBottomNumber", decimals: 3 },
 ].map((c) => ({
   ...c,
   rangeEl: document.getElementById(c.range),
@@ -1285,7 +1281,6 @@ mappingResetBtn.addEventListener("click", async () => {
   const defaults = {
     scale: 1, rotation_x: 0, rotation_y: 0, rotation_z: 0, offset_x: 0, offset_y: 0,
     video_rotation: 0, video_flip_h: false, video_flip_v: true,
-    video_left: 0, video_right: 1, video_top: 0, video_bottom: 1,
     keystone_tl_x: 0, keystone_tl_y: 0, keystone_tr_x: 0, keystone_tr_y: 0,
     keystone_bl_x: 0, keystone_bl_y: 0, keystone_br_x: 0, keystone_br_y: 0,
   };
