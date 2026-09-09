@@ -765,6 +765,11 @@ static const char *VS_SRC =
     "uniform bool uVidFlipV;\n"
     "out vec2 vUV;\n"
     "out vec3 vNrm;\n"
+    /* Eye-space position. uModel has mEye folded into it at the call
+       site, so this is already relative to the projector's own eye at
+       the origin -- which is what lets the shading below sit exactly on
+       the virtual camera without needing the eye passed in separately. */
+    "out vec3 vPos;\n"
     "void main(){\n"
     "  gl_Position = uMVP * vec4(aPos,1.0);\n"
     /* The texture is glued to the model's own surface in its own local
@@ -800,6 +805,7 @@ static const char *VS_SRC =
     "  if (uVidFlipV) uv.y = 1.0 - uv.y;\n"
     "  vUV = uv;\n"
     "  vNrm = mat3(uModel) * aNrm;\n"
+    "  vPos = (uModel * vec4(aPos,1.0)).xyz;\n"
     "}\n";
 
 static const char *FS_SRC =
@@ -807,6 +813,7 @@ static const char *FS_SRC =
     "precision mediump float;\n"
     "in vec2 vUV;\n"
     "in vec3 vNrm;\n"
+    "in vec3 vPos;\n"
     "uniform sampler2D uTex;\n"
     "uniform int uShading;\n"
     "uniform vec2 uVideoEdgeLT;\n"
@@ -816,9 +823,15 @@ static const char *FS_SRC =
     "  vec2 uv = uVideoEdgeLT + vUV * (uVideoEdgeRB - uVideoEdgeLT);\n"
     "  vec4 c = texture(uTex, uv);\n"
     "  if (uShading == 1) {\n"
-    /* Oblique on purpose: a light along the view axis flattens relief back
-       out, which is the exact thing the calibration shading exists to show. */
-    "    vec3 L = normalize(vec3(-1.0, 1.6, 1.0));\n"
+    /* Sits on the virtual camera: a point light at the eye, which is at
+       the origin in the eye space vPos is expressed in, so the direction
+       to it is just -vPos. Matching the projector's own point source,
+       rather than a fixed oblique direction, means the shading shows the
+       relief the way the projector itself sees it. This does flatten the
+       relief compared to an off-axis light -- everything facing the
+       projector lights up much the same -- which is the deliberate
+       tradeoff of aligning the two. */
+    "    vec3 L = normalize(-vPos);\n"
     "    float d = max(dot(normalize(vNrm), L), 0.0);\n"
     "    c.rgb *= (0.55 + 1.1 * d);\n"
     "  }\n"
