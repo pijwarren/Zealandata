@@ -663,41 +663,74 @@ pinScrim.addEventListener("click", () => closePinPad(null));
 // Held in memory only for this tab -- never persisted -- and sent with
 // each admin request so the server independently re-checks it rather
 // than trusting a client-side "unlocked" flag alone.
-let adminPin = null;
+// A server-issued session token rather than the PIN itself (see
+// server.py's ADMIN_SESSION_TTL_SECONDS): the PIN is never written to
+// browser storage, and the expiry is enforced server-side where it can't
+// just be edited. Restored on load, so a refresh no longer locks the panel.
+const ADMIN_TOKEN_KEY = "zealandata.adminToken";
+let adminToken = null;
+
+function storeAdminToken(token) {
+  adminToken = token || null;
+  try {
+    if (token) localStorage.setItem(ADMIN_TOKEN_KEY, token);
+    else localStorage.removeItem(ADMIN_TOKEN_KEY);
+  } catch (e) {
+    // Private mode or storage disabled -- the session still works for this
+    // tab, it just won't survive a reload.
+  }
+}
 
 function paintAdminMode() {
-  document.body.classList.toggle("admin-mode", !!adminPin);
-  adminModeBtn.textContent = adminPin ? "Lock admin mode" : "Unlock admin mode";
-  changePinField.classList.toggle("hidden", !adminPin);
-  uploadField.classList.toggle("hidden", !adminPin);
-  playTrackingField.classList.toggle("hidden", !adminPin);
-  popularVisibilityField.classList.toggle("hidden", !adminPin);
-  previewField.classList.toggle("hidden", !adminPin);
-  mappingField.classList.toggle("hidden", !adminPin);
-  if (adminPin) paintUploadCategories();
+  document.body.classList.toggle("admin-mode", !!adminToken);
+  adminModeBtn.textContent = adminToken ? "Lock admin mode" : "Unlock admin mode";
+  changePinField.classList.toggle("hidden", !adminToken);
+  uploadField.classList.toggle("hidden", !adminToken);
+  playTrackingField.classList.toggle("hidden", !adminToken);
+  popularVisibilityField.classList.toggle("hidden", !adminToken);
+  previewField.classList.toggle("hidden", !adminToken);
+  mappingField.classList.toggle("hidden", !adminToken);
+  if (adminToken) paintUploadCategories();
   else changePinStatus.textContent = "";
   paintSetHeroBtn();
 }
 
-// Auto-relocks admin mode after 5 minutes with no interaction anywhere on
+// Auto-relocks admin mode after an hour with no interaction anywhere on
 // the page, so it doesn't stay unlocked indefinitely on a shared/kiosk
 // screen. Any click or keypress resets the clock while admin mode is on;
 // the listeners themselves are always active but are no-ops (clear a timer
-// that's never set) while it's off.
-const ADMIN_IDLE_TIMEOUT_MS = 5 * 60 * 1000;
+// that's never set) while it's off. Matches the server's own session TTL,
+// which also runs from last use -- this is the local half of the same
+// hour, so a tab left open and a tab closed and reopened behave the same.
+const ADMIN_IDLE_TIMEOUT_MS = 60 * 60 * 1000;
 let adminIdleTimer = null;
 
 function relockAdminMode() {
-  adminPin = null;
+  // Tell the server to drop it too, so locking actually revokes the
+  // session rather than only forgetting it here. Fire-and-forget: the
+  // panel locks either way, and a failed revoke still expires on its own.
+  if (adminToken) {
+    fetch("/api/admin/lock", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: adminToken }),
+    }).catch(() => {});
+  }
+  storeAdminToken(null);
   paintAdminMode();
 }
 
 function resetAdminIdleTimer() {
   if (adminIdleTimer) clearTimeout(adminIdleTimer);
-  adminIdleTimer = adminPin ? setTimeout(relockAdminMode, ADMIN_IDLE_TIMEOUT_MS) : null;
+  adminIdleTimer = adminToken ? setTimeout(relockAdminMode, ADMIN_IDLE_TIMEOUT_MS) : null;
 }
 document.addEventListener("pointerdown", resetAdminIdleTimer);
 document.addEventListener("keydown", resetAdminIdleTimer);
+
+// The PIN goes to the server exactly once, at unlock; what comes back is
+// the session token everything afterwards uses. Stashed here rather than
+// returned because openPinPad only reports whether the attempt passed.
+let pendingAdminToken = null;
 
 async function verifyAdminPin(candidate) {
   const res = await fetch("/api/admin/unlock", {
@@ -709,25 +742,58 @@ async function verifyAdminPin(candidate) {
   if (res.status === 429) {
     return { ok: false, message: `Too many attempts — try again in ${fmtTime(data.locked_seconds)}` };
   }
+  if (data.ok && data.token) pendingAdminToken = data.token;
   return { ok: !!data.ok };
 }
 
+// Comes back unlocked after a reload when the stored session is still
+// live. Checked against the server rather than trusted outright, so an
+// expired or restart-dropped token falls back to locked instead of
+// painting an unlocked panel whose first real request would fail.
+async function restoreAdminSession() {
+  let stored = null;
+  try {
+    stored = localStorage.getItem(ADMIN_TOKEN_KEY);
+  } catch (e) {
+    return;
+  }
+  if (!stored) return;
+  try {
+    const res = await fetch("/api/admin/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: stored }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.ok) {
+      storeAdminToken(stored);
+      paintAdminMode();
+      resetAdminIdleTimer();
+    } else {
+      storeAdminToken(null);
+    }
+  } catch (e) {
+    // Server unreachable -- leave it locked; a later reload can restore.
+  }
+}
+
 adminModeBtn.addEventListener("click", async () => {
-  if (adminPin) {
+  if (adminToken) {
     relockAdminMode();
     resetAdminIdleTimer();
     return;
   }
   const pin = await openPinPad("Enter Admin PIN", verifyAdminPin);
-  if (pin) {
-    adminPin = pin;
+  if (pin && pendingAdminToken) {
+    storeAdminToken(pendingAdminToken);
+    pendingAdminToken = null;
     paintAdminMode();
     resetAdminIdleTimer();
   }
 });
 
 changePinBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   changePinStatus.textContent = "";
   const newPin = await openPinPad("Enter New PIN", async () => ({ ok: true }));
   if (!newPin) return;
@@ -738,14 +804,15 @@ changePinBtn.addEventListener("click", async () => {
   const res = await fetch("/api/admin/change-pin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, new_pin: confirmPin }),
+    body: JSON.stringify({ token: adminToken, new_pin: confirmPin }),
   });
   const data = await res.json().catch(() => ({}));
   if (data.error) {
     changePinStatus.textContent = data.error;
     return;
   }
-  adminPin = confirmPin;
+  // The session token survives a PIN change -- this client just proved
+  // itself, and the server keeps existing sessions valid.
   resetAdminIdleTimer();
   changePinStatus.textContent = "PIN changed.";
 });
@@ -753,8 +820,8 @@ changePinBtn.addEventListener("click", async () => {
 // Off by default and left running server-side (not tied to any one
 // client's admin session) once switched on -- see server.py's
 // PLAY_TRACKING_ENABLED comment. playTrackingField only shows while
-// adminPin is set (paintAdminMode above), so this button is only ever
-// clickable with a live admin PIN already in hand.
+// adminToken is set (paintAdminMode above), so this button is only ever
+// clickable with a live admin session already in hand.
 let playTrackingEnabled = false;
 
 function paintPlayTrackingToggle(enabled) {
@@ -767,11 +834,11 @@ async function loadPlayTrackingState() {
   paintPlayTrackingToggle(data.enabled);
 }
 playTrackingBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   const res = await fetch("/api/play-tracking", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, enabled: !playTrackingEnabled }),
+    body: JSON.stringify({ token: adminToken, enabled: !playTrackingEnabled }),
   });
   const data = await res.json().catch(() => ({}));
   if (typeof data.enabled === "boolean") paintPlayTrackingToggle(data.enabled);
@@ -792,11 +859,11 @@ async function loadPopularVisibilityState() {
   paintPopularVisibilityToggle(data.enabled);
 }
 popularVisibilityBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   const res = await fetch("/api/popular-visibility", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, enabled: !popularRowVisible }),
+    body: JSON.stringify({ token: adminToken, enabled: !popularRowVisible }),
   });
   const data = await res.json().catch(() => ({}));
   if (typeof data.enabled === "boolean") paintPopularVisibilityToggle(data.enabled);
@@ -931,11 +998,11 @@ function broadcastMapping() {
 let previewGizmoEnabled = false;
 
 previewGizmoBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   const res = await fetch("/api/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, gizmo: !previewGizmoEnabled }),
+    body: JSON.stringify({ token: adminToken, gizmo: !previewGizmoEnabled }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
@@ -949,7 +1016,7 @@ async function loadMappingState() {
 let mappingPending = {};
 let mappingSendTimer = null;
 function sendMappingUpdate(partial) {
-  if (!adminPin) return;
+  if (!adminToken) return;
   // Straight across to the mirror on the slider's own live value, rather
   // than waiting for the debounced POST below and the mirror's next poll.
   broadcastMapping();
@@ -961,7 +1028,7 @@ function sendMappingUpdate(partial) {
   Object.assign(mappingPending, partial);
   if (mappingSendTimer) clearTimeout(mappingSendTimer);
   mappingSendTimer = setTimeout(async () => {
-    const body = { pin: adminPin, ...mappingPending };
+    const body = { token: adminToken, ...mappingPending };
     mappingPending = {};
     await fetch("/api/mapping", {
       method: "POST",
@@ -1001,44 +1068,44 @@ document.querySelectorAll(".mapping-row__step").forEach((btn) => {
   });
 });
 mappingShadingBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   const res = await fetch("/api/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, shading: !mappingShadingEnabled }),
+    body: JSON.stringify({ token: adminToken, shading: !mappingShadingEnabled }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
 });
 
 mappingFpsBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   const res = await fetch("/api/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, fps: !mappingFpsEnabled }),
+    body: JSON.stringify({ token: adminToken, fps: !mappingFpsEnabled }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
 });
 
 mappingFlipHBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   const res = await fetch("/api/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, video_flip_h: !mappingFlipHEnabled }),
+    body: JSON.stringify({ token: adminToken, video_flip_h: !mappingFlipHEnabled }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
 });
 
 mappingFlipVBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   const res = await fetch("/api/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, video_flip_v: !mappingFlipVEnabled }),
+    body: JSON.stringify({ token: adminToken, video_flip_v: !mappingFlipVEnabled }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
@@ -1049,7 +1116,7 @@ function paintGridcheckBtn(active) {
   mappingGridcheckBtn.textContent = active ? "Stop grid check" : "Play grid check (loop)";
 }
 mappingGridcheckBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   if (gridcheckActive) {
     await fetch("/api/control/stop", { method: "POST" });
     paintGridcheckBtn(false);
@@ -1058,7 +1125,7 @@ mappingGridcheckBtn.addEventListener("click", async () => {
   const res = await fetch("/api/mapping/gridcheck", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin }),
+    body: JSON.stringify({ token: adminToken }),
   });
   const data = await res.json().catch(() => ({}));
   if (data.error) {
@@ -1068,7 +1135,7 @@ mappingGridcheckBtn.addEventListener("click", async () => {
   paintGridcheckBtn(true);
 });
 mappingResetBtn.addEventListener("click", async () => {
-  if (!adminPin) return;
+  if (!adminToken) return;
   const defaults = {
     scale: 1, rotation_x: 0, rotation_y: 0, rotation_z: 0, offset_x: 0, offset_y: 0,
     video_rotation: 0, video_flip_h: false, video_flip_v: true,
@@ -1079,7 +1146,7 @@ mappingResetBtn.addEventListener("click", async () => {
   const res = await fetch("/api/mapping", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, ...defaults }),
+    body: JSON.stringify({ token: adminToken, ...defaults }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
@@ -1091,7 +1158,7 @@ async function renameMedia(item) {
   const res = await fetch(`/api/media/${item.id}/rename`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ pin: adminPin, title: newTitle.trim() }),
+    body: JSON.stringify({ token: adminToken, title: newTitle.trim() }),
   });
   const data = await res.json().catch(() => ({}));
   if (data.error) {
@@ -1165,7 +1232,7 @@ uploadBtn.addEventListener("click", async () => {
     : uploadCategorySelect.value;
 
   const form = new FormData();
-  form.append("pin", adminPin);
+  form.append("token", adminToken);
   form.append("category", category);
   form.append("file", file);
   for (const att of uploadAttachmentsInput.files) form.append("attachments", att);
@@ -1520,6 +1587,7 @@ async function pollStatus() {
   loadPlayTrackingState();
   loadPopularVisibilityState();
   loadMappingState();
+  restoreAdminSession();
   pollStatus();
   setInterval(pollStatus, 1000);
 })();

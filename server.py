@@ -31,6 +31,7 @@ import threading
 import time
 import random
 import hashlib
+import secrets
 import shutil
 from pathlib import Path
 
@@ -281,6 +282,15 @@ def _load_admin_pin():
 ADMIN_PIN = _load_admin_pin()
 ADMIN_MAX_ATTEMPTS = 5
 ADMIN_LOCKOUT_SECONDS = 120
+# How long an unlocked admin session stays valid, measured from its last
+# use rather than from when it was issued -- an absolute expiry would drop
+# someone mid-calibration on the hour, which is exactly when they're least
+# likely to want to stop and re-enter a PIN. Idle for this long and it's
+# gone. The browser holds the token (not the PIN) so a refresh keeps the
+# session, while the expiry stays enforced here rather than client-side.
+ADMIN_SESSION_TTL_SECONDS = int(
+    os.environ.get("ZEALANDATA_ADMIN_SESSION_TTL", "3600").strip() or 3600
+)
 UPLOAD_MAX_MB = int(os.environ.get("ZEALANDATA_UPLOAD_MAX_MB", "8192"))
 
 # A projection-mapping test pattern, played looping/muted on demand from the
@@ -461,6 +471,9 @@ def backend_stop():
 # expiry, checked by every admin-gated endpoint (see check_admin_pin).
 admin_lock = threading.Lock()
 admin_attempts = {}  # ip -> {"count": int, "locked_until": monotonic() or None}
+# token -> monotonic() of last use. In memory on purpose: a restart should
+# drop every session, and there's no second process to share them with.
+admin_sessions = {}
 
 # ------------------------------------------------------------ progress ---
 
@@ -1711,6 +1724,44 @@ def api_media_preview(media_id):
     return jsonify({"id": media_id, "hero_thumbnail": ensure_hero_thumbnail(media_id, match["path"])})
 
 
+def _new_admin_session():
+    """Issues a session token for a client that has just proved it knows the
+    PIN. Caller must have verified that first."""
+    token = secrets.token_urlsafe(32)
+    with admin_lock:
+        admin_sessions[token] = time.monotonic()
+    return token
+
+
+def _touch_admin_session(token):
+    """True if the token is a live session, sliding its expiry forward as a
+    side effect. Expired entries are dropped on the way past rather than by
+    a sweeper -- there's only ever a handful of these."""
+    now = time.monotonic()
+    with admin_lock:
+        for stale in [t for t, seen in admin_sessions.items()
+                      if now - seen >= ADMIN_SESSION_TTL_SECONDS]:
+            admin_sessions.pop(stale, None)
+        if token in admin_sessions:
+            admin_sessions[token] = now
+            return True
+    return False
+
+
+def _drop_admin_session(token):
+    with admin_lock:
+        admin_sessions.pop(token, None)
+
+
+def _request_admin_token():
+    """The token travels in the same places the PIN already does -- a JSON
+    body for most endpoints, a form field for the multipart upload -- so
+    reading it here means check_admin_pin stays the single gate every admin
+    endpoint already goes through, with none of them needing to change."""
+    body = request.get_json(silent=True) or {}
+    return str(body.get("token") or request.form.get("token") or "")
+
+
 def check_admin_pin(candidate):
     """Verifies candidate against ADMIN_PIN, enforcing a per-client-IP
     lockout after ADMIN_MAX_ATTEMPTS wrong guesses in a row -- checked here
@@ -1718,6 +1769,17 @@ def check_admin_pin(candidate):
     re-verifies the PIN independently) can't be used to route around it.
     Returns (ok, locked_seconds); when locked_seconds is truthy the PIN
     wasn't even compared this time, ok is always False."""
+    token = _request_admin_token()
+    if token:
+        if _touch_admin_session(token):
+            return True, 0
+        # A session that has expired (or was dropped by a restart) is not a
+        # PIN guess, so it must not eat into the brute-force budget below --
+        # otherwise a stale tab left open overnight could lock the real
+        # admin out on its first request.
+        if not candidate:
+            return False, 0
+
     ip = request.remote_addr
     with admin_lock:
         entry = admin_attempts.get(ip)
@@ -1758,7 +1820,30 @@ def api_admin_unlock():
     ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
     if locked_seconds:
         return jsonify({"ok": False, "locked_seconds": locked_seconds}), 429
-    return jsonify({"ok": ok})
+    if not ok:
+        return jsonify({"ok": False})
+    return jsonify({"ok": True, "token": _new_admin_session(),
+                    "ttl_seconds": ADMIN_SESSION_TTL_SECONDS})
+
+
+@app.route("/api/admin/session", methods=["POST"])
+def api_admin_session():
+    """Lets a page that restored a token from browser storage find out
+    whether it's still good, so a reload can either come back up unlocked or
+    fall back to locked -- rather than painting an unlocked panel whose
+    first real request then fails."""
+    if not ADMIN_PIN:
+        return jsonify({"ok": False}), 404
+    ok, _ = check_admin_pin("")
+    return jsonify({"ok": ok, "ttl_seconds": ADMIN_SESSION_TTL_SECONDS})
+
+
+@app.route("/api/admin/lock", methods=["POST"])
+def api_admin_lock():
+    """Ends a session server-side, so "Lock admin mode" actually revokes the
+    token rather than only forgetting it in the browser."""
+    _drop_admin_session(_request_admin_token())
+    return jsonify({"ok": True})
 
 
 @app.route("/api/admin/change-pin", methods=["POST"])
