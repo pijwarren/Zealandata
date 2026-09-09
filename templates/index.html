@@ -233,25 +233,22 @@
         <button type="button" class="keystone__corner" data-corner="bl" aria-pressed="false">Bottom left</button>
         <button type="button" class="keystone__corner" data-corner="br" aria-pressed="false">Bottom right</button>
       </div>
-      <div class="keystone__pad" id="keystonePad" tabindex="0" role="application"
-           aria-label="Drag to move the selected corner; arrow keys nudge it">
-        <div class="keystone__crosshair" aria-hidden="true"></div>
-        <div class="keystone__handle" id="keystoneHandle"></div>
-      </div>
-      <div class="mapping-row">
-        <span class="mapping-row__label">Corner X</span>
-        <div class="mapping-row__stepper">
-          <button type="button" class="mapping-row__step" id="keystoneXDown" aria-label="Move corner left">&minus;</button>
-          <input type="number" class="mapping-row__number" id="keystoneXNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-          <button type="button" class="mapping-row__step" id="keystoneXUp" aria-label="Move corner right">+</button>
+      <!-- Arrows sit on the axis they move: left/right above the pad,
+           up/down beside it, so a nudge is reached in the direction it
+           goes rather than read off a label. -->
+      <div class="keystone__grid">
+        <div class="keystone__arrows keystone__arrows--x">
+          <button type="button" class="mapping-row__step" id="keystoneXDown" aria-label="Move corner left">&larr;</button>
+          <button type="button" class="mapping-row__step" id="keystoneXUp" aria-label="Move corner right">&rarr;</button>
         </div>
-      </div>
-      <div class="mapping-row">
-        <span class="mapping-row__label">Corner Y</span>
-        <div class="mapping-row__stepper">
-          <button type="button" class="mapping-row__step" id="keystoneYDown" aria-label="Move corner down">&minus;</button>
-          <input type="number" class="mapping-row__number" id="keystoneYNumber" min="-0.3" max="0.3" step="0.005" value="0.000">
-          <button type="button" class="mapping-row__step" id="keystoneYUp" aria-label="Move corner up">+</button>
+        <div class="keystone__arrows keystone__arrows--y">
+          <button type="button" class="mapping-row__step" id="keystoneYUp" aria-label="Move corner up">&uarr;</button>
+          <button type="button" class="mapping-row__step" id="keystoneYDown" aria-label="Move corner down">&darr;</button>
+        </div>
+        <div class="keystone__pad" id="keystonePad" tabindex="0" role="application"
+             aria-label="Drag to move the selected corner; arrow keys nudge it">
+          <div class="keystone__crosshair" aria-hidden="true"></div>
+          <div class="keystone__handle" id="keystoneHandle"></div>
         </div>
       </div>
     </div>

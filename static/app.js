@@ -1094,8 +1094,6 @@ const KEYSTONE_RANGE = 0.3;   // matches the number inputs' min/max
 const KEYSTONE_STEP = 0.005;  // and their step, for the +/- buttons
 const keystonePad = document.getElementById("keystonePad");
 const keystoneHandle = document.getElementById("keystoneHandle");
-const keystoneXNumber = document.getElementById("keystoneXNumber");
-const keystoneYNumber = document.getElementById("keystoneYNumber");
 let keystoneCorner = "tl";
 const keystoneValues = {
   keystone_tl_x: 0, keystone_tl_y: 0, keystone_tr_x: 0, keystone_tr_y: 0,
@@ -1106,15 +1104,14 @@ function keystoneKey(axis) {
   return `keystone_${keystoneCorner}_${axis}`;
 }
 
-// The pad reads like the projected picture: +Y is up on the wall, and up
-// the screen is a smaller CSS top, so the Y axis flips on the way out.
+// The handle is the only readout: the pad reads like the projected
+// picture, so where it sits is the value. +Y is up on the wall, and up the
+// screen is a smaller CSS top, so the Y axis flips on the way out.
 function paintKeystone() {
   const x = keystoneValues[keystoneKey("x")];
   const y = keystoneValues[keystoneKey("y")];
   keystoneHandle.style.left = `${((x + KEYSTONE_RANGE) / (2 * KEYSTONE_RANGE)) * 100}%`;
   keystoneHandle.style.top = `${((KEYSTONE_RANGE - y) / (2 * KEYSTONE_RANGE)) * 100}%`;
-  if (document.activeElement !== keystoneXNumber) keystoneXNumber.value = x.toFixed(3);
-  if (document.activeElement !== keystoneYNumber) keystoneYNumber.value = y.toFixed(3);
 }
 
 function setKeystone(x, y) {
@@ -1182,15 +1179,6 @@ document.querySelectorAll(".keystone__corner").forEach((btn) => {
     const y = keystoneValues[keystoneKey("y")];
     if (axis === "x") setKeystone(x + dir * KEYSTONE_STEP, y);
     else setKeystone(x, y + dir * KEYSTONE_STEP);
-  });
-});
-
-[[keystoneXNumber, "x"], [keystoneYNumber, "y"]].forEach(([el, axis]) => {
-  el.addEventListener("change", () => {
-    const v = clamp(Number(el.value) || 0, -KEYSTONE_RANGE, KEYSTONE_RANGE);
-    const x = keystoneValues[keystoneKey("x")];
-    const y = keystoneValues[keystoneKey("y")];
-    if (axis === "x") setKeystone(v, y); else setKeystone(x, v);
   });
 });
 
