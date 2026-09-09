@@ -536,14 +536,22 @@ body.admin-mode .settings-grid{
 .mapping-section[open] > .mapping-section__summary::before{ transform:rotate(90deg); }
 .mapping-section__summary:hover{ color:var(--color-accent); }
 /* The section's own contents stack the same way the field does. */
-.mapping-section[open]{ display:flex; flex-direction:column; gap:12px; }
+.mapping-section[open]{ display:flex; flex-direction:column; gap:20px; }
 
 .mapping-subheading{
   display:block; font-size:11px; font-weight:600; text-transform:uppercase;
   letter-spacing:.5px; color:var(--color-neutral-400);
   margin-top:6px; padding-top:14px; border-top:1px solid var(--color-divider);
 }
-.mapping-row{ display:flex; align-items:center; gap:16px; }
+/* Stacked rather than one horizontal line: label, then the slider full
+   width, then the nudge controls under it. The markup is already in that
+   order, so this is only a change of direction. Side by side, the slider
+   was squeezed into whatever the label and stepper left over -- which on a
+   touch screen is the one control that most wants the room. */
+.mapping-row{
+  display:flex; flex-direction:column; align-items:stretch;
+  gap:10px; padding:4px 0;
+}
 
 /* Keystone: four corner buttons over a drag pad, replacing eight X/Y
    sliders that never showed which corner was which. */
@@ -623,40 +631,63 @@ body.admin-mode .settings-grid{
   box-shadow:0 2px 8px rgba(0,0,0,0.6);
   pointer-events:none;
 }
-.mapping-row__label{ flex:0 0 80px; font-size:13px; color:var(--color-neutral-300); }
-.mapping-row__stepper{ flex:0 0 auto; display:flex; align-items:center; gap:6px; }
+/* No fixed width now it has a line of its own -- it was 80px to keep the
+   sliders aligned with each other across rows. */
+.mapping-row__label{ font-size:13px; color:var(--color-neutral-300); }
+/* Centred under its slider, and roomier: these are aimed at with a finger
+   on the admin tablet. */
+.mapping-row__stepper{
+  display:flex; align-items:center; justify-content:center; gap:12px;
+}
 .mapping-row__step{
-  width:28px; height:28px; flex:0 0 auto; border-radius:50%;
+  width:40px; height:40px; flex:0 0 auto; border-radius:50%;
   border:1px solid var(--color-divider); background:rgba(233,233,237,0.05);
-  color:var(--color-text); font-size:16px; line-height:1; cursor:pointer;
+  color:var(--color-text); font-size:18px; line-height:1; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
   transition:background-color .1s ease, border-color .1s ease;
 }
 .mapping-row__step:hover{ border-color:var(--color-accent); color:var(--color-accent); }
 .mapping-row__number{
-  width:68px; flex:0 0 auto; box-sizing:border-box; text-align:center;
-  font:inherit; font-size:13px; font-variant-numeric:tabular-nums;
+  width:84px; flex:0 0 auto; box-sizing:border-box; text-align:center;
+  font:inherit; font-size:15px; font-variant-numeric:tabular-nums;
   background:var(--color-neutral-900); color:var(--color-text);
-  border:1px solid var(--color-divider); border-radius:980px; padding:6px 4px;
+  border:1px solid var(--color-divider); border-radius:980px; padding:9px 6px;
   appearance:textfield; -moz-appearance:textfield;
 }
 .mapping-row__number::-webkit-outer-spin-button,
 .mapping-row__number::-webkit-inner-spin-button{ -webkit-appearance:none; margin:0; }
 .mapping-row__number:focus{ outline:none; border-color:var(--color-accent); }
 .mapping-row input[type="range"]{
-  flex:1 1 auto; appearance:none; -webkit-appearance:none;
-  height:6px; border-radius:3px; background:var(--color-neutral-700);
-  outline:none;
+  width:100%; appearance:none; -webkit-appearance:none;
+  outline:none; background:none;
+  /* The element is finger-height while the track it draws stays slim: the
+     bar is painted as a centred background strip rather than by sizing the
+     input itself, so the whole 34px is grabbable without a fat-looking
+     slider -- and the thumb has room instead of being clipped by an
+     element shorter than itself. */
+  height:34px;
+  background-image:linear-gradient(var(--color-neutral-700), var(--color-neutral-700));
+  background-size:100% 8px;
+  background-position:center;
+  background-repeat:no-repeat;
+}
+/* Both engines draw a track of their own on top of the input's
+   background; blanked here so the centred strip above is the only bar. */
+.mapping-row input[type="range"]::-webkit-slider-runnable-track{
+  background:none; border:none; height:8px;
+}
+.mapping-row input[type="range"]::-moz-range-track{
+  background:none; border:none; height:8px;
 }
 .mapping-row input[type="range"]::-webkit-slider-thumb{
   appearance:none; -webkit-appearance:none;
-  width:20px; height:20px; border-radius:50%;
+  width:26px; height:26px; border-radius:50%;
   background:var(--color-accent); cursor:pointer;
   border:3px solid var(--color-neutral-900);
   box-shadow:0 0 0 1px var(--color-accent);
 }
 .mapping-row input[type="range"]::-moz-range-thumb{
-  width:20px; height:20px; border-radius:50%; border:3px solid var(--color-neutral-900);
+  width:26px; height:26px; border-radius:50%; border:3px solid var(--color-neutral-900);
   background:var(--color-accent); cursor:pointer;
   box-shadow:0 0 0 1px var(--color-accent);
 }
