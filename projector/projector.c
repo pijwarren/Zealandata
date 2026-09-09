@@ -76,6 +76,11 @@ static double now_sec(void) {
    freshly-reset one. */
 struct mapping {
     float scale, rot_x, rot_y, rot_z, off_x, off_y, render_scale;
+    /* Distance from the model to the virtual projector -- see server.py's
+       MAPPING_NUMERIC comment on "throw_distance" for why a real point-
+       source projector needs this at all, where the old purely-orthographic
+       render didn't. Large values approximate that old behaviour. */
+    float throw_dist;
     bool shading;
     /* Independent of shading -- either can be toggled without the other,
        matching server.py's MAPPING_BOOLEAN. */
@@ -96,7 +101,7 @@ struct mapping {
     float vid_left, vid_right, vid_top, vid_bottom;
 };
 static struct mapping map_cur = {
-    1, 0, 0, 0, 0, 0, 1, false, false,
+    1, 0, 0, 0, 0, 0, 1, 0.6f, false, false,
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 1, 0, 1,
 };
@@ -153,6 +158,7 @@ static void mapping_reload(void) {
     json_num(buf, "offset_x", &map_cur.off_x);
     json_num(buf, "offset_y", &map_cur.off_y);
     json_num(buf, "render_scale", &map_cur.render_scale);
+    json_num(buf, "throw_distance", &map_cur.throw_dist);
     json_bool(buf, "shading", &map_cur.shading);
     json_bool(buf, "gizmo", &map_cur.gizmo);
     json_num(buf, "keystone_tl_x", &map_cur.ks_tl_x);
@@ -169,11 +175,15 @@ static void mapping_reload(void) {
     json_num(buf, "video_bottom", &map_cur.vid_bottom);
     if (map_cur.render_scale < 0.25f) map_cur.render_scale = 0.25f;
     if (map_cur.render_scale > 1.0f) map_cur.render_scale = 1.0f;
-    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f shading=%d gizmo=%d "
+    /* Below this the near plane (see the render loop's frustum setup)
+       starts crowding the model itself. */
+    if (map_cur.throw_dist < 0.3f) map_cur.throw_dist = 0.3f;
+    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f shading=%d gizmo=%d "
            "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f) "
            "video_edges=(%.3f,%.3f,%.3f,%.3f)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
-           map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.shading, map_cur.gizmo,
+           map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.throw_dist,
+           map_cur.shading, map_cur.gizmo,
            map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
            map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y,
            map_cur.vid_left, map_cur.vid_right, map_cur.vid_top, map_cur.vid_bottom);
@@ -395,10 +405,21 @@ static void mat_translate(mat4 m, float x, float y, float z) {
 static void mat_scale(mat4 m, float s) {
     mat_identity(m); m[0] = m[5] = m[10] = s;
 }
-static void mat_ortho(mat4 m, float l, float r, float b, float t, float n, float f) {
-    mat_identity(m);
-    m[0] = 2 / (r - l); m[5] = 2 / (t - b); m[10] = -2 / (f - n);
-    m[12] = -(r + l) / (r - l); m[13] = -(t + b) / (t - b); m[14] = -(f + n) / (f - n);
+/* Standard OpenGL perspective frustum (l,r,b,t given at the near plane).
+   Replaced an orthographic projection here -- a parallel-rays "sunlight"
+   assumption that had no notion of distance, which is exactly why it got
+   the model's elevation wrong for a real point-source projector. This
+   needs the model actually pushed out in front of the origin along -Z
+   first -- see its call site. */
+static void mat_frustum(mat4 m, float l, float r, float b, float t, float n, float f) {
+    for (int i = 0; i < 16; i++) m[i] = 0;
+    m[0] = 2 * n / (r - l);
+    m[5] = 2 * n / (t - b);
+    m[8] = (r + l) / (r - l);
+    m[9] = (t + b) / (t - b);
+    m[10] = -(f + n) / (f - n);
+    m[11] = -1;
+    m[14] = -(2 * f * n) / (f - n);
 }
 
 /* Maps the unit square (s,t in [0,1]) onto an arbitrary quad given by its
@@ -664,9 +685,19 @@ static const char *VS_SRC =
     "out vec2 vUV;\n"
     "out vec3 vNrm;\n"
     "void main(){\n"
-    "  vUV = aUV;\n"
-    "  vNrm = mat3(uModel) * aNrm;\n"
     "  gl_Position = uMVP * vec4(aPos,1.0);\n"
+    /* aUV (the static top-down footprint UV computed once at load time,
+       see load_obj) is deliberately unused now: with uMVP a true point-
+       source perspective (see the frustum comment in the render loop), the
+       texture coordinate a real light ray carries to a given surface point
+       depends on the model's live pose relative to the projector, not just
+       that point's fixed footprint position. Sampling the clip-space
+       position itself -- the same "projective texture mapping" trick
+       shadow/spotlight projection uses -- is what makes elevation actually
+       track correctly as the calibration sliders (rotation especially)
+       move the model around in the projector's view. */
+    "  vUV = gl_Position.xy / gl_Position.w * 0.5 + 0.5;\n"
+    "  vNrm = mat3(uModel) * aNrm;\n"
     "}\n";
 
 static const char *FS_SRC =
@@ -1580,7 +1611,22 @@ int main(void) {
 
         float half = 1.15f;            /* padding around the fitted model */
         float aspect = (float)wantW / (float)wantH;
-        mat_ortho(proj, -half * aspect, half * aspect, -half, half, -100.f, 100.f);
+        /* A real projector is a point light at a finite distance, not the
+           parallel "sunlight" mat_ortho assumed -- that was fine for a flat
+           screen but drifted increasingly with the model's own elevation,
+           which is exactly the misalignment this replaces. Scaling the near
+           plane's bounds by (near/throw_dist) keeps the framing at the
+           model's own depth (z=0) matching the old ortho half-extents
+           exactly as throw_dist grows large, so existing calibrations don't
+           jump when this is first dialled in from a big value. */
+        float throwDist = map_cur.throw_dist;
+        float near = 0.05f, far = throwDist + 20.f;
+        float halfNearY = half * (near / throwDist);
+        float halfNearX = half * aspect * (near / throwDist);
+        mat_frustum(proj, -halfNearX, halfNearX, -halfNearY, halfNearY, near, far);
+        mat4 mEye;
+        mat_translate(mEye, 0, 0, -throwDist);
+        mat_mul(model, mEye, model);
         mat_mul(mvp, proj, model);
 
         /* The gizmo needs its own model matrix, built the same way but with
@@ -1600,6 +1646,7 @@ int main(void) {
         mat_mul(tmp, mRx, tmp);
         mat_mul(tmp, mS, tmp);
         mat_mul(gizmoModel, mT, tmp);
+        mat_mul(gizmoModel, mEye, gizmoModel);
         mat_mul(gizmoMvp, proj, gizmoModel);
 
         double tB = now_sec();

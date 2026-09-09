@@ -81,6 +81,19 @@ PROJECTION_OBJ_PATH = os.environ.get(
 MAPPING_FILE = os.path.join(BASE_DIR, "mapping.json")
 MAPPING_NUMERIC = {
     "scale": 1.0,
+    # Distance from the model to the (virtual) projector, in the same
+    # normalized units the model is fitted into (roughly -1..1 per axis
+    # before the scale slider above). A real projector is a point light,
+    # not the parallel "sunlight" a flat top-down mapping assumes -- video
+    # correctly aligned at the model's reference elevation drifts at every
+    # other elevation by an amount that grows the closer this is. Large
+    # values approximate the old purely-orthographic behaviour (no
+    # elevation-dependent drift); dial it down towards the real projector's
+    # actual throw distance until misalignment on the model's tallest/
+    # lowest relief disappears. Defaulted low for an ultra-short-throw unit
+    # (e.g. Epson EB-770F, ~0.27:1 throw ratio) -- a conventional long-throw
+    # projector sitting much further back would want this dialled way up.
+    "throw_distance": 0.6,
     # Independent Euler rotation in degrees around each axis, applied in
     # x/y/z order -- not just a single "yaw" around the model's detected
     # up-axis -- since correcting for a projector that isn't perfectly

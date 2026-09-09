@@ -134,6 +134,15 @@
       </div>
     </div>
     <div class="mapping-row">
+      <span class="mapping-row__label">Projector distance</span>
+      <input type="range" id="mappingThrowDistance" min="0.3" max="20" step="0.05" value="0.6">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingThrowDistance" data-dir="-1" aria-label="Decrease projector distance">−</button>
+        <input type="number" class="mapping-row__number" id="mappingThrowDistanceNumber" min="0.3" max="20" step="0.05" value="0.60">
+        <button type="button" class="mapping-row__step" data-target="mappingThrowDistance" data-dir="1" aria-label="Increase projector distance">+</button>
+      </div>
+    </div>
+    <div class="mapping-row">
       <span class="mapping-row__label">Rotate X</span>
       <input type="range" id="mappingRotationX" min="-90" max="90" step="0.5" value="0">
       <div class="mapping-row__stepper">

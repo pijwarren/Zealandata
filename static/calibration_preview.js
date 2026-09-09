@@ -38,9 +38,13 @@ uniform mat4 uModel;
 out vec2 vUV;
 out vec3 vNrm;
 void main(){
-  vUV = aUV;
-  vNrm = mat3(uModel) * aNrm;
   gl_Position = uMVP * vec4(aPos, 1.0);
+  // aUV (the static top-down footprint UV from parseObj) is unused now --
+  // see projector.c's matching VS_SRC comment. uMVP is a true point-source
+  // perspective (buildMatrices' mat_frustum), so the on-model texture
+  // coordinate has to come from the clip-space position itself.
+  vUV = gl_Position.xy / gl_Position.w * 0.5 + 0.5;
+  vNrm = mat3(uModel) * aNrm;
 }`;
 
 const MODEL_FS = `#version 300 es
@@ -142,10 +146,18 @@ function matScale(s) {
   m[0] = m[5] = m[10] = s;
   return m;
 }
-function matOrtho(l, r, b, t, n, f) {
-  const m = matIdentity();
-  m[0] = 2 / (r - l); m[5] = 2 / (t - b); m[10] = -2 / (f - n);
-  m[12] = -(r + l) / (r - l); m[13] = -(t + b) / (t - b); m[14] = -(f + n) / (f - n);
+// Standard OpenGL perspective frustum (l,r,b,t given at the near plane).
+// Ported from projector.c's mat_frustum -- see its comment for why this
+// replaced an orthographic projection here too.
+function matFrustum(l, r, b, t, n, f) {
+  const m = new Float32Array(16);
+  m[0] = 2 * n / (r - l);
+  m[5] = 2 * n / (t - b);
+  m[8] = (r + l) / (r - l);
+  m[9] = (t + b) / (t - b);
+  m[10] = -(f + n) / (f - n);
+  m[11] = -1;
+  m[14] = -(2 * f * n) / (f - n);
   return m;
 }
 
@@ -524,14 +536,25 @@ function buildMatrices(mapping) {
   let gtmp = matMul(mRy, mRz);
   gtmp = matMul(mRx, gtmp);
   gtmp = matMul(mS, gtmp);
-  const gizmoModel = matMul(mT, gtmp);
+  let gizmoModel = matMul(mT, gtmp);
 
   const half = 1.15;
   const aspect = sceneW / sceneH;
-  const proj = matOrtho(-half * aspect, half * aspect, -half, half, -100, 100);
-  const mvp = matMul(proj, modelM);
-  const gizmoMvp = matMul(proj, gizmoModel);
-  return { modelM, mvp, gizmoMvp };
+  // Point-source perspective, not parallel "sunlight" -- see projector.c's
+  // matching render-loop comment for why. near/far and the (near/throwDist)
+  // scaling keep this identical in framing to the old ortho as throwDist
+  // grows large, so it's a no-op until actually dialled in.
+  const throwDist = Math.max(0.3, Number(mapping.throw_distance) || 0.6);
+  const near = 0.05, far = throwDist + 20;
+  const halfNearY = half * (near / throwDist);
+  const halfNearX = half * aspect * (near / throwDist);
+  const proj = matFrustum(-halfNearX, halfNearX, -halfNearY, halfNearY, near, far);
+  const mEye = matTranslate(0, 0, -throwDist);
+  const modelEye = matMul(mEye, modelM);
+  const gizmoEye = matMul(mEye, gizmoModel);
+  const mvp = matMul(proj, modelEye);
+  const gizmoMvp = matMul(proj, gizmoEye);
+  return { modelM: modelEye, mvp, gizmoMvp };
 }
 
 function setUniformMatrix4(prog, name, m) {
