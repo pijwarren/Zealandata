@@ -100,6 +100,9 @@ struct mapping {
     /* Independent of shading -- either can be toggled without the other,
        matching server.py's MAPPING_BOOLEAN. */
     bool gizmo;
+    /* On-screen frame-rate readout, toggled from the admin panel. Also
+       independent of the two above -- see server.py's MAPPING_BOOLEAN. */
+    bool fps_overlay;
     /* Keystone: how far each corner of the final rendered picture is
        nudged from its default position, in NDC units (+-1 spans the full
        display) -- corrects for the projector itself sitting off-axis from
@@ -188,6 +191,7 @@ static void mapping_reload(void) {
     json_num(buf, "throw_offset_y", &map_cur.throw_off_y);
     json_bool(buf, "shading", &map_cur.shading);
     json_bool(buf, "gizmo", &map_cur.gizmo);
+    json_bool(buf, "fps", &map_cur.fps_overlay);
     json_num(buf, "keystone_tl_x", &map_cur.ks_tl_x);
     json_num(buf, "keystone_tl_y", &map_cur.ks_tl_y);
     json_num(buf, "keystone_tr_x", &map_cur.ks_tr_x);
@@ -208,13 +212,13 @@ static void mapping_reload(void) {
     /* Below this the near plane (see the render loop's frustum setup)
        starts crowding the model itself. */
     if (map_cur.throw_dist < 0.3f) map_cur.throw_dist = 0.3f;
-    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f throw_off=(%.2f,%.2f) shading=%d gizmo=%d "
+    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f throw_off=(%.2f,%.2f) shading=%d gizmo=%d fps=%d "
            "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f) "
            "video_edges=(%.3f,%.3f,%.3f,%.3f) video_rotation=%.0f video_flip=(%d,%d)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
            map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.throw_dist,
            map_cur.throw_off_x, map_cur.throw_off_y,
-           map_cur.shading, map_cur.gizmo,
+           map_cur.shading, map_cur.gizmo, map_cur.fps_overlay,
            map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
            map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y,
            map_cur.vid_left, map_cur.vid_right, map_cur.vid_top, map_cur.vid_bottom,
@@ -962,6 +966,46 @@ static const glyph_seg GLYPH_Y[] = {
 };
 static const glyph_seg GLYPH_Z[] = { { 0, 1, 1, 1 }, { 1, 1, 0, 0 }, { 0, 0, 1, 0 } };
 
+/* Seven-segment digits for the frame-rate readout, in the same unit
+   square and y-up convention as the X/Y/Z strokes above, and drawn by the
+   same line-segment path -- a calculator-style font is the cheapest way
+   to get digits without a font dependency, and the segments happen to be
+   exactly what this renderer can already draw. Kept as explicit stroke
+   lists rather than a segment bitmask so they read the way the letters
+   above do. */
+#define SEG_TOP    { 0.f, 1.f, 1.f, 1.f }
+#define SEG_TL     { 0.f, 0.5f, 0.f, 1.f }
+#define SEG_TR     { 1.f, 0.5f, 1.f, 1.f }
+#define SEG_MID    { 0.f, 0.5f, 1.f, 0.5f }
+#define SEG_BL     { 0.f, 0.f, 0.f, 0.5f }
+#define SEG_BR     { 1.f, 0.f, 1.f, 0.5f }
+#define SEG_BOT    { 0.f, 0.f, 1.f, 0.f }
+
+static const glyph_seg GLYPH_0[] = { SEG_TOP, SEG_TL, SEG_TR, SEG_BL, SEG_BR, SEG_BOT };
+static const glyph_seg GLYPH_1[] = { SEG_TR, SEG_BR };
+static const glyph_seg GLYPH_2[] = { SEG_TOP, SEG_TR, SEG_MID, SEG_BL, SEG_BOT };
+static const glyph_seg GLYPH_3[] = { SEG_TOP, SEG_TR, SEG_MID, SEG_BR, SEG_BOT };
+static const glyph_seg GLYPH_4[] = { SEG_TL, SEG_TR, SEG_MID, SEG_BR };
+static const glyph_seg GLYPH_5[] = { SEG_TOP, SEG_TL, SEG_MID, SEG_BR, SEG_BOT };
+static const glyph_seg GLYPH_6[] = { SEG_TOP, SEG_TL, SEG_MID, SEG_BL, SEG_BR, SEG_BOT };
+static const glyph_seg GLYPH_7[] = { SEG_TOP, SEG_TR, SEG_BR };
+static const glyph_seg GLYPH_8[] = { SEG_TOP, SEG_TL, SEG_TR, SEG_MID, SEG_BL, SEG_BR, SEG_BOT };
+static const glyph_seg GLYPH_9[] = { SEG_TOP, SEG_TL, SEG_TR, SEG_MID, SEG_BR, SEG_BOT };
+/* A short stroke along the baseline -- a single point would vanish, since
+   everything here is drawn as GL_LINES. */
+static const glyph_seg GLYPH_DOT[] = { { 0.35f, 0.f, 0.65f, 0.f } };
+
+static const glyph_seg *const GLYPH_DIGITS[10] = {
+    GLYPH_0, GLYPH_1, GLYPH_2, GLYPH_3, GLYPH_4,
+    GLYPH_5, GLYPH_6, GLYPH_7, GLYPH_8, GLYPH_9
+};
+static const int GLYPH_DIGIT_NSEG[10] = { 6, 2, 5, 5, 4, 5, 6, 3, 7, 6 };
+
+/* Worst case for the readout: 5 characters ("999.9"), the widest of them
+   7 segments, 2 verts per segment. Rounded up so the shared label buffer
+   below has room for either user. */
+#define HUD_MAX_VERTS 128
+
 /* Ring i lies in the plane perpendicular to axis i, matching the sense in
    which rotation_x/y/z actually spin the model (see mat_rot_x/y/z above)
    -- so each ring visibly turns when its own slider moves, not the other
@@ -1008,6 +1052,41 @@ static int gizmo_append_glyph(label_vert *out, int count, const glyph_seg *segs,
         float y1 = cy + (segs[i].y1 - 0.5f) * size;
         out[count].x = x0; out[count].y = y0; out[count].r = r; out[count].g = g; out[count].b = b; count++;
         out[count].x = x1; out[count].y = y1; out[count].r = r; out[count].g = g; out[count].b = b; count++;
+    }
+    return count;
+}
+
+/* Lays a "%.1f" number out left-to-right from (x,y) as its left edge,
+   reusing gizmo_append_glyph for each character -- so the readout picks
+   up the same aspect correction the gizmo labels get, and reads as square
+   glyphs rather than stretched ones on a non-square display. Anything
+   that is not a digit or a point is skipped rather than drawn as a blank,
+   which keeps a stray character from punching a hole in the spacing.
+   Returns the new vertex count. */
+static int hud_append_number(label_vert *out, int count, double value,
+                             float x, float y, float size, float aspect,
+                             float r, float g, float b) {
+    /* Clamped before formatting, not after: a NaN or a wild value would
+       otherwise print more characters than the caller sized its buffer
+       for. NaN fails every comparison, so this is written to catch it
+       rather than to let it through. */
+    if (!(value >= 0.0)) value = 0.0;
+    if (value > 999.0) value = 999.0;
+    char buf[16];
+    snprintf(buf, sizeof buf, "%.1f", value);
+
+    const float w = size / aspect;          /* one glyph's on-screen width */
+    float cx = x + w * 0.5f;                /* gizmo_append_glyph centres */
+    for (const char *p = buf; *p; p++) {
+        if (*p == '.') {
+            count = gizmo_append_glyph(out, count, GLYPH_DOT, 1, cx, y, size, aspect, r, g, b);
+            cx += w * 0.55f;                /* a point needs less room than a digit */
+        } else if (*p >= '0' && *p <= '9') {
+            const int d = *p - '0';
+            count = gizmo_append_glyph(out, count, GLYPH_DIGITS[d], GLYPH_DIGIT_NSEG[d],
+                                       cx, y, size, aspect, r, g, b);
+            cx += w * 1.35f;                /* glyph width plus a gap */
+        }
     }
     return count;
 }
@@ -1723,7 +1802,12 @@ int main(void) {
     GLuint labelVao, labelVbo;
     glGenVertexArrays(1, &labelVao); glBindVertexArray(labelVao);
     glGenBuffers(1, &labelVbo); glBindBuffer(GL_ARRAY_BUFFER, labelVbo);
-    glBufferData(GL_ARRAY_BUFFER, GIZMO_LABEL_MAX_VERTS * sizeof(label_vert), NULL, GL_DYNAMIC_DRAW);
+    /* Shared by the gizmo's X/Y/Z labels and the frame-rate readout --
+       only one of them uploads at a time, so the buffer just has to be as
+       big as the larger of the two. */
+    glBufferData(GL_ARRAY_BUFFER,
+                 (GIZMO_LABEL_MAX_VERTS > HUD_MAX_VERTS ? GIZMO_LABEL_MAX_VERTS : HUD_MAX_VERTS)
+                     * sizeof(label_vert), NULL, GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(label_vert), (void *)0);
     glEnableVertexAttribArray(1);
@@ -1776,6 +1860,12 @@ int main(void) {
 
     /* ---- render loop ---- */
     double last_cal = 0, last_fps = now_sec();
+    /* Separate from the 5-second logging window above: the on-screen
+       readout needs to react while someone is watching it, but averaging
+       over a short window is what stops it flickering between two numbers
+       every frame. */
+    double hud_last = now_sec(), hud_fps = 0;
+    int hud_frames = 0;
     int frames = 0;
     /* Per-phase timing: with a vsync-locked flip it's otherwise impossible
        to tell "the GPU is busy" from "we're being paced", and those want
@@ -1992,6 +2082,30 @@ int main(void) {
             glDrawArrays(GL_LINES, 0, lc);
         }
 
+        /* ---- frame-rate readout: like the gizmo, drawn after the warp so
+           the keystone correction doesn't skew it -- it reports on the
+           renderer rather than being part of the projected picture, and a
+           warped number is only harder to read. Top-left, in the same
+           amber the admin panel uses for the web readout. Gated on its own
+           mapping.fps flag (see MAPPING_BOOLEAN in server.py), which the
+           browser backend has always honoured and this one previously
+           ignored entirely. ---- */
+        if (map_cur.fps_overlay) {
+            /* Display aspect, not the scene target's: this draws to the
+               default framebuffer, which is the full display even when
+               render_scale has shrunk the off-screen scene. */
+            const float hudAspect = (float)drm.mode.hdisplay / (float)drm.mode.vdisplay;
+            label_vert hudVerts[HUD_MAX_VERTS];
+            int hc = hud_append_number(hudVerts, 0, hud_fps,
+                                       -0.96f, 0.88f, 0.07f, hudAspect,
+                                       1.f, 0.75f, 0.2f);
+            glUseProgram(labelProg);
+            glBindVertexArray(labelVao);
+            glBindBuffer(GL_ARRAY_BUFFER, labelVbo);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, hc * sizeof(label_vert), hudVerts);
+            glDrawArrays(GL_LINES, 0, hc);
+        }
+
         glBindVertexArray(vao);   /* restore, matching pre-warp-pass state */
 
         glFinish();                       /* so the timing splits are real */
@@ -2004,6 +2118,12 @@ int main(void) {
         acc_present += now_sec() - tC;
 
         frames++;
+        hud_frames++;
+        if (now_sec() - hud_last >= 0.5) {
+            hud_fps = hud_frames / (now_sec() - hud_last);
+            hud_frames = 0;
+            hud_last = now_sec();
+        }
         if (now_sec() - last_fps >= 5.0) {
             double el = now_sec() - last_fps;
             printf("[fps] %.1f  (per frame: video %.1fms, draw %.1fms, present %.1fms)\n",
