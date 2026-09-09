@@ -387,40 +387,6 @@ static void page_flip_handler(int fd, unsigned frame, unsigned sec, unsigned use
     *(bool *)data = false;
 }
 
-/* Periodically dumps the just-rendered default framebuffer -- the actual
-   physical output, keystone warp and all -- to a tmpfs file server.py's
-   /api/projection/snapshot.jpg endpoint reads and JPEG-encodes on request,
-   for the admin panel's browser-tab mirror of the real HDMI output.
-   Throttled well below frame rate: this is for a human glancing at a
-   second tab, not a video stream, and glReadPixels + a file write both
-   cost real time taken from the render loop. Written to a .tmp path and
-   renamed into place so a concurrent read (from the Flask process, a
-   separate program entirely) never sees a partial write -- rename() is
-   atomic within the same filesystem, which tmpfs is. */
-static void snapshot_maybe_capture(double now, int w, int h) {
-    static double last = 0;
-    static unsigned char *buf = NULL;
-    static size_t bufsz = 0;
-    if (now - last < 0.3) return;
-    last = now;
-    size_t need = (size_t)w * (size_t)h * 4;
-    if (bufsz != need) { free(buf); buf = malloc(need); bufsz = need; }
-    if (!buf) return;
-    glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, buf);
-    FILE *f = fopen("/dev/shm/zealandata_snapshot.raw.tmp", "wb");
-    if (!f) return;
-    fwrite(buf, 1, need, f);
-    fclose(f);
-    rename("/dev/shm/zealandata_snapshot.raw.tmp", "/dev/shm/zealandata_snapshot.raw");
-    /* Dimensions in a tiny sidecar rather than hardcoded on the reader's
-       side, since they're whatever the connected display's DRM mode is. */
-    f = fopen("/dev/shm/zealandata_snapshot.dims.tmp", "w");
-    if (!f) return;
-    fprintf(f, "%d %d\n", w, h);
-    fclose(f);
-    rename("/dev/shm/zealandata_snapshot.dims.tmp", "/dev/shm/zealandata_snapshot.dims");
-}
-
 static void present(void) {
     CHECK(eglSwapBuffers(egl_dpy, egl_surf), "eglSwapBuffers");
     struct gbm_bo *next = gbm_surface_lock_front_buffer(gbm_surf);
@@ -2120,8 +2086,6 @@ int main(void) {
 
         glFinish();                       /* so the timing splits are real */
         acc_draw += now_sec() - tB;
-
-        snapshot_maybe_capture(now_sec(), drm.mode.hdisplay, drm.mode.vdisplay);
 
         double tC = now_sec();
         present();

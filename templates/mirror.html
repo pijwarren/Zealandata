@@ -13,65 +13,119 @@
       background: #000;
       overflow: hidden;
     }
-    #shot {
+    /* The canvas's offsetParent, which is what calibration_preview.js
+       positions the axis labels against -- so this has to establish a
+       containing block even though it fills the window. */
+    #stage {
       position: fixed;
       inset: 0;
+    }
+    #stage canvas {
+      display: block;
       width: 100%;
       height: 100%;
-      object-fit: contain;
       background: #000;
     }
-    /* Only shown until the first snapshot lands, or if the feed drops out
-       (native backend not running / not producing snapshots yet) -- the
-       image itself just keeps showing its last frame otherwise, same as
-       any other stalled <img>. */
+    /* Same treatment as the admin panel's preview lightbox (see
+       style.css's .preview-lightbox__axis-label): the module sets left/top
+       and opacity itself, so it only needs positioning and colour here. */
+    .axis-label {
+      position: absolute; top: 0; left: 0; z-index: 1;
+      transform: translate(-50%, -50%);
+      font-size: 13px; font-weight: 700;
+      font-family: -apple-system, system-ui, sans-serif;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+      pointer-events: none; opacity: 0;
+    }
+    .axis-label--x { color: #ff4d4d; }
+    .axis-label--y { color: #4dff4d; }
+    .axis-label--z { color: #598cff; }
     #status {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      position: absolute; inset: 0; z-index: 2;
+      display: flex; align-items: center; justify-content: center;
       color: #9aa0a6;
       font: 500 16px/1.4 -apple-system, system-ui, sans-serif;
-      text-align: center;
-      padding: 24px;
+      text-align: center; padding: 24px;
+      background: rgba(0, 0, 0, 0.55);
     }
-    .hidden {
-      display: none !important;
-    }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <img id="shot" class="hidden" alt="Projector output" />
-  <div id="status">Waiting for the projector output&hellip;</div>
-  <script>
-    // Polling a still JPEG rather than a real video stream -- this is for
-    // glancing at what's on the projector from a second tab, not frame-
-    // accurate viewing, and it reuses the snapshot ffmpeg already has to
-    // encode per request (see server.py's api_projection_snapshot) rather
-    // than standing up real streaming infrastructure for that.
-    const POLL_MS = 400;
-    const img = document.getElementById("shot");
-    const status = document.getElementById("status");
-    let everLoaded = false;
+  <div id="stage">
+    <canvas id="mirrorCanvas" width="1280" height="720"></canvas>
+    <span class="axis-label axis-label--x" id="labelX">X</span>
+    <span class="axis-label axis-label--y" id="labelY">Y</span>
+    <span class="axis-label axis-label--z" id="labelZ">Z</span>
+    <div id="status">Loading the projection model&hellip;</div>
+  </div>
+  <script type="module">
+    // Renders the projector's output client-side, through the very same
+    // module the admin panel's preview lightbox uses (see
+    // static/calibration_preview.js, itself a line-for-line port of
+    // projector.c). This page used to poll a JPEG of the Pi's real
+    // framebuffer instead, which cost the projector a full 1080p
+    // glReadPixels every 0.3s plus an ffmpeg encode per poll -- measured
+    // at ~16% of its frame rate, and paid whether or not anyone had this
+    // page open. Doing the drawing on the viewing device instead costs the
+    // Pi nothing but the small mapping poll below.
+    //
+    // The tradeoff, worth being honest about: this is a reconstruction
+    // rather than a photograph of the output, so it shows the calibrated
+    // model with the idle image on it, not whatever video is playing right
+    // now, and it can only be as accurate as the port stays. That suits
+    // what this is for -- checking alignment while calibrating.
+    import * as preview from "/static/calibration_preview.js";
 
-    function poll() {
-      const probe = new Image();
-      probe.onload = () => {
-        img.src = probe.src;
-        img.classList.remove("hidden");
-        status.classList.add("hidden");
-        everLoaded = true;
-        setTimeout(poll, POLL_MS);
-      };
-      probe.onerror = () => {
-        if (!everLoaded) {
-          status.textContent = "No snapshot yet -- is the native projector service running?";
-        }
-        setTimeout(poll, POLL_MS);
-      };
-      probe.src = "/api/projection/snapshot.jpg?t=" + Date.now();
+    const statusEl = document.getElementById("status");
+    const canvas = document.getElementById("mirrorCanvas");
+    const labels = {
+      x: document.getElementById("labelX"),
+      y: document.getElementById("labelY"),
+      z: document.getElementById("labelZ"),
+    };
+
+    // Matches the admin panel's own calibration poll. The payload is a
+    // small flat JSON object and the client is on the same LAN, so this is
+    // orders of magnitude cheaper than the snapshot feed it replaces.
+    const POLL_MS = 400;
+    let lastSerialised = null;
+
+    async function fetchMapping() {
+      const r = await fetch("/api/mapping", { cache: "no-store" });
+      if (!r.ok) throw new Error("mapping unavailable (" + r.status + ")");
+      return r.json();
     }
+
+    // Re-render only when something actually changed: the module draws on
+    // demand rather than in a rAF loop, so an unchanged poll should cost
+    // the viewing device nothing either.
+    function apply(mapping) {
+      const serialised = JSON.stringify(mapping);
+      if (serialised === lastSerialised) return;
+      lastSerialised = serialised;
+      preview.requestRender(mapping);
+    }
+
+    async function poll() {
+      try {
+        const mapping = await fetchMapping();
+        if (!preview.isReady()) {
+          await preview.init(canvas, labels, statusEl, mapping);
+          lastSerialised = JSON.stringify(mapping);
+        } else {
+          apply(mapping);
+          // init() clears the status itself on success; this covers
+          // recovering from a failed poll after we were already running.
+          statusEl.classList.add("hidden");
+        }
+      } catch (err) {
+        statusEl.textContent = "Waiting for the server… (" + err.message + ")";
+        statusEl.classList.remove("hidden");
+      }
+      setTimeout(poll, POLL_MS);
+    }
+
     poll();
   </script>
 </body>
