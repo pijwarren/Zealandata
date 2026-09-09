@@ -282,8 +282,15 @@ button:focus-visible, .card:focus-visible{
      actually sits -- otherwise it'd land to the right of the row
      heading above it instead of flush with it (and with the topbar/
      category-nav, which all share the same var(--page-inset) inset). */
-  padding:36px 32px 64px; margin:0 -32px; scrollbar-width:thin;
+  padding:36px 32px 64px; margin:0 -32px;
+  /* Scrollbar hidden, scrolling itself untouched -- a bar sitting under
+     every row competed with the cards for attention, and the row's own
+     arrow buttons (.row__arrow) already say the row scrolls. Same pair
+     .dock__docs uses: scrollbar-width covers Firefox, the ::-webkit rule
+     covers Chrome/Safari/Edge. */
+  scrollbar-width:none;
 }
+.row__scroller::-webkit-scrollbar{ display:none; }
 .row__scroller .card{ flex:0 0 300px; }
 
 .row__viewport{ position:relative; }
