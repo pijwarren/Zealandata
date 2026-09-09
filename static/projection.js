@@ -70,12 +70,16 @@ let modelVertexCount = null;
 // Only ever lights the Lambert (calibration) material -- the unlit
 // projection material ignores them entirely, so these can just stay in
 // the scene rather than being added/removed as the toggle flips.
-// Deliberately oblique rather than straight down the camera axis: a light
-// parallel to the view direction flattens relief out again, which is the
-// exact problem the toggle exists to solve.
+// Parked on the camera axis (see fitOrthoCamera, which re-aims it every
+// time the camera is fitted) so the shading matches what the projector
+// itself "sees" rather than implying a light off to one side. The
+// position here is only a stand-in for before the model has loaded.
 const calibrationKeyLight = new THREE.DirectionalLight(0xffffff, 2.2);
-calibrationKeyLight.position.set(-1, 1.6, 1);
+calibrationKeyLight.position.set(0, 0, 1);
 scene.add(calibrationKeyLight);
+// A DirectionalLight shines from its position towards its target, and the
+// target only counts once it's in the scene graph itself.
+scene.add(calibrationKeyLight.target);
 scene.add(new THREE.AmbientLight(0xffffff, 0.55));
 
 function fitOrthoCamera(box) {
@@ -103,6 +107,11 @@ function fitOrthoCamera(box) {
   camera.top = halfH;
   camera.bottom = -halfH;
   camera.lookAt(center);
+  // Keep the calibration key light coincident with the camera, pointing
+  // down the same axis at the same centre.
+  calibrationKeyLight.position.copy(camera.position);
+  calibrationKeyLight.target.position.copy(center);
+  calibrationKeyLight.target.updateMatrixWorld();
   camera.near = 0.01;
   camera.far = Math.max(size.x, size.y, size.z) * 10 + 10;
   camera.updateProjectionMatrix();
