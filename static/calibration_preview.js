@@ -15,6 +15,9 @@
 const MODEL_URL = "/api/projection/model";
 const TEXTURE_URL = "/api/loading-image";
 
+// Mirrors projector.c's SCALE_BASELINE exactly -- see its comment.
+const SCALE_BASELINE = 1.82;
+
 // The model's own fixed 90-degree-Z/180-degree-X OBJ-axis correction is
 // baked directly into the vertex data by parseObj below (mirroring
 // projector.c's load_obj -- see its comment there for why this moved out
@@ -546,7 +549,7 @@ function buildMatrices(mapping) {
   const mRx = matRotX((Number(mapping.rotation_x) * Math.PI) / 180);
   const mRy = matRotY((Number(mapping.rotation_y) * Math.PI) / 180);
   const mRz = matRotZ((Number(mapping.rotation_z) * Math.PI) / 180);
-  const mS = matScale(Number(mapping.scale) || 1);
+  const mS = matScale((Number(mapping.scale) || 1) * SCALE_BASELINE);
   const mT = matTranslate(Number(mapping.offset_x) || 0, Number(mapping.offset_y) || 0, 0);
 
   let tmp = matMul(mRy, mRz);

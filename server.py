@@ -80,6 +80,11 @@ PROJECTION_OBJ_PATH = os.environ.get(
 )
 MAPPING_FILE = os.path.join(BASE_DIR, "mapping.json")
 MAPPING_NUMERIC = {
+    # A multiplier on top of projector.c's SCALE_BASELINE constant, not an
+    # absolute size -- 1.0 means "however the model was last actually sized
+    # against the physical print", so this stays a round number to nudge
+    # from instead of some arbitrary fitted value. If the baseline is ever
+    # recalibrated (see that constant's comment), this goes back to 1.0.
     "scale": 1.0,
     # Distance from the model to the (virtual) projector, in the same
     # normalized units the model is fitted into (roughly -1..1 per axis

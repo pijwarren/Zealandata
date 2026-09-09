@@ -75,6 +75,16 @@ static double now_sec(void) {
 /* Mirrors mapping.json, which the admin panel writes. Defaults match
    DEFAULT_MAPPING in server.py so a missing file behaves identically to a
    freshly-reset one. */
+/* The "scale" calibration value is a multiplier on top of this, not an
+   absolute size -- so the slider reads as "1.0 = however the model was
+   last actually sized against the physical print", not some arbitrary
+   fixed unit. Recalibrated 2026-09-09 against the physical setup at the
+   time (scale=1.82) so operators nudge from a round 1.0 instead of that
+   number; if the model or print changes enough that even that no longer
+   reads as roughly right, fold whatever "scale" ends up at back into this
+   constant and reset the mapping value to 1.0 again. */
+static const float SCALE_BASELINE = 1.82f;
+
 struct mapping {
     float scale, rot_x, rot_y, rot_z, off_x, off_y, render_scale;
     /* Distance from the model to the virtual projector -- see server.py's
@@ -527,9 +537,9 @@ static vec3 *m_nrm = NULL;
 static unsigned *m_idx = NULL;
 static size_t m_nvert = 0, m_nidx = 0;
 /* Full (not half) extent of the normalised, centred mesh -- set once at
-   the end of load_obj. Used every frame to re-fit the video onto exactly
-   the model's own footprint regardless of scale/rotation/offset; see the
-   render loop's uv_box_fit comment. */
+   the end of load_obj. Used every frame as uModelSize, for mapping the
+   video onto exactly the model's own local footprint -- see VS_SRC's
+   comment. */
 static vec3 m_size;
 
 /* The relief comes out of the OBJ inverted -- what should stand proud sits
@@ -1786,7 +1796,7 @@ int main(void) {
         mat_rot_x(mRx, map_cur.rot_x * (float)M_PI / 180.f);
         mat_rot_y(mRy, map_cur.rot_y * (float)M_PI / 180.f);
         mat_rot_z(mRz, map_cur.rot_z * (float)M_PI / 180.f);
-        mat_scale(mS, map_cur.scale);
+        mat_scale(mS, map_cur.scale * SCALE_BASELINE);
         mat_translate(mT, map_cur.off_x, map_cur.off_y, 0);
 
         /* rotation_z applied innermost (before x/y) so it spins the
