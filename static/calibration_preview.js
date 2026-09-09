@@ -18,7 +18,7 @@ const TEXTURE_URL = "/api/loading-image";
 // The model's own fixed 90-degree-Z/180-degree-X OBJ-axis correction is
 // baked directly into the vertex data by parseObj below (mirroring
 // projector.c's load_obj -- see its comment there for why this moved out
-// of a per-frame matrix). The video's own separate fixed 90-degree-CCW
+// of a per-frame matrix). The video's own separate fixed vertical-flip
 // orientation correction is baked directly into MODEL_VS below instead
 // (see its comment) -- ported from projector.c's VS_SRC the same way.
 
@@ -60,10 +60,10 @@ void main(){
   // box", same as the old static per-vertex UV, so scale/rotation/offset
   // stay independent of the video's own framing.
   uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);
-  // Fixed 90-degree counter-clockwise turn (as seen on the projector) so
-  // the video lands right-way-up on this print -- ported from
-  // projector.c's VS_SRC; edit both together if it ever needs to change.
-  vUV = vec2(1.0 - uv.y, uv.x);
+  // Fixed vertical flip so the video lands right-way-up on this print --
+  // ported from projector.c's VS_SRC (see its comment for why); edit both
+  // together if it ever needs to change.
+  vUV = vec2(uv.x, 1.0 - uv.y);
   vNrm = mat3(uModel) * aNrm;
 }`;
 

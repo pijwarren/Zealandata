@@ -533,14 +533,16 @@ static const bool INVERT_RELIEF = false;
    matrix -- these two constants used to drive it there. */
 
 /* How the video needs turning to land the right way up on the print --
-   confirmed live against it: a 90-degree turn, counter-clockwise as
-   actually seen on the projector (no horizontal flip needed on top of
-   that). Fixed to the physical print, not a calibration slider, so it's
-   baked directly into VS_SRC's vUV computation below rather than a C
+   confirmed live against it: just a vertical flip, no rotation and no
+   horizontal flip on top of that (clip-space Y and a texture's V both run
+   opposite the screen's downward row order, which is what this corrects
+   for once uMVP carries the model's full real orientation -- see its own
+   comment). Fixed to the physical print, not a calibration slider, so
+   it's baked directly into VS_SRC's vUV computation below rather than a C
    constant here -- this used to feed a CPU-side orient_uv() step instead,
    back when vUV came from a static per-vertex attribute; now that it's
    computed from the live clip-space position every frame, the equivalent
-   rotation has to happen in the shader too. Unrelated to the OBJ's own
+   correction has to happen in the shader too. Unrelated to the OBJ's own
    axis correction above -- this is purely about which edge of the video
    frame the print calls "up". If this ever needs to change, edit the
    GLSL directly. */
@@ -762,12 +764,15 @@ static const char *VS_SRC =
        box", same as the old static per-vertex UV, so scale/rotation/
        offset stay independent of the video's own framing. */
     "  uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);\n"
-    /* Fixed 90-degree counter-clockwise turn (as seen on the projector) so
-       the video lands right-way-up on this print -- see load_obj's "video
-       needs turning" comment on why this lives here now instead of a
-       C-side orient_uv() constant. Edit this directly if that ever needs
-       to change. */
-    "  vUV = vec2(1.0 - uv.y, uv.x);\n"
+    /* Fixed vertical flip so the video lands right-way-up on this print --
+       needed because gl_Position's clip-space Y and a texture's V both run
+       opposite the screen's downward row order, and uMVP's baked-in model
+       orientation (see load_obj) already accounts for everything else.
+       Confirmed live against the print: no rotation or horizontal flip
+       needed on top of this. See load_obj's "video needs turning" comment
+       for why this lives here rather than a C-side orient_uv() constant.
+       Edit this directly if that ever needs to change. */
+    "  vUV = vec2(uv.x, 1.0 - uv.y);\n"
     "  vNrm = mat3(uModel) * aNrm;\n"
     "}\n";
 
