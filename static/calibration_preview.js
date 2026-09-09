@@ -36,6 +36,13 @@ uniform mat4 uModel;
 // see buildMatrices' uvBoxMin/Max comment.
 uniform vec2 uUVBoxMin;
 uniform vec2 uUVBoxMax;
+// Manual video orientation -- see server.py's MAPPING_NUMERIC/BOOLEAN
+// comments on why this is plain user input rather than derived from the
+// model/projector geometry. uVidRotation is radians, clockwise as seen on
+// the projector.
+uniform float uVidRotation;
+uniform bool uVidFlipH;
+uniform bool uVidFlipV;
 out vec2 vUV;
 out vec3 vNrm;
 void main(){
@@ -60,10 +67,16 @@ void main(){
   // box", same as the old static per-vertex UV, so scale/rotation/offset
   // stay independent of the video's own framing.
   uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);
-  // Fixed vertical flip so the video lands right-way-up on this print --
-  // ported from projector.c's VS_SRC (see its comment for why); edit both
-  // together if it ever needs to change.
-  vUV = vec2(uv.x, 1.0 - uv.y);
+  // Manual video orientation -- ported from projector.c's VS_SRC (see its
+  // comment for why this is a live control rather than a fixed constant);
+  // edit both together if the underlying transform ever needs to change.
+  vec2 uvc = uv - 0.5;
+  float rc = cos(uVidRotation), rs = sin(uVidRotation);
+  uvc = vec2(uvc.x * rc - uvc.y * rs, uvc.x * rs + uvc.y * rc);
+  uv = uvc + 0.5;
+  if (uVidFlipH) uv.x = 1.0 - uv.x;
+  if (uVidFlipV) uv.y = 1.0 - uv.y;
+  vUV = uv;
   vNrm = mat3(uModel) * aNrm;
 }`;
 
@@ -615,6 +628,12 @@ function render(mapping) {
   setUniformMatrix4(modelProg, "uModel", modelM);
   gl.uniform2f(gl.getUniformLocation(modelProg, "uUVBoxMin"), uvBoxMin[0], uvBoxMin[1]);
   gl.uniform2f(gl.getUniformLocation(modelProg, "uUVBoxMax"), uvBoxMax[0], uvBoxMax[1]);
+  gl.uniform1f(
+    gl.getUniformLocation(modelProg, "uVidRotation"),
+    ((Number(mapping.video_rotation) || 0) * Math.PI) / 180,
+  );
+  gl.uniform1i(gl.getUniformLocation(modelProg, "uVidFlipH"), mapping.video_flip_h ? 1 : 0);
+  gl.uniform1i(gl.getUniformLocation(modelProg, "uVidFlipV"), mapping.video_flip_v ? 1 : 0);
   // Unlike the native renderer, this preview always shades and always
   // shows the gizmo -- it's a calibration aid, not the real projected
   // picture, so there's no case where the relief/orientation cues showing

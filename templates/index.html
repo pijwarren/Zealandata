@@ -205,6 +205,20 @@
         <button type="button" class="mapping-row__step" data-target="mappingOffsetY" data-dir="1" aria-label="Increase offset Y">+</button>
       </div>
     </div>
+    <label class="mapping-subheading">Video orientation</label>
+    <div class="mapping-row">
+      <span class="mapping-row__label">Rotation</span>
+      <input type="range" id="mappingVideoRotation" min="0" max="360" step="1" value="0">
+      <div class="mapping-row__stepper">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="-1" aria-label="Decrease rotation">−</button>
+        <input type="number" class="mapping-row__number" id="mappingVideoRotationNumber" min="0" max="360" step="1" value="0">
+        <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="1" aria-label="Increase rotation">+</button>
+      </div>
+    </div>
+    <div class="mapping-actions">
+      <button type="button" class="btn btn-secondary" id="mappingFlipHBtn">Flip video horizontally</button>
+      <button type="button" class="btn btn-secondary" id="mappingFlipVBtn">Flip video vertically</button>
+    </div>
     <label class="mapping-subheading">Video stretch &amp; offset</label>
     <div class="mapping-row">
       <span class="mapping-row__label">Left edge</span>

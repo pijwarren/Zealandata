@@ -131,6 +131,14 @@ MAPPING_NUMERIC = {
     "video_right": 1.0,
     "video_top": 0.0,
     "video_bottom": 1.0,
+    # Manual video orientation, on top of everything above: degrees
+    # clockwise (as seen on the projector), independent of the flip
+    # switches below in MAPPING_BOOLEAN so any combination is reachable.
+    # There's no way to derive the right values automatically -- they
+    # depend on how a given video file happened to be authored/exported --
+    # so this is a "nudge until it looks right against the model" control
+    # like the rest of calibration, not something with a computable default.
+    "video_rotation": 0.0,
     # Fraction of the display's native resolution the WebGL canvas is
     # actually drawn at (it's scaled back up to fill the screen). The Pi's
     # GPU is fill-rate bound at 1080p, so dropping this is the main lever
@@ -174,6 +182,12 @@ MAPPING_BOOLEAN = {
     # what the Quality slider or a re-encoded source just bought. Off by
     # default like the others: it's an overlay on the projected image.
     "fps": False,
+    # Manual video orientation switches -- see video_rotation above in
+    # MAPPING_NUMERIC. Defaulted to match the fixed correction these
+    # replaced (a vertical flip only), so introducing these controls
+    # doesn't itself change anything already dialled in.
+    "video_flip_h": False,
+    "video_flip_v": True,
 }
 DEFAULT_MAPPING = {**MAPPING_NUMERIC, **MAPPING_BOOLEAN}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts"}

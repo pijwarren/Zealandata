@@ -104,11 +104,21 @@ struct mapping {
        that side while the opposite edge stays put. See the fragment
        shader's uv remap for how these turn into the actual sample. */
     float vid_left, vid_right, vid_top, vid_bottom;
+    /* Manual video orientation -- there's no way to derive these
+       automatically (they depend on how a given video file happened to be
+       authored), so unlike everything else above this is plain user input,
+       not something computed from the model/projector geometry. Applied
+       in VS_SRC after the box-fit re-mapping: rotate (degrees clockwise as
+       seen on the projector) about the video's own center, then flip --
+       see server.py's MAPPING_NUMERIC/BOOLEAN comments. */
+    float vid_rotation;
+    bool vid_flip_h, vid_flip_v;
 };
 static struct mapping map_cur = {
     1, 0, 0, 0, 0, 0, 1, 0.6f, 0, 0, false, false,
     0, 0, 0, 0, 0, 0, 0, 0,
     0, 1, 0, 1,
+    0, false, true,
 };
 static const char *mapping_path = "/home/pj/zealandata/mapping.json";
 /* Sub-second resolution matters here: st_mtime alone is whole seconds, so
@@ -180,6 +190,9 @@ static void mapping_reload(void) {
     json_num(buf, "video_right", &map_cur.vid_right);
     json_num(buf, "video_top", &map_cur.vid_top);
     json_num(buf, "video_bottom", &map_cur.vid_bottom);
+    json_num(buf, "video_rotation", &map_cur.vid_rotation);
+    json_bool(buf, "video_flip_h", &map_cur.vid_flip_h);
+    json_bool(buf, "video_flip_v", &map_cur.vid_flip_v);
     if (map_cur.render_scale < 0.25f) map_cur.render_scale = 0.25f;
     if (map_cur.render_scale > 1.0f) map_cur.render_scale = 1.0f;
     /* Below this the near plane (see the render loop's frustum setup)
@@ -187,14 +200,15 @@ static void mapping_reload(void) {
     if (map_cur.throw_dist < 0.3f) map_cur.throw_dist = 0.3f;
     printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f throw_off=(%.2f,%.2f) shading=%d gizmo=%d "
            "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f) "
-           "video_edges=(%.3f,%.3f,%.3f,%.3f)\n",
+           "video_edges=(%.3f,%.3f,%.3f,%.3f) video_rotation=%.0f video_flip=(%d,%d)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
            map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.throw_dist,
            map_cur.throw_off_x, map_cur.throw_off_y,
            map_cur.shading, map_cur.gizmo,
            map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
            map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y,
-           map_cur.vid_left, map_cur.vid_right, map_cur.vid_top, map_cur.vid_bottom);
+           map_cur.vid_left, map_cur.vid_right, map_cur.vid_top, map_cur.vid_bottom,
+           map_cur.vid_rotation, map_cur.vid_flip_h, map_cur.vid_flip_v);
 }
 
 /* ============================================================ DRM / KMS == */
@@ -732,6 +746,13 @@ static const char *VS_SRC =
        see the render loop's uvBoxMin/Max comment. */
     "uniform vec2 uUVBoxMin;\n"
     "uniform vec2 uUVBoxMax;\n"
+    /* Manual video orientation -- see server.py's MAPPING_NUMERIC/BOOLEAN
+       comments on why this is plain user input rather than something
+       derived from the model/projector geometry like everything else
+       here. uVidRotation is radians, clockwise as seen on the projector. */
+    "uniform float uVidRotation;\n"
+    "uniform bool uVidFlipH;\n"
+    "uniform bool uVidFlipV;\n"
     "out vec2 vUV;\n"
     "out vec3 vNrm;\n"
     "void main(){\n"
@@ -764,15 +785,22 @@ static const char *VS_SRC =
        box", same as the old static per-vertex UV, so scale/rotation/
        offset stay independent of the video's own framing. */
     "  uv = (uv - uUVBoxMin) / (uUVBoxMax - uUVBoxMin);\n"
-    /* Fixed vertical flip so the video lands right-way-up on this print --
-       needed because gl_Position's clip-space Y and a texture's V both run
-       opposite the screen's downward row order, and uMVP's baked-in model
-       orientation (see load_obj) already accounts for everything else.
-       Confirmed live against the print: no rotation or horizontal flip
-       needed on top of this. See load_obj's "video needs turning" comment
-       for why this lives here rather than a C-side orient_uv() constant.
-       Edit this directly if that ever needs to change. */
-    "  vUV = vec2(uv.x, 1.0 - uv.y);\n"
+    /* Manual video orientation: how a given video file needs turning to
+       land the right way up on this print isn't something derivable from
+       the model/projector geometry -- it depends on how that file happened
+       to be authored/exported -- so this is plain operator-facing
+       calibration (the "Video rotation/flip" admin controls), not a fixed
+       shader constant like earlier versions had. Rotate about the video's
+       own center first, then flip, so the two controls stay visually
+       independent (e.g. flipping doesn't also require re-finding the
+       rotation angle). */
+    "  vec2 uvc = uv - 0.5;\n"
+    "  float rc = cos(uVidRotation), rs = sin(uVidRotation);\n"
+    "  uvc = vec2(uvc.x * rc - uvc.y * rs, uvc.x * rs + uvc.y * rc);\n"
+    "  uv = uvc + 0.5;\n"
+    "  if (uVidFlipH) uv.x = 1.0 - uv.x;\n"
+    "  if (uVidFlipV) uv.y = 1.0 - uv.y;\n"
+    "  vUV = uv;\n"
     "  vNrm = mat3(uModel) * aNrm;\n"
     "}\n";
 
@@ -1588,6 +1616,9 @@ int main(void) {
     GLint uModel = glGetUniformLocation(prog, "uModel");
     GLint uUVBoxMin = glGetUniformLocation(prog, "uUVBoxMin");
     GLint uUVBoxMax = glGetUniformLocation(prog, "uUVBoxMax");
+    GLint uVidRotation = glGetUniformLocation(prog, "uVidRotation");
+    GLint uVidFlipH = glGetUniformLocation(prog, "uVidFlipH");
+    GLint uVidFlipV = glGetUniformLocation(prog, "uVidFlipV");
     GLint uShading = glGetUniformLocation(prog, "uShading");
     GLint uVideoEdgeLT = glGetUniformLocation(prog, "uVideoEdgeLT");
     GLint uVideoEdgeRB = glGetUniformLocation(prog, "uVideoEdgeRB");
@@ -1871,6 +1902,9 @@ int main(void) {
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
         glUniform2f(uUVBoxMin, uvBoxMinX, uvBoxMinY);
         glUniform2f(uUVBoxMax, uvBoxMaxX, uvBoxMaxY);
+        glUniform1f(uVidRotation, map_cur.vid_rotation * (float)M_PI / 180.f);
+        glUniform1i(uVidFlipH, map_cur.vid_flip_h ? 1 : 0);
+        glUniform1i(uVidFlipV, map_cur.vid_flip_v ? 1 : 0);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         glUniform2f(uVideoEdgeLT, map_cur.vid_left, map_cur.vid_top);
         glUniform2f(uVideoEdgeRB, map_cur.vid_right, map_cur.vid_bottom);

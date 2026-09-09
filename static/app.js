@@ -38,6 +38,8 @@ const previewLabelZ = document.getElementById("previewLabelZ");
 const mappingField = document.getElementById("mappingField");
 const mappingShadingBtn = document.getElementById("mappingShadingBtn");
 const mappingFpsBtn = document.getElementById("mappingFpsBtn");
+const mappingFlipHBtn = document.getElementById("mappingFlipHBtn");
+const mappingFlipVBtn = document.getElementById("mappingFlipVBtn");
 const mappingGridcheckBtn = document.getElementById("mappingGridcheckBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
 const pinScrim = document.getElementById("pinScrim");
@@ -824,6 +826,11 @@ let mappingShadingEnabled = false;
 // loop is achieving, which the preview canvas -- a different renderer on
 // a different machine -- can't stand in for. So it's output-only.
 let mappingFpsEnabled = false;
+// Manual video orientation switches -- see server.py's MAPPING_BOOLEAN
+// comment on why these are plain operator-facing controls rather than
+// something computed automatically.
+let mappingFlipHEnabled = false;
+let mappingFlipVEnabled = false;
 
 // Each slider is paired with a number input (typed entry) and a pair of
 // +/- buttons (nudge by the slider's own step) -- driven off this table
@@ -838,6 +845,7 @@ const MAPPING_CONTROLS = [
   { key: "rotation_z", range: "mappingRotationZ", number: "mappingRotationZNumber", decimals: 0 },
   { key: "offset_x", range: "mappingOffsetX", number: "mappingOffsetXNumber", decimals: 2 },
   { key: "offset_y", range: "mappingOffsetY", number: "mappingOffsetYNumber", decimals: 2 },
+  { key: "video_rotation", range: "mappingVideoRotation", number: "mappingVideoRotationNumber", decimals: 0 },
   { key: "video_left", range: "mappingVideoLeft", number: "mappingVideoLeftNumber", decimals: 3 },
   { key: "video_right", range: "mappingVideoRight", number: "mappingVideoRightNumber", decimals: 3 },
   { key: "video_top", range: "mappingVideoTop", number: "mappingVideoTopNumber", decimals: 3 },
@@ -874,6 +882,10 @@ function paintMappingControls(mapping) {
   previewGizmoBtn.textContent = previewGizmoEnabled ? "Hide preview gizmo" : "Show preview gizmo";
   mappingFpsEnabled = !!mapping.fps;
   mappingFpsBtn.textContent = mappingFpsEnabled ? "Hide FPS on output" : "Show FPS on output";
+  mappingFlipHEnabled = !!mapping.video_flip_h;
+  mappingFlipHBtn.textContent = mappingFlipHEnabled ? "Un-flip video horizontally" : "Flip video horizontally";
+  mappingFlipVEnabled = !!mapping.video_flip_v;
+  mappingFlipVBtn.textContent = mappingFlipVEnabled ? "Un-flip video vertically" : "Flip video vertically";
   notifyPreview();
 }
 
@@ -890,7 +902,12 @@ let previewLoadPromise = null;
 let previewGizmoEnabled = false;
 
 function currentMappingSnapshot() {
-  const snap = { shading: mappingShadingEnabled, gizmo: previewGizmoEnabled };
+  const snap = {
+    shading: mappingShadingEnabled,
+    gizmo: previewGizmoEnabled,
+    video_flip_h: mappingFlipHEnabled,
+    video_flip_v: mappingFlipVEnabled,
+  };
   MAPPING_CONTROLS.forEach(({ key, rangeEl }) => { snap[key] = Number(rangeEl.value); });
   return snap;
 }
@@ -1070,6 +1087,28 @@ mappingFpsBtn.addEventListener("click", async () => {
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
 });
+
+mappingFlipHBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  const res = await fetch("/api/mapping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, video_flip_h: !mappingFlipHEnabled }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.error) paintMappingControls(data);
+});
+
+mappingFlipVBtn.addEventListener("click", async () => {
+  if (!adminPin) return;
+  const res = await fetch("/api/mapping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ pin: adminPin, video_flip_v: !mappingFlipVEnabled }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.error) paintMappingControls(data);
+});
 let gridcheckActive = false;
 function paintGridcheckBtn(active) {
   gridcheckActive = active;
@@ -1098,6 +1137,7 @@ mappingResetBtn.addEventListener("click", async () => {
   if (!adminPin) return;
   const defaults = {
     scale: 1, rotation_x: 0, rotation_y: 0, rotation_z: 0, offset_x: 0, offset_y: 0,
+    video_rotation: 0, video_flip_h: false, video_flip_v: true,
     video_left: 0, video_right: 1, video_top: 0, video_bottom: 1,
     keystone_tl_x: 0, keystone_tl_y: 0, keystone_tr_x: 0, keystone_tr_y: 0,
     keystone_bl_x: 0, keystone_bl_y: 0, keystone_br_x: 0, keystone_br_y: 0,
