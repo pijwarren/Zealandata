@@ -1978,6 +1978,15 @@ int main(void) {
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
+        /* The print is a closed slab, so its back and underside face away
+           from the projector and can never be seen -- rasterising them was
+           costing about 1.4ms a frame for nothing. Safe to cull with GL's
+           default front-facing sense because winding survives everything
+           this pipeline does to the mesh: INVERT_RELIEF is false, and the
+           fixed OBJ-axis correction in load_obj is a rotation rather than a
+           reflection (see its comment), so triangles reach here wound the
+           way the file had them. */
+        glEnable(GL_CULL_FACE);
         glUseProgram(prog);
         glUniformMatrix4fv(uMVP, 1, GL_FALSE, mvp);
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
