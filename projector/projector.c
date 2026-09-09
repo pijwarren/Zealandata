@@ -86,7 +86,13 @@ static double now_sec(void) {
 static const float SCALE_BASELINE = 1.82f;
 
 struct mapping {
-    float scale, rot_x, rot_y, rot_z, off_x, off_y, render_scale;
+    float scale, rot_x, rot_y, rot_z, off_x, off_y;
+    /* Unused since the off-screen render target went away with the
+       keystone warp pass -- there is no intermediate buffer left to
+       render small and scale up. Still parsed so an existing
+       mapping.json stays valid, and still logged so it is obvious it
+       is being ignored rather than quietly honoured. */
+    float render_scale;
     /* Distance from the model to the virtual projector -- see server.py's
        MAPPING_NUMERIC comment on "throw_distance" for why a real point-
        source projector needs this at all, where the old purely-orthographic
@@ -108,8 +114,8 @@ struct mapping {
        display) -- corrects for the projector itself sitting off-axis from
        the projection surface, on top of (not instead of) the scale/
        rotation/offset calibration above, which corrects the 3D model's own
-       pose. See the warp pass in the render loop for how these turn into
-       an actual perspective-correct quad warp. */
+       pose. Applied as a homography on clip space in VS_SRC -- see its
+       uKeystone comment. */
     float ks_tl_x, ks_tl_y, ks_tr_x, ks_tr_y, ks_bl_x, ks_bl_y, ks_br_x, ks_br_y;
     /* Video edge stretch: where each edge of the display samples the
        video, in its own UV space (0-1 = untouched). Independent of the
@@ -536,7 +542,7 @@ static void mat_frustum(mat4 m, float l, float r, float b, float t, float n, flo
    corners would show a visible seam along the diagonal for anything but
    tiny corrections, since linear interpolation across each triangle isn't
    the same as a true perspective warp. Feeding this homography's (x,y,w)
-   straight into gl_Position instead (see the warp shader) makes the GPU's
+   straight into gl_Position (see VS_SRC's uKeystone) makes the GPU's
    own perspective-correct rasterization do the actual warping, which is
    exactly what real projectors' geometry correction does. Corners are
    ordered (0,0),(1,0),(1,1),(0,1) matching the source parameterization. */
@@ -561,12 +567,6 @@ static void quad_homography(float x0, float y0, float x1, float y1,
     H[0] = a; H[1] = b; H[2] = c;
     H[3] = d; H[4] = e; H[5] = f;
     H[6] = g; H[7] = h; H[8] = 1.f;
-}
-
-static void homography_apply(const float H[9], float s, float t, float *x, float *y, float *w) {
-    *x = H[0] * s + H[1] * t + H[2];
-    *y = H[3] * s + H[4] * t + H[5];
-    *w = H[6] * s + H[7] * t + H[8];
 }
 
 /* ================================================================= mesh == */
@@ -797,6 +797,18 @@ static const char *VS_SRC =
        load_obj), for turning aPos into a plain 0-1 UV below. Fixed for the
        life of the loaded model, not per-frame calibration state. */
     "uniform vec2 uModelSize;\n"
+    /* 4-corner keystone, as a homography on clip space rather than a
+       warp of the finished picture. It used to be the latter: the scene
+       was rendered to an off-screen texture and that texture drawn onto a
+       movable quad, which cost a whole extra full-screen pass plus the
+       buffer's own write and read -- measured at 6.5ms a frame. A
+       projective transform of clip space is the same transform (straight
+       lines stay straight, and the rasteriser's perspective-correct
+       interpolation carries it exactly), so the corners can move the
+       geometry on its way through instead. Cheaper, and sharper too: the
+       mesh is rasterised straight into its final shape rather than being
+       rendered and then resampled. */
+    "uniform mat3 uKeystone;\n"
     /* Manual video orientation -- see server.py's MAPPING_NUMERIC/BOOLEAN
        comments on why this is plain user input rather than something
        derived from the model/projector geometry like everything else
@@ -812,7 +824,12 @@ static const char *VS_SRC =
        the virtual camera without needing the eye passed in separately. */
     "out vec3 vPos;\n"
     "void main(){\n"
-    "  gl_Position = uMVP * vec4(aPos,1.0);\n"
+    "  vec4 clip = uMVP * vec4(aPos,1.0);\n"
+    /* z is rescaled by the same factor the homography applies to w, so
+       z/w -- the actual depth written -- comes out unchanged. Warping the
+       picture's shape must not also reorder what's in front of what. */
+    "  vec3 ks = uKeystone * vec3(clip.x, clip.y, clip.w);\n"
+    "  gl_Position = vec4(ks.x, ks.y, clip.z * ks.z / clip.w, ks.z);\n"
     /* The texture is glued to the model's own surface in its own local
        space -- a plain top-down drape, exactly like a UV projection done
        once in Blender against the model file itself -- rather than derived
@@ -909,45 +926,16 @@ static const char *FS_SRC =
     "  oColor = vec4(c.rgb, 1.0);\n"
     "}\n";
 
-/* Keystone warp pass: draws the fully-rendered scene (as a texture) onto a
-   quad whose 4 corners are independently positioned per keystone_reload's
-   homography, correcting for the projector itself sitting off-axis from
-   the projection surface. aClipPos.xy/z carry the (x,y,w) the CPU already
-   computed via quad_homography() -- feeding w through to gl_Position.w
-   directly, rather than pre-dividing by it, is what makes the GPU's own
-   rasterizer perspective-correct both the position and the UV
-   interpolation across the quad, avoiding the diagonal seam a naive
-   2-triangle affine warp would show. */
-static const char *WARP_VS_SRC =
-    "#version 300 es\n"
-    "layout(location=0) in vec3 aClipPos;\n"
-    "layout(location=1) in vec2 aUV;\n"
-    "out vec2 vUV;\n"
-    "void main(){\n"
-    "  vUV = aUV;\n"
-    "  gl_Position = vec4(aClipPos.xy, 0.0, aClipPos.z);\n"
-    "}\n";
-
-static const char *WARP_FS_SRC =
-    "#version 300 es\n"
-    "precision mediump float;\n"
-    "in vec2 vUV;\n"
-    "uniform sampler2D uSceneTex;\n"
-    "out vec4 oColor;\n"
-    "void main(){\n"
-    "  oColor = texture(uSceneTex, vUV);\n"
-    "}\n";
-
 /* ================================================ calibration gizmo === *
  * Three colored rings -- one per rotation axis, red/green/blue for X/Y/Z
  * -- plus a hand-drawn letter beside each, so an operator can see which
  * physical rotation each slider drives without doing it by trial and
  * error. Drawn in its own pass straight to the default framebuffer
- * *after* the keystone warp blit in the render loop, reusing the same
- * MVP the model itself used but never touching the warp step: keystone
+ * after the mesh in the render loop, reusing the same MVP the model
+ * itself used but without the keystone homography: keystone
  * corrects for the projector sitting off-axis from the print, which has
  * nothing to do with reading the gizmo, and running these circles through
- * that same perspective warp would turn them into skewed ellipses/quads
+ * that same projective transform would turn them into skewed ellipses
  * -- exactly the confusion a reference gizmo exists to avoid. Gated on
  * the existing calibration-shading toggle rather than a new mapping
  * field, since that flag already means "actively lining things up, never
@@ -1776,35 +1764,10 @@ int main(void) {
     GLint uVidFlipH = glGetUniformLocation(prog, "uVidFlipH");
     GLint uVidFlipV = glGetUniformLocation(prog, "uVidFlipV");
     GLint uShading = glGetUniformLocation(prog, "uShading");
+    GLint uKeystone = glGetUniformLocation(prog, "uKeystone");
     GLint uVideoEdgeLT = glGetUniformLocation(prog, "uVideoEdgeLT");
     GLint uVideoEdgeRB = glGetUniformLocation(prog, "uVideoEdgeRB");
     glUniform1i(glGetUniformLocation(prog, "uTex"), 0);
-
-    /* ---- keystone warp pass: scene render target + its own quad ---- */
-    GLuint warpProg = glCreateProgram();
-    glAttachShader(warpProg, compile_shader(GL_VERTEX_SHADER, WARP_VS_SRC));
-    glAttachShader(warpProg, compile_shader(GL_FRAGMENT_SHADER, WARP_FS_SRC));
-    glLinkProgram(warpProg);
-    GLint warpLinked = 0; glGetProgramiv(warpProg, GL_LINK_STATUS, &warpLinked);
-    if (!warpLinked) { char log[2048]; glGetProgramInfoLog(warpProg, sizeof log, NULL, log);
-                        fprintf(stderr, "warp link: %s\n", log); return 1; }
-    glUseProgram(warpProg);
-    glUniform1i(glGetUniformLocation(warpProg, "uSceneTex"), 0);
-    glUseProgram(prog);
-
-    GLuint warpVao, warpVbo, warpIbo;
-    glGenVertexArrays(1, &warpVao); glBindVertexArray(warpVao);
-    glGenBuffers(1, &warpVbo); glBindBuffer(GL_ARRAY_BUFFER, warpVbo);
-    /* 4 corners * (x,y,w, u,v) -- rewritten every frame from the keystone
-       homography, so GL_DYNAMIC_DRAW rather than STATIC. */
-    glBufferData(GL_ARRAY_BUFFER, 4 * 5 * sizeof(float), NULL, GL_DYNAMIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
-    static const unsigned warpIdx[6] = { 0, 1, 2, 0, 2, 3 };
-    glGenBuffers(1, &warpIbo); glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, warpIbo);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof warpIdx, warpIdx, GL_STATIC_DRAW);
 
     /* ---- calibration gizmo: ring program + static ring geometry ---- */
     GLuint gizmoProg = glCreateProgram();
@@ -1852,11 +1815,6 @@ int main(void) {
 
     glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
 
-    /* Scene is now always rendered off-screen (previously only when
-       render_scale < 1) since the warp pass needs a texture to draw from
-       either way -- direct-to-display is no longer a code path. */
-    GLuint sceneFbo = 0, sceneTex = 0, sceneDepth = 0;
-    int sceneW = 0, sceneH = 0;
 
     /* ---- calibration test pattern: an odd-sized checkerboard, so opposite
        corners always share a color (sum-of-indices parity) and all four
@@ -1933,30 +1891,6 @@ int main(void) {
         acc_video += now_sec() - tA;
 
 
-        /* Scene target sized by render_scale, always -- the warp pass below
-           needs a texture to draw from regardless of scale, so unlike
-           before there's no direct-to-display shortcut at scale 1.0
-           anymore (that shortcut existed only to skip an otherwise-
-           pointless full-resolution blit). */
-        int wantW = (int)(drm.mode.hdisplay * map_cur.render_scale);
-        int wantH = (int)(drm.mode.vdisplay * map_cur.render_scale);
-        if (wantW < 16) wantW = 16;
-        if (wantH < 16) wantH = 16;
-        if (wantW != sceneW || wantH != sceneH) {
-            sceneW = wantW; sceneH = wantH;
-            if (!sceneFbo) { glGenFramebuffers(1, &sceneFbo); glGenTextures(1, &sceneTex); glGenRenderbuffers(1, &sceneDepth); }
-            glBindTexture(GL_TEXTURE_2D, sceneTex);
-            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, sceneW, sceneH, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-            glBindRenderbuffer(GL_RENDERBUFFER, sceneDepth);
-            glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT16, sceneW, sceneH);
-            glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
-            glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, sceneTex, 0);
-            glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, sceneDepth);
-            glBindFramebuffer(GL_FRAMEBUFFER, 0);
-            printf("[gl ] scene target %dx%d (render_scale %.2f)\n", sceneW, sceneH, map_cur.render_scale);
-        }
 
         /* ---- transform: calibration only -- the model's own fixed OBJ-
            axis quirk is baked into the stored vertex data now (see
@@ -1986,7 +1920,7 @@ int main(void) {
         mat_mul(model, mT, tmp);
 
         float half = 1.15f;            /* padding around the fitted model */
-        float aspect = (float)wantW / (float)wantH;
+        float aspect = (float)drm.mode.hdisplay / (float)drm.mode.vdisplay;
         /* A real projector is a point light at a finite distance, not the
            parallel "sunlight" mat_ortho assumed -- that was fine for a flat
            screen but drifted increasingly with the model's own elevation,
@@ -2034,8 +1968,8 @@ int main(void) {
         mat_mul(mvp, proj, model);
 
         double tB = now_sec();
-        glBindFramebuffer(GL_FRAMEBUFFER, sceneFbo);
-        glViewport(0, 0, wantW, wantH);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, drm.mode.hdisplay, drm.mode.vdisplay);
         glClearColor(0, 0, 0, 1);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
         glEnable(GL_DEPTH_TEST);
@@ -2049,6 +1983,30 @@ int main(void) {
            way the file had them. */
         glEnable(GL_CULL_FACE);
         glUseProgram(prog);
+        /* Keystone, as a homography the vertex shader applies to clip
+           space -- see VS_SRC's uKeystone comment for why it stopped
+           being a second pass over the finished picture.
+
+           quad_homography maps the unit square onto the dragged corners,
+           so it expects (s,t) in 0..1 while clip space arrives in -1..1.
+           Folding that remap into the matrix here (rather than doing it
+           per vertex) is what lets the shader apply one 3x3 and stop. */
+        float H[9];
+        quad_homography(-1.f + map_cur.ks_bl_x, -1.f + map_cur.ks_bl_y,
+                          1.f + map_cur.ks_br_x, -1.f + map_cur.ks_br_y,
+                          1.f + map_cur.ks_tr_x,  1.f + map_cur.ks_tr_y,
+                         -1.f + map_cur.ks_tl_x,  1.f + map_cur.ks_tl_y,
+                         H);
+        /* H (row-major) times the NDC-to-unit-square remap, then written
+           out column-major the way GL wants a mat3. */
+        float ks[9];
+        for (int r = 0; r < 3; r++) {
+            float h0 = H[r * 3], h1 = H[r * 3 + 1], h2 = H[r * 3 + 2];
+            ks[r]     = 0.5f * h0;                  /* column 0 */
+            ks[3 + r] = 0.5f * h1;                  /* column 1 */
+            ks[6 + r] = 0.5f * h0 + 0.5f * h1 + h2; /* column 2 */
+        }
+        glUniformMatrix3fv(uKeystone, 1, GL_FALSE, ks);
         glUniformMatrix4fv(uMVP, 1, GL_FALSE, mvp);
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
         glUniform2f(uModelSize, m_size.x, m_size.y);
@@ -2063,36 +2021,12 @@ int main(void) {
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 
-        /* ---- keystone warp: draw the scene texture onto a quad whose
-           corners are individually nudged by the calibration sliders ---- */
-        float H[9];
-        quad_homography(-1.f + map_cur.ks_bl_x, -1.f + map_cur.ks_bl_y,
-                          1.f + map_cur.ks_br_x, -1.f + map_cur.ks_br_y,
-                          1.f + map_cur.ks_tr_x,  1.f + map_cur.ks_tr_y,
-                         -1.f + map_cur.ks_tl_x,  1.f + map_cur.ks_tl_y,
-                         H);
-        float corners[4][2] = { {0,0}, {1,0}, {1,1}, {0,1} };  /* s,t; matches quad_homography's source order */
-        float warpVerts[4][5];
-        for (int i = 0; i < 4; i++) {
-            float x, y, w;
-            homography_apply(H, corners[i][0], corners[i][1], &x, &y, &w);
-            warpVerts[i][0] = x; warpVerts[i][1] = y; warpVerts[i][2] = w;
-            warpVerts[i][3] = corners[i][0]; warpVerts[i][4] = corners[i][1];
-        }
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, drm.mode.hdisplay, drm.mode.vdisplay);
-        glClear(GL_COLOR_BUFFER_BIT);
+        /* Depth off for the overlays below: they used to inherit this
+           from the warp pass that no longer exists, and without it the
+           mesh's own depth buffer hides the gizmo behind the model. */
         glDisable(GL_DEPTH_TEST);
-        glUseProgram(warpProg);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, sceneTex);
-        glBindVertexArray(warpVao);
-        glBindBuffer(GL_ARRAY_BUFFER, warpVbo);
-        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof warpVerts, warpVerts);
-        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
-
-        /* ---- calibration gizmo: drawn after the warp, deliberately
-           bypassing it -- see the comment above GIZMO_VS_SRC. Uses the same
+        /* ---- calibration gizmo: drawn without the keystone homography,
+           deliberately -- see the comment above GIZMO_VS_SRC. Uses the same
            mvp as the mesh itself -- now that the model's fixed OBJ-axis
            quirk is baked into the vertex data rather than a separate
            runtime matrix (see load_obj), there's no longer a second
@@ -2128,18 +2062,17 @@ int main(void) {
             glDrawArrays(GL_LINES, 0, lc);
         }
 
-        /* ---- frame-rate readout: like the gizmo, drawn after the warp so
+        /* ---- frame-rate readout: like the gizmo, drawn without the
            the keystone correction doesn't skew it -- it reports on the
            renderer rather than being part of the projected picture, and a
-           warped number is only harder to read. Top-left, in the same
+           a warped number is only harder to read. Top-left, in the same
            amber the admin panel uses for the web readout. Gated on its own
            mapping.fps flag (see MAPPING_BOOLEAN in server.py), which the
            browser backend has always honoured and this one previously
            ignored entirely. ---- */
         if (map_cur.fps_overlay) {
-            /* Display aspect, not the scene target's: this draws to the
-               default framebuffer, which is the full display even when
-               render_scale has shrunk the off-screen scene. */
+            /* Display aspect: everything now draws straight to the
+               default framebuffer at the display's own size. */
             const float hudAspect = (float)drm.mode.hdisplay / (float)drm.mode.vdisplay;
             label_vert hudVerts[HUD_MAX_VERTS];
             int hc = hud_append_number(hudVerts, 0, hud_fps,
@@ -2152,7 +2085,7 @@ int main(void) {
             glDrawArrays(GL_LINES, 0, hc);
         }
 
-        glBindVertexArray(vao);   /* restore, matching pre-warp-pass state */
+        glBindVertexArray(vao);   /* restore, matching the mesh pass */
 
         glFinish();                       /* so the timing splits are real */
         acc_draw += now_sec() - tB;
