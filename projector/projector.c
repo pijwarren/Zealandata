@@ -512,6 +512,24 @@ static void mat_scale(mat4 m, float s) {
    the model's elevation wrong for a real point-source projector. This
    needs the model actually pushed out in front of the origin along -Z
    first -- see its call site. */
+/* Parallel projection, for the calibration gizmo only -- the mesh itself
+   needs the real point-source frustum below. An orthographic gizmo is the
+   point of it: perspective turns its rings into eccentric ellipses that
+   read as a rotation the model hasn't actually got, which is the one thing
+   a reference gizmo must never do. Given the same bounds the frustum has
+   at the model's own reference depth, it lands in the same place and at
+   the same size -- just without the foreshortening. */
+static void mat_ortho(mat4 m, float l, float r, float b, float t, float n, float f) {
+    for (int i = 0; i < 16; i++) m[i] = 0;
+    m[0] = 2 / (r - l);
+    m[5] = 2 / (t - b);
+    m[10] = -2 / (f - n);
+    m[12] = -(r + l) / (r - l);
+    m[13] = -(t + b) / (t - b);
+    m[14] = -(f + n) / (f - n);
+    m[15] = 1;
+}
+
 static void mat_frustum(mat4 m, float l, float r, float b, float t, float n, float f) {
     for (int i = 0; i < 16; i++) m[i] = 0;
     m[0] = 2 * n / (r - l);
@@ -1949,6 +1967,16 @@ int main(void) {
         mat_translate(mEye, -map_cur.throw_off_x, -map_cur.throw_off_y, -throwDist);
         mat_mul(model, mEye, model);
         mat_mul(mvp, proj, model);
+        /* The gizmo's own transform: same model/eye matrix, but projected
+           in parallel (see mat_ortho) using the bounds the frustum spans at
+           the model's reference depth, so the rings sit where they always
+           did without being skewed by perspective. */
+        mat4 gizmoProj, gizmoMvp;
+        mat_ortho(gizmoProj,
+                  -halfX - map_cur.throw_off_x, halfX - map_cur.throw_off_x,
+                  -halfY - map_cur.throw_off_y, halfY - map_cur.throw_off_y,
+                  near, far);
+        mat_mul(gizmoMvp, gizmoProj, model);
 
         double tB = now_sec();
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -2016,7 +2044,7 @@ int main(void) {
            in server.py. */
         if (map_cur.gizmo) {
             glUseProgram(gizmoProg);
-            glUniformMatrix4fv(uGizmoMVP, 1, GL_FALSE, mvp);
+            glUniformMatrix4fv(uGizmoMVP, 1, GL_FALSE, gizmoMvp);
             glBindVertexArray(gizmoVao);
             for (int ring = 0; ring < 3; ring++)
                 glDrawArrays(GL_LINE_LOOP, ring * GIZMO_SEGMENTS, GIZMO_SEGMENTS);
@@ -2029,11 +2057,11 @@ int main(void) {
             float ndcx, ndcy;
             const float ANCHOR = GIZMO_RADIUS * 1.3f;
             const float S = 0.7071068f; /* sin/cos of 45 degrees */
-            gizmo_project_ndc(mvp, 0, ANCHOR * S, ANCHOR * S, &ndcx, &ndcy);
+            gizmo_project_ndc(gizmoMvp, 0, ANCHOR * S, ANCHOR * S, &ndcx, &ndcy);
             lc = gizmo_append_glyph(labelVerts, lc, GLYPH_X, 2, ndcx, ndcy, 0.06f, aspect, 1.f, 0.25f, 0.25f);
-            gizmo_project_ndc(mvp, ANCHOR * S, 0, -ANCHOR * S, &ndcx, &ndcy);
+            gizmo_project_ndc(gizmoMvp, ANCHOR * S, 0, -ANCHOR * S, &ndcx, &ndcy);
             lc = gizmo_append_glyph(labelVerts, lc, GLYPH_Y, 3, ndcx, ndcy, 0.06f, aspect, 0.25f, 1.f, 0.25f);
-            gizmo_project_ndc(mvp, ANCHOR * S, ANCHOR * S, 0, &ndcx, &ndcy);
+            gizmo_project_ndc(gizmoMvp, ANCHOR * S, ANCHOR * S, 0, &ndcx, &ndcy);
             lc = gizmo_append_glyph(labelVerts, lc, GLYPH_Z, 3, ndcx, ndcy, 0.06f, aspect, 0.35f, 0.55f, 1.f);
 
             glUseProgram(labelProg);

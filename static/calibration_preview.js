@@ -195,6 +195,21 @@ function matScale(s) {
 // Standard OpenGL perspective frustum (l,r,b,t given at the near plane).
 // Ported from projector.c's mat_frustum -- see its comment for why this
 // replaced an orthographic projection here too.
+// Parallel projection for the calibration gizmo only -- ported from
+// projector.c's mat_ortho, which carries the reasoning: perspective turns
+// the gizmo's rings into eccentric ellipses that read as a rotation the
+// model hasn't got.
+function matOrtho(l, r, b, t, n, f) {
+  const m = new Float32Array(16);
+  m[0] = 2 / (r - l);
+  m[5] = 2 / (t - b);
+  m[10] = -2 / (f - n);
+  m[12] = -(r + l) / (r - l);
+  m[13] = -(t + b) / (t - b);
+  m[14] = -(f + n) / (f - n);
+  m[15] = 1;
+  return m;
+}
 function matFrustum(l, r, b, t, n, f) {
   const m = new Float32Array(16);
   m[0] = 2 * n / (r - l);
@@ -595,8 +610,17 @@ function buildMatrices(mapping) {
   const mEye = matTranslate(-throwOffX, -throwOffY, -throwDist);
   const modelEye = matMul(mEye, modelM);
   const mvp = matMul(proj, modelEye);
+  // Same model/eye matrix, projected in parallel over the bounds the
+  // frustum spans at the model's reference depth -- so the gizmo lands
+  // where it always did, just unskewed. Ported from projector.c.
+  const gizmoProj = matOrtho(
+    -halfX - throwOffX, halfX - throwOffX,
+    -halfY - throwOffY, halfY - throwOffY,
+    near, far,
+  );
+  const gizmoMvp = matMul(gizmoProj, modelEye);
 
-  return { modelM: modelEye, mvp };
+  return { modelM: modelEye, mvp, gizmoMvp };
 }
 
 function setUniformMatrix4(prog, name, m) {
@@ -608,7 +632,7 @@ function render(mapping) {
   lastMapping = mapping;
   if (canvas.width !== sceneW || canvas.height !== sceneH) resizeSceneTarget();
 
-  const { modelM, mvp } = buildMatrices(mapping);
+  const { modelM, mvp, gizmoMvp } = buildMatrices(mapping);
 
   // ---- scene pass: model textured with the static loading image ----
   gl.bindFramebuffer(gl.FRAMEBUFFER, sceneFbo);
@@ -673,18 +697,18 @@ function render(mapping) {
   // on here, unlike the native renderer -- see the uShading comment
   // above): gated on mapping.gizmo instead, same persisted mapping.json
   // field the native renderer reads, so the toggle affects both. Uses the
-  // same mvp as the mesh itself -- now that the model's fixed OBJ-axis
+  // its own orthographic mvp (see buildMatrices) -- now that the model's fixed OBJ-axis
   // quirk is baked into the vertex data rather than a separate runtime
   // matrix (see parseObj), there's no longer a second "mBase-free"
   // transform for the rings to need. ----
   const showGizmo = !!mapping.gizmo;
   if (showGizmo) {
     gl.useProgram(gizmoProg);
-    setUniformMatrix4(gizmoProg, "uMVP", mvp);
+    setUniformMatrix4(gizmoProg, "uMVP", gizmoMvp);
     gl.bindVertexArray(gizmoVao);
     for (let ring = 0; ring < 3; ring++) gl.drawArrays(gl.LINE_LOOP, ring * GIZMO_SEGMENTS, GIZMO_SEGMENTS);
   }
-  positionLabels(mvp, showGizmo);
+  positionLabels(gizmoMvp, showGizmo);
 }
 
 // Labels are plain HTML overlaid on the canvas (positioned from the same
