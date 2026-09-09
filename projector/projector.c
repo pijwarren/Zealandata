@@ -682,21 +682,35 @@ static const char *VS_SRC =
     "layout(location=2) in vec2 aUV;\n"
     "uniform mat4 uMVP;\n"
     "uniform mat4 uModel;\n"
+    /* Deliberately NOT uMVP -- see below. */
+    "uniform mat4 uUVMVP;\n"
     "out vec2 vUV;\n"
     "out vec3 vNrm;\n"
     "void main(){\n"
     "  gl_Position = uMVP * vec4(aPos,1.0);\n"
     /* aUV (the static top-down footprint UV computed once at load time,
-       see load_obj) is deliberately unused now: with uMVP a true point-
-       source perspective (see the frustum comment in the render loop), the
+       see load_obj) is deliberately unused now: with a true point-source
+       perspective (see the frustum comment in the render loop), the
        texture coordinate a real light ray carries to a given surface point
        depends on the model's live pose relative to the projector, not just
-       that point's fixed footprint position. Sampling the clip-space
-       position itself -- the same "projective texture mapping" trick
-       shadow/spotlight projection uses -- is what makes elevation actually
-       track correctly as the calibration sliders (rotation especially)
-       move the model around in the projector's view. */
-    "  vUV = gl_Position.xy / gl_Position.w * 0.5 + 0.5;\n"
+       that point's fixed footprint position. Sampling a clip-space
+       position -- the same "projective texture mapping" trick shadow/
+       spotlight projection uses -- is what makes elevation actually track
+       correctly as the calibration sliders (rotation especially) move the
+       model around in the projector's view.
+       That clip position comes from uUVMVP, not uMVP: uMVP includes
+       mBase (the fixed 90/180-degree correction for how this particular
+       OBJ export's raw axes happen to sit -- see mBase's own comment),
+       which is a cosmetic fixup with no real-world meaning, not part of
+       the model's actual pose relative to the projector. Feeding it into
+       the UV too would rotate/mirror the video against the model exactly
+       as much as mBase reorients the mesh on screen. uUVMVP is the same
+       rotation/scale/offset/eye/frustum stack with mBase left out --
+       already computed as gizmoMvp for the same reason (see its own
+       comment) -- so the video's mapping depends only on calibration
+       that actually corresponds to something physical. */
+    "  vec4 uvClip = uUVMVP * vec4(aPos,1.0);\n"
+    "  vUV = uvClip.xy / uvClip.w * 0.5 + 0.5;\n"
     "  vNrm = mat3(uModel) * aNrm;\n"
     "}\n";
 
@@ -1421,6 +1435,7 @@ int main(void) {
     glUseProgram(prog);
     GLint uMVP = glGetUniformLocation(prog, "uMVP");
     GLint uModel = glGetUniformLocation(prog, "uModel");
+    GLint uUVMVP = glGetUniformLocation(prog, "uUVMVP");
     GLint uShading = glGetUniformLocation(prog, "uShading");
     GLint uVideoEdgeLT = glGetUniformLocation(prog, "uVideoEdgeLT");
     GLint uVideoEdgeRB = glGetUniformLocation(prog, "uVideoEdgeRB");
@@ -1658,6 +1673,7 @@ int main(void) {
         glUseProgram(prog);
         glUniformMatrix4fv(uMVP, 1, GL_FALSE, mvp);
         glUniformMatrix4fv(uModel, 1, GL_FALSE, model);
+        glUniformMatrix4fv(uUVMVP, 1, GL_FALSE, gizmoMvp);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         glUniform2f(uVideoEdgeLT, map_cur.vid_left, map_cur.vid_top);
         glUniform2f(uVideoEdgeRB, map_cur.vid_right, map_cur.vid_bottom);

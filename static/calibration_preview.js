@@ -35,15 +35,23 @@ layout(location=1) in vec3 aNrm;
 layout(location=2) in vec2 aUV;
 uniform mat4 uMVP;
 uniform mat4 uModel;
+// Deliberately NOT uMVP -- see below.
+uniform mat4 uUVMVP;
 out vec2 vUV;
 out vec3 vNrm;
 void main(){
   gl_Position = uMVP * vec4(aPos, 1.0);
   // aUV (the static top-down footprint UV from parseObj) is unused now --
-  // see projector.c's matching VS_SRC comment. uMVP is a true point-source
-  // perspective (buildMatrices' mat_frustum), so the on-model texture
-  // coordinate has to come from the clip-space position itself.
-  vUV = gl_Position.xy / gl_Position.w * 0.5 + 0.5;
+  // see projector.c's matching VS_SRC comment. uUVMVP is a true point-
+  // source perspective, so the on-model texture coordinate has to come
+  // from a clip-space position -- but not uMVP's: that includes mBase
+  // (the fixed cosmetic correction for this OBJ export's raw axes), which
+  // has no real-world meaning and would rotate/mirror the video against
+  // the model exactly as much as mBase reorients the mesh on screen.
+  // uUVMVP is the same rotation/scale/offset/eye/frustum stack with mBase
+  // left out -- already computed as gizmoMvp for the same reason.
+  vec4 uvClip = uUVMVP * vec4(aPos, 1.0);
+  vUV = uvClip.xy / uvClip.w * 0.5 + 0.5;
   vNrm = mat3(uModel) * aNrm;
 }`;
 
@@ -577,6 +585,7 @@ function render(mapping) {
   gl.useProgram(modelProg);
   setUniformMatrix4(modelProg, "uMVP", mvp);
   setUniformMatrix4(modelProg, "uModel", modelM);
+  setUniformMatrix4(modelProg, "uUVMVP", gizmoMvp);
   // Unlike the native renderer, this preview always shades and always
   // shows the gizmo -- it's a calibration aid, not the real projected
   // picture, so there's no case where the relief/orientation cues showing
