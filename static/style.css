@@ -72,7 +72,16 @@ html{
      can't create a page-level horizontal scrollbar. Doesn't affect the
      scroller's own overflow-x:auto, which is a separate element. */
   overflow-x:hidden;
+  /* Keeps the scrollbar's space reserved even while the page is locked
+     below, so opening the settings drawer doesn't shunt the whole page
+     sideways by a scrollbar width as it disappears. */
+  scrollbar-gutter:stable;
 }
+/* The page behind a modal shouldn't move. Set on <html> rather than
+   <body>: html already carries an overflow-x, which stops body's own
+   overflow propagating to the viewport, so html is what actually
+   scrolls here. */
+html.scroll-locked{ overflow-y:hidden; }
 html,body{
   --hero-h: clamp(380px, 64vh, 640px);
   /* Both measured into these by app.js, since each depends on how its own
@@ -454,6 +463,9 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   padding:var(--space-8);
   display:flex; flex-direction:column; gap:var(--space-6);
   overflow-y:auto;
+  /* Stops a scroll that runs off the end of the drawer from carrying on
+     into the page behind it -- the browser chains the two by default. */
+  overscroll-behavior:contain;
 }
 .drawer::before{
   content:"";

@@ -561,13 +561,20 @@ window.addEventListener("resize", syncStickyOffsets, { passive: true });
 
 // -------------------------------------------------------------- settings
 
+// The drawer scrolls its own contents, so the page behind it is locked
+// while it's open -- otherwise a scroll that ran past the end of the
+// drawer, or one made with the pointer over the scrim, moved the whole
+// library underneath. See style.css's .scroll-locked, which is set on
+// <html> because that's what actually scrolls here.
 function openSettings() {
   settingsScrim.classList.remove("hidden");
   settingsDrawer.classList.remove("hidden");
+  document.documentElement.classList.add("scroll-locked");
 }
 function closeSettings() {
   settingsScrim.classList.add("hidden");
   settingsDrawer.classList.add("hidden");
+  document.documentElement.classList.remove("scroll-locked");
 }
 settingsBtn.addEventListener("click", openSettings);
 settingsCloseBtn.addEventListener("click", closeSettings);
