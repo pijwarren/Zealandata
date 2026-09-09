@@ -415,6 +415,10 @@ function paintHero(item, heroThumbnail) {
     return;
   }
   heroSection.classList.remove("hidden");
+  // The strip is unmeasurable while the hero is display:none, so take the
+  // reading now it has one. (ResizeObserver catches this too where it
+  // exists; this covers the browsers where it doesn't.)
+  syncStickyOffsets();
   const src = heroThumbnail || item.thumbnail;
   if (src) heroImg.src = src;
   heroCategory.textContent = item.category || "";
@@ -514,18 +518,46 @@ setHeroBtn.addEventListener("click", async () => {
 // ignores tiny jitter (a few px either way) and never hides near the very
 // top of the page, so it doesn't flicker away right as you start scrolling.
 let lastScrollY = window.scrollY;
+
+// The hero pins its category strip below the top bar, so it needs to know
+// when that bar is there -- mirrored onto <body> because the strip is
+// styled from a rule that can't reach across to .topbar's own class.
+function setTopbarHidden(hidden) {
+  topbar.classList.toggle("topbar--hidden", hidden);
+  document.body.classList.toggle("topbar-hidden", hidden);
+}
+
 window.addEventListener("scroll", () => {
   const y = window.scrollY;
   const delta = y - lastScrollY;
   if (y < 80) {
-    topbar.classList.remove("topbar--hidden");
+    setTopbarHidden(false);
   } else if (delta > 8) {
-    topbar.classList.add("topbar--hidden");
+    setTopbarHidden(true);
   } else if (delta < -8) {
-    topbar.classList.remove("topbar--hidden");
+    setTopbarHidden(false);
   }
   lastScrollY = y;
 }, { passive: true });
+
+// Both offsets the hero's sticky position is built from (see style.css's
+// .hero) depend on how their own content wraps -- the category labels
+// shrink and rewrap with the viewport, and the bar's height follows its
+// buttons -- so they're measured rather than guessed. Without this the
+// strip parks a few pixels high or low and either clips its own buttons
+// or leaves a sliver of hero showing above them.
+function syncStickyOffsets() {
+  const nav = categoryNav.offsetHeight;
+  const bar = topbar.offsetHeight;
+  if (nav) document.documentElement.style.setProperty("--category-nav-h", nav + "px");
+  if (bar) document.documentElement.style.setProperty("--topbar-h", bar + "px");
+}
+if (typeof ResizeObserver !== "undefined") {
+  const stickyObserver = new ResizeObserver(syncStickyOffsets);
+  stickyObserver.observe(categoryNav);
+  stickyObserver.observe(topbar);
+}
+window.addEventListener("resize", syncStickyOffsets, { passive: true });
 
 // -------------------------------------------------------------- settings
 

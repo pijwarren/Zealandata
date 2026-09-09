@@ -75,6 +75,11 @@ html{
 }
 html,body{
   --hero-h: clamp(380px, 64vh, 640px);
+  /* Both measured into these by app.js, since each depends on how its own
+     content wraps -- the category labels especially. The values here are
+     only a first-paint fallback for before that runs. */
+  --category-nav-h: 92px;
+  --topbar-h: 60px;
   margin:0;
   min-height:100vh;
   background:var(--color-bg);
@@ -187,10 +192,30 @@ button:focus-visible, .card:focus-visible{
 /* .hero is one sticky unit -- the media area and the category-nav strip
    below it stay pinned together as you scroll, rather than the nav being
    left behind in normal flow underneath the pinned hero. */
+/* Sticky, but pinned at a negative offset rather than 0: the hero slides
+   up and out of the way like normal content, and only stops once its
+   bottom strip -- the category buttons -- has reached the top. So the
+   buttons end up parked below the top bar and go no further, while the
+   rows get the whole viewport instead of whatever was left under a hero
+   that never moved.
+
+   The buttons stay inside .hero deliberately. position:sticky only pins
+   within its own parent's box, so a nav sitting inside a hero that
+   scrolled away would scroll away with it -- pinning the hero itself is
+   what lets the strip stay put without moving it out into its own
+   element. */
 .hero{
-  position:sticky; top:0; z-index:2;
+  position:sticky;
+  top:calc(var(--category-nav-h) + var(--topbar-h) - var(--hero-h));
+  z-index:2;
   display:flex; flex-direction:column;
   height:var(--hero-h);
+}
+/* The top bar hides itself on scroll-down (see app.js), so when it's gone
+   the strip takes its place rather than leaving a gap above itself with
+   the page scrolling through it. */
+body.topbar-hidden .hero{
+  top:calc(var(--category-nav-h) - var(--hero-h));
 }
 .hero__media{ position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
 .hero__bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
@@ -232,7 +257,13 @@ button:focus-visible, .card:focus-visible{
 /* Offset by the full sticky hero+nav height (not just a nominal header
    size) so a category jump lands with the row heading actually visible
    below the pinned hero, instead of hidden underneath it. */
-.row{ margin-bottom:var(--space-8); scroll-margin-top:calc(var(--hero-h) + 20px); }
+/* Clears the pinned strip (and the bar above it), not the whole hero --
+   the hero is gone by the time a row is scrolled to, so the old
+   hero-height offset would leave the heading stranded far down-screen. */
+.row{
+  margin-bottom:var(--space-8);
+  scroll-margin-top:calc(var(--category-nav-h) + var(--topbar-h) + 20px);
+}
 
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;
