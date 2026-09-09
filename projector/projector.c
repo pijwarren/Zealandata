@@ -1771,30 +1771,36 @@ int main(void) {
         float halfY = half;
         float halfX = half * aspect;
         float ratio = near / throwDist;
-        /* Lateral projector position: an *asymmetric* frustum, not a
-           translated scene -- see server.py's MAPPING_NUMERIC comment on
-           "throw_offset_x/y". The model's on-screen framing is entirely
-           scale/rotation/offset_x/y's job; this only changes how obliquely
-           the light reaches each side of it, which a scene translation
-           can't do (that shifts the whole picture, reported as exactly
-           that -- "should only change ray angles, not shift the image").
-           Physically: the eye sits off-axis at world (throw_off_x,
-           throw_off_y) while still looking straight down -Z (a real
-           short-throw unit's mount doesn't rotate to re-aim at the
-           model's centre, its optics are just asymmetric to begin with).
-           Similar triangles from that eye to the fixed target rectangle
-           at z=0 give the near-plane bounds below: the span (r-l, t-b)
-           stays exactly halfX*2/halfY*2 regardless of the offset -- only
-           where that span sits shifts -- so the model still fills the
-           same frame, just via more skewed rays on whichever side is
-           farther from the true eye position. */
+        /* Lateral projector position needs BOTH halves of a proper off-
+           axis ("lens-shift") projection together, not either alone --
+           see server.py's MAPPING_NUMERIC comment on "throw_offset_x/y":
+           1) Translate into the eye's real off-axis position (below) --
+              this alone gives correct ray angles but a symmetric frustum
+              then renders the model off-centre, since nothing re-centres
+              the picture: reported directly as "should only change ray
+              angles... rather than shifting the image".
+           2) Shear the frustum to match (here) -- this alone re-centres
+              the picture, but with the eye still at the un-translated
+              origin the "shear" is just a uniform screen-space pan with
+              no depth-dependent effect at all -- same symptom, worse:
+              looks like nothing changed until the pan is big enough to
+              notice, at which point it's still just a pan.
+           Together, a point at the model's own reference depth (z=0)
+           keeps mapping to exactly the same NDC regardless of the offset
+           (the translation's shift and the frustum's shear cancel there
+           by construction -- see the near-plane bounds below, derived by
+           similar triangles from the real eye position to a point at
+           z=0), while a point off that plane -- i.e. actual relief --
+           does not cancel, and comes out skewed proportionally to both
+           the offset and its own elevation. That residual, uncancelled
+           skew is the "ray angle" effect this is actually for. */
         float frL = ratio * (-halfX - map_cur.throw_off_x);
         float frR = ratio * ( halfX - map_cur.throw_off_x);
         float frB = ratio * (-halfY - map_cur.throw_off_y);
         float frT = ratio * ( halfY - map_cur.throw_off_y);
         mat_frustum(proj, frL, frR, frB, frT, near, far);
         mat4 mEye;
-        mat_translate(mEye, 0, 0, -throwDist);
+        mat_translate(mEye, -map_cur.throw_off_x, -map_cur.throw_off_y, -throwDist);
         mat_mul(model, mEye, model);
         mat_mul(mvp, proj, model);
 

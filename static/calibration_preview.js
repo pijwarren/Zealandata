@@ -551,12 +551,10 @@ function buildMatrices(mapping) {
   const halfY = half;
   const halfX = half * aspect;
   const ratio = near / throwDist;
-  // Lateral projector position: an *asymmetric* frustum, not a translated
-  // scene -- see server.py's MAPPING_NUMERIC comment on "throw_offset_x/y"
-  // and projector.c's matching render-loop comment for the full physical
-  // reasoning. The span stays the same regardless of the offset (so the
-  // model keeps the same on-screen framing); only where it sits shifts,
-  // which is what skews the ray angles per side.
+  // Lateral projector position needs BOTH halves of a proper off-axis
+  // ("lens-shift") projection together -- see projector.c's matching
+  // render-loop comment for the full derivation of why either alone
+  // reproduces the same "shifts instead of shearing" symptom.
   const throwOffX = Number(mapping.throw_offset_x) || 0;
   const throwOffY = Number(mapping.throw_offset_y) || 0;
   const proj = matFrustum(
@@ -564,7 +562,7 @@ function buildMatrices(mapping) {
     ratio * (-halfY - throwOffY), ratio * (halfY - throwOffY),
     near, far,
   );
-  const mEye = matTranslate(0, 0, -throwDist);
+  const mEye = matTranslate(-throwOffX, -throwOffY, -throwDist);
   const modelEye = matMul(mEye, modelM);
   const gizmoEye = matMul(mEye, gizmoModel);
   const mvp = matMul(proj, modelEye);
