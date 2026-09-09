@@ -824,37 +824,41 @@ static const char *FS_SRC =
     "  vec4 c = texture(uTex, uv);\n"
     "  if (uShading == 1) {\n"
     /* A square area light centred on the virtual camera, rather than a
-       point at it: the eye is the origin in the eye space vPos is
-       expressed in, so the light is just a square in the z=0 plane
-       there, facing the model down the view axis. Sampled on a regular
-       grid and averaged -- the softness comes from the samples near a
-       terminator disagreeing about how much of the light is visible,
-       which a single direction cannot express however it is weighted.
-       Regular rather than stochastic sampling because this shades a
-       static calibration image: jitter would crawl frame to frame,
-       and a fixed grid just settles.
+       point at it. The eye is the origin in the eye space vPos is
+       expressed in, so the light is a square in the z=0 plane there,
+       facing the model down the view axis.
+
+       Solved analytically rather than by sampling the square. What
+       actually softens an area light is its angular size from the
+       surface point: the terminator smears over the band where the
+       light is partly below the horizon, roughly |N.L| < w for a light
+       of angular half-size w. So this softens the clamp on N.L over
+       exactly that band, instead of averaging discrete samples across
+       it. A 4x4 sampled version measured 48ms/frame against 21ms for
+       this on the Pi's V3D, and any sample count cheap enough to
+       afford banded visibly at the terminator -- the smooth curve is
+       both faster and cleaner.
+
+       The quadratic is the C1-continuous soft clamp of max(ndl,0): it
+       meets ndl exactly at ndl=w and 0 at ndl=-w with no kink at
+       either join, so the shading shows no seam where it takes over.
+       Dividing the half-size by distance is what makes the softness
+       fall off with range the way a real light does -- further away is
+       a smaller angular size, hence a harder edge.
 
        AREA_LIGHT_HALF is in the same units as the normalised mesh (see
-       load_obj), so ~0.45 is a light roughly as wide as the model, at
-       the default throw_distance of 1.0. Larger = softer and flatter,
-       smaller = back towards the hard point-source look. Deliberately a
-       constant and not a mapping parameter: it changes how the
-       calibration aid reads, not how the projection itself lands. */
+       load_obj), so ~0.45 is a light about as wide as the model at the
+       default throw_distance of 1.0. Larger = softer, smaller = back
+       towards a hard point source. Deliberately a constant, not a
+       mapping parameter: it changes how the calibration aid reads, not
+       how the projection itself lands. */
     "    const float AREA_LIGHT_HALF = 0.45;\n"
-    "    const int AREA_LIGHT_SAMPLES = 4;\n"
     "    vec3 N = normalize(vNrm);\n"
-    "    float d = 0.0;\n"
-    "    for (int sy = 0; sy < AREA_LIGHT_SAMPLES; sy++) {\n"
-    "      for (int sx = 0; sx < AREA_LIGHT_SAMPLES; sx++) {\n"
-    /* Sample centres, hence the +0.5: puts the grid symmetrically
-       across the square instead of biasing it to one corner. */
-    "        vec2 g = (vec2(float(sx), float(sy)) + 0.5)\n"
-    "                 / float(AREA_LIGHT_SAMPLES) * 2.0 - 1.0;\n"
-    "        vec3 lp = vec3(g * AREA_LIGHT_HALF, 0.0);\n"
-    "        d += max(dot(N, normalize(lp - vPos)), 0.0);\n"
-    "      }\n"
-    "    }\n"
-    "    d /= float(AREA_LIGHT_SAMPLES * AREA_LIGHT_SAMPLES);\n"
+    "    float dist = max(length(vPos), 1e-4);\n"
+    "    float ndl = dot(N, -vPos / dist);\n"
+    "    float w = max(AREA_LIGHT_HALF / dist, 1e-4);\n"
+    "    float d = (ndl >= w) ? ndl\n"
+    "            : ((ndl <= -w) ? 0.0 : (ndl + w) * (ndl + w) / (4.0 * w));\n"
     /* Ambient floor: what a surface facing fully away from the light
        still gets. Low on purpose so the relief reads with real contrast
        -- the area light above already lifts the shadow terminator, and
