@@ -638,14 +638,12 @@ body.admin-mode .settings-grid{
    behaviour this replaces, so there's nothing to fall back to. */
 /* Timing lives here so the disclosure triangle above can borrow it and turn
    in step with the contents -- at different durations the two read as two
-   separate things happening rather than one section opening. The curve is a
-   heavier ease-out than the cards' (.2,.8,.2,1): with a control point pinned
-   to zero at the end it keeps decelerating right up to the stop, which over
-   this longer distance settles rather than arrives. */
+   separate things happening rather than one section opening. The curve is
+   the same ease-out the cards use. */
 .mapping-section{
   interpolate-size:allow-keywords;
-  --section-duration:.42s;
-  --section-ease:cubic-bezier(.32,.72,0,1);
+  --section-duration:.8s;
+  --section-ease:cubic-bezier(.2,.8,.2,1);
 }
 .mapping-section::details-content{
   block-size:0;
