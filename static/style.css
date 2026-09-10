@@ -638,12 +638,20 @@ body.admin-mode .settings-grid{
    behaviour this replaces, so there's nothing to fall back to. */
 /* Timing lives here so the disclosure triangle above can borrow it and turn
    in step with the contents -- at different durations the two read as two
-   separate things happening rather than one section opening. The curve is
-   the same ease-out the cards use. */
+   separate things happening rather than one section opening.
+
+   Linear, deliberately, and it is smoother here than an ease-out despite
+   sounding cruder. Measured over an open of the tallest section: the cards'
+   ease-out covered ~25px per frame early and then crawled to ~1.4px, with
+   23 frames moving less than a whole pixel. Layout is quantised to integer
+   pixels, so that sub-pixel tail lands as visible stutter -- the section
+   appears to stall on the way in. Constant velocity is ~13px every frame
+   from start to finish, with nothing to quantise away. (Frame pacing was
+   never the problem: neither version dropped a single frame.) */
 .mapping-section{
   interpolate-size:allow-keywords;
   --section-duration:.8s;
-  --section-ease:cubic-bezier(.2,.8,.2,1);
+  --section-ease:linear;
 }
 .mapping-section::details-content{
   block-size:0;
