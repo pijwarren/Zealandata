@@ -41,8 +41,17 @@ const MARKER_INSET_FRAC = 0.09;
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
 const MARKER_ALPHA_MIN = 0.35;
 const MARKER_ALPHA_MAX = 1.0;
-const MARKER_RADIUS_MIN_PX = 13;
-const MARKER_RADIUS_MAX_PX = 19;
+const MARKER_RADIUS_MIN_PX = 26;
+const MARKER_RADIUS_MAX_PX = 38;
+// However big the breathing radius above wants to be, it's clamped every
+// frame to (at most) this fraction of the actual pixel distance from the
+// marker's center to the two picture edges nearest the corner it's inset
+// from -- computed fresh each frame from the same homography as the warp,
+// so a corner keystoned into a tight spot shrinks the glow to fit rather
+// than letting it bleed past the edge of the mapped texture. Kept below 1
+// as a margin for the approximation this distance is (the exact straight
+// edge vs. the single point on it this measures to).
+const MARKER_EDGE_SAFETY = 0.85;
 
 // ---------------------------------------------------------------- shaders
 
@@ -769,14 +778,35 @@ function render(mapping) {
   // currently keystoned. ----
   const cornerSt = CORNER_ST[mapping.keystone_corner];
   if (cornerSt) {
-    const s = cornerSt[0] === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
-    const t = cornerSt[1] === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
+    const bs = cornerSt[0], bt = cornerSt[1];
+    const s = bs === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
+    const t = bt === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
     const [mx, my, mw] = homographyApply(H, s, t);
     const cx = mx / mw, cy = my / mw;
+    const cpx = ((cx + 1) / 2) * canvas.width, cpy = ((1 - cy) / 2) * canvas.height;
+
+    // Never let the breathing radius below push the circle past the two
+    // picture edges nearest this corner -- measured as the exact pixel
+    // distance from the center to the point on each edge at the center's
+    // own other coordinate (e.g. the s=0/1 edge at the center's own t),
+    // which is a legitimate (if slightly conservative once the quad's
+    // properly keystoned) stand-in for the true perpendicular distance;
+    // MARKER_EDGE_SAFETY covers the gap between the two.
+    const [esx, esy, esw] = homographyApply(H, bs, t);
+    const [etx, ety, etw] = homographyApply(H, s, bt);
+    const espx = ((esx / esw + 1) / 2) * canvas.width, espy = ((1 - esy / esw) / 2) * canvas.height;
+    const etpx = ((etx / etw + 1) / 2) * canvas.width, etpy = ((1 - ety / etw) / 2) * canvas.height;
+    const distS = Math.hypot(espx - cpx, espy - cpy);
+    const distT = Math.hypot(etpx - cpx, etpy - cpy);
+    const maxRadiusPx = Math.max(4, MARKER_EDGE_SAFETY * Math.min(distS, distT));
+
     const phase = (performance.now() % MARKER_PERIOD_MS) / MARKER_PERIOD_MS;
     const breathe = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // eases 0 -> 1 -> 0
     const alpha = MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe;
-    const radiusPx = MARKER_RADIUS_MIN_PX + (MARKER_RADIUS_MAX_PX - MARKER_RADIUS_MIN_PX) * breathe;
+    const radiusPx = Math.min(
+      MARKER_RADIUS_MIN_PX + (MARKER_RADIUS_MAX_PX - MARKER_RADIUS_MIN_PX) * breathe,
+      maxRadiusPx,
+    );
 
     gl.enable(gl.BLEND);
     gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);

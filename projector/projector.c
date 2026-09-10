@@ -1068,8 +1068,16 @@ static const char *MARKER_FS_SRC =
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
 #define MARKER_ALPHA_MIN 0.35f
 #define MARKER_ALPHA_MAX 1.0f
-#define MARKER_RADIUS_MIN_PX 13.f
-#define MARKER_RADIUS_MAX_PX 19.f
+#define MARKER_RADIUS_MIN_PX 26.f
+#define MARKER_RADIUS_MAX_PX 38.f
+/* Caps the breathing radius above to (at most) this fraction of the pixel
+   distance from the marker's center to the two picture edges nearest the
+   corner it's inset from, recomputed every frame from the same homography
+   the warp pass uses -- so a corner keystoned into a tight spot shrinks the
+   glow to fit rather than letting it bleed past the edge of the mapped
+   texture. Below 1 as a margin for what that distance actually measures
+   (the exact straight edge vs. the single point on it this measures to). */
+#define MARKER_EDGE_SAFETY 0.85f
 
 typedef struct { float x, y, z, r, g, b; } gizmo_vert;
 typedef struct { float x, y, r, g, b; } label_vert;
@@ -2220,19 +2228,38 @@ int main(void) {
             float my = H[3] * s + H[4] * t + H[5];
             float mw = H[6] * s + H[7] * t + H[8];
             float mcx = mx / mw, mcy = my / mw;
+            float dispW = (float)drm.mode.hdisplay, dispH = (float)drm.mode.vdisplay;
+            float cpx = ((mcx + 1.f) / 2.f) * dispW, cpy = ((1.f - mcy) / 2.f) * dispH;
+
+            /* Never let the breathing radius below push the circle past the
+               two picture edges nearest this corner -- see MARKER_EDGE_SAFETY's
+               comment. esx/esy/esw is the point on the s=mcs edge at the
+               center's own t; etx/ety/etw is the point on the t=mct edge at
+               the center's own s. */
+            float esx = H[0] * mcs + H[1] * t + H[2];
+            float esy = H[3] * mcs + H[4] * t + H[5];
+            float esw = H[6] * mcs + H[7] * t + H[8];
+            float etx = H[0] * s + H[1] * mct + H[2];
+            float ety = H[3] * s + H[4] * mct + H[5];
+            float etw = H[6] * s + H[7] * mct + H[8];
+            float espx = ((esx / esw + 1.f) / 2.f) * dispW, espy = ((1.f - esy / esw) / 2.f) * dispH;
+            float etpx = ((etx / etw + 1.f) / 2.f) * dispW, etpy = ((1.f - ety / etw) / 2.f) * dispH;
+            float distS = hypotf(espx - cpx, espy - cpy);
+            float distT = hypotf(etpx - cpx, etpy - cpy);
+            float maxRadiusPx = MARKER_EDGE_SAFETY * fminf(distS, distT);
+            if (maxRadiusPx < 4.f) maxRadiusPx = 4.f;
 
             double phase = fmod(now_sec(), MARKER_PERIOD_SEC) / MARKER_PERIOD_SEC;
             float breathe = 0.5f - 0.5f * cosf((float)phase * 2.f * (float)M_PI);
             float alpha = MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe;
             float radiusPx = MARKER_RADIUS_MIN_PX + (MARKER_RADIUS_MAX_PX - MARKER_RADIUS_MIN_PX) * breathe;
+            if (radiusPx > maxRadiusPx) radiusPx = maxRadiusPx;
 
             glEnable(GL_BLEND);
             glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glUseProgram(markerProg);
             glUniform2f(uMarkerCenter, mcx, mcy);
-            glUniform2f(uMarkerRadiusNdc,
-                        (radiusPx / (float)drm.mode.hdisplay) * 2.f,
-                        (radiusPx / (float)drm.mode.vdisplay) * 2.f);
+            glUniform2f(uMarkerRadiusNdc, (radiusPx / dispW) * 2.f, (radiusPx / dispH) * 2.f);
             glUniform1f(uMarkerAlpha, alpha);
             glBindVertexArray(markerVao);
             glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
