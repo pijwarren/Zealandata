@@ -992,7 +992,17 @@ static const char *FS_SRC =
        the model transform and keystone warp for free instead of needing
        its own pass. */
     "  if (uMarkerRadius > 0.0) {\n"
-    "    float d = length(vMarkerUV - uMarkerUV) / uMarkerRadius;\n"
+    /* The model's raw UV space isn't square, so a marker with an equal
+       x/y UV radius came out visibly stretched on the actual print.
+       Shrinking the y half of the offset before it's measured against
+       uMarkerRadius turns the marker into an ellipse with a 1:2 x:y
+       UV-space radius ratio, which reads as circular once carried
+       through that non-square mapping -- ported line-for-line into
+       calibration_preview.js's MODEL_FS, keep the two in sync. */
+    "    const float MARKER_ASPECT_Y = 2.0;\n"
+    "    vec2 delta = vMarkerUV - uMarkerUV;\n"
+    "    delta.y /= MARKER_ASPECT_Y;\n"
+    "    float d = length(delta) / uMarkerRadius;\n"
     "    if (d < 1.0) {\n"
     "      float core = smoothstep(0.35, 0.0, d);\n"
     "      float glow = smoothstep(1.0, 0.0, d);\n"
@@ -1069,12 +1079,14 @@ static const char *GIZMO_LABEL_VS_SRC =
  * nothing extra to keep in step, and it's contained inside the
  * mapped/warped picture by construction (vMarkerUV's domain is always
  * exactly 0..1) rather than something to work out fresh each frame. */
-#define MARKER_INSET_FRAC 0.09f   /* how far in from the UV edge -- "9% in from the edges" */
+#define MARKER_INSET_FRAC 0.04f   /* how far in from the UV edge -- "4% in from the edges" */
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
 #define MARKER_ALPHA_MIN 0.35f
 #define MARKER_ALPHA_MAX 1.0f
-#define MARKER_RADIUS_MIN_UV 0.05f
-#define MARKER_RADIUS_MAX_UV 0.08f   /* stays under MARKER_INSET_FRAC -- see the comment above */
+/* Quartered from the original 0.05/0.08 -- see MARKER_ASPECT_Y in FS_SRC
+   for the other half of why the marker used to read too big/stretched. */
+#define MARKER_RADIUS_MIN_UV 0.0125f
+#define MARKER_RADIUS_MAX_UV 0.02f   /* stays under MARKER_INSET_FRAC -- see the comment above */
 
 typedef struct { float x, y, z, r, g, b; } gizmo_vert;
 typedef struct { float x, y, r, g, b; } label_vert;

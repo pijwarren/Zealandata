@@ -48,12 +48,15 @@ const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
 // MARKER_RADIUS_MAX_UV stays under MARKER_INSET_FRAC below, since
 // vMarkerUV's domain is always exactly 0..1), not something a separate
 // pass has to reason about after the fact.
-const MARKER_INSET_FRAC = 0.09; // how far in from the UV edge, i.e. "9% in from the edges"
+const MARKER_INSET_FRAC = 0.04; // how far in from the UV edge, i.e. "4% in from the edges"
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
 const MARKER_ALPHA_MIN = 0.35;
 const MARKER_ALPHA_MAX = 1.0;
-const MARKER_RADIUS_MIN_UV = 0.05;
-const MARKER_RADIUS_MAX_UV = 0.08; // stays under MARKER_INSET_FRAC -- see the comment above
+// Quartered from the original 0.05/0.08 -- see MARKER_ASPECT_Y in MODEL_FS
+// below for the other half of why the marker used to read too big/stretched.
+const MARKER_RADIUS_MIN_UV = 0.0125;
+const MARKER_RADIUS_MAX_UV = 0.02; // stays under MARKER_INSET_FRAC -- see the comment above
+const MARKER_ASPECT_Y = 2.0;
 
 // ---------------------------------------------------------------- shaders
 
@@ -160,7 +163,17 @@ void main(){
   // the model transform and keystone warp for free instead of needing its
   // own pass.
   if (uMarkerRadius > 0.0) {
-    float d = length(vMarkerUV - uMarkerUV) / uMarkerRadius;
+    // The model's raw UV space isn't square, so a marker with an equal x/y
+    // UV radius came out visibly stretched on the actual print/mirror.
+    // Shrinking the y half of the offset before it's measured against
+    // uMarkerRadius turns the marker into an ellipse with a 1:2 x:y
+    // UV-space radius ratio, which reads as circular once carried through
+    // that non-square mapping -- ported line-for-line into projector.c's
+    // FS_SRC, keep the two in sync.
+    const float MARKER_ASPECT_Y = 2.0;
+    vec2 delta = vMarkerUV - uMarkerUV;
+    delta.y /= MARKER_ASPECT_Y;
+    float d = length(delta) / uMarkerRadius;
     if (d < 1.0) {
       float core = smoothstep(0.35, 0.0, d);
       float glow = smoothstep(1.0, 0.0, d);
