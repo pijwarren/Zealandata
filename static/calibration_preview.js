@@ -46,16 +46,17 @@ const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
 // extra to keep in step: it never draws outside the mapped/warped picture
 // by construction (vMarkerUV's domain is always exactly 0..1), not
 // something a separate pass has to reason about after the fact.
-// MARKER_RADIUS_MAX_UV reaches MARKER_INSET_FRAC at its biggest breathe --
-// the disk itself just fits inside the inset, but its halo (see
-// MARKER_GLOW_FRAC in MODEL_FS) still bleeds a little past the edge of the
-// picture near a corner rather than always reading as a complete circle.
-const MARKER_INSET_FRAC = 0.04; // how far in from the UV edge, i.e. "4% in from the edges"
+// MARKER_RADIUS_MAX_UV stays comfortably under both MARKER_INSET_FRAC_X and
+// MARKER_INSET_FRAC_Y, so the marker (halo included) always reads as a
+// complete circle -- it doesn't need to work out anything about the corner
+// it's nearest to.
+const MARKER_INSET_FRAC_X = 0.04; // how far in from the UV edge on x, i.e. "4% in from the edges"
+const MARKER_INSET_FRAC_Y = 0.08; // double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
 const MARKER_ALPHA_MIN = 0.35;
 const MARKER_ALPHA_MAX = 1.0;
-const MARKER_RADIUS_MIN_UV = 0.025;
-const MARKER_RADIUS_MAX_UV = 0.04;
+const MARKER_RADIUS_MIN_UV = 0.0125;
+const MARKER_RADIUS_MAX_UV = 0.02;
 
 // ---------------------------------------------------------------- shaders
 
@@ -738,8 +739,8 @@ function render(mapping) {
   // this same draw call rather than needing a separate pass afterward.
   const cornerSt = CORNER_ST[mapping.keystone_corner];
   if (cornerSt) {
-    const u = cornerSt[0] === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
-    const v = cornerSt[1] === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
+    const u = cornerSt[0] === 0 ? MARKER_INSET_FRAC_X : 1 - MARKER_INSET_FRAC_X;
+    const v = cornerSt[1] === 0 ? MARKER_INSET_FRAC_Y : 1 - MARKER_INSET_FRAC_Y;
     const phase = (performance.now() % MARKER_PERIOD_MS) / MARKER_PERIOD_MS;
     const breathe = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // eases 0 -> 1 -> 0
     gl.uniform2f(gl.getUniformLocation(modelProg, "uMarkerUV"), u, v);

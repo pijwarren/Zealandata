@@ -928,7 +928,7 @@ static const char *FS_SRC =
     "in vec3 vPos;\n"
     "uniform sampler2D uTex;\n"
     "uniform int uShading;\n"
-    /* Keystone corner marker -- see MARKER_INSET_FRAC's comment above.
+    /* Keystone corner marker -- see MARKER_INSET_FRAC_X's comment above.
        Checked against vMarkerUV, NOT vUV -- vUV has uVidRotation/
        uVidFlipH/uVidFlipV baked in (see VS_SRC), which orient the *video
        content* and have nothing to do with the keystone warp's own
@@ -1085,16 +1085,17 @@ static const char *GIZMO_LABEL_VS_SRC =
  * nothing extra to keep in step, and it never draws outside the
  * mapped/warped picture by construction (vMarkerUV's domain is always
  * exactly 0..1) rather than something to work out fresh each frame.
- * MARKER_RADIUS_MAX_UV reaches MARKER_INSET_FRAC at its biggest breathe --
- * the disk itself just fits inside the inset, but its halo (see
- * MARKER_GLOW_FRAC in FS_SRC) still bleeds a little past the edge of the
- * picture near a corner rather than always reading as a complete circle. */
-#define MARKER_INSET_FRAC 0.04f   /* how far in from the UV edge -- "4% in from the edges" */
+ * MARKER_RADIUS_MAX_UV stays comfortably under both MARKER_INSET_FRAC_X and
+ * MARKER_INSET_FRAC_Y, so the marker (halo included) always reads as a
+ * complete circle -- it doesn't need to work out anything about the
+ * corner it's nearest to. */
+#define MARKER_INSET_FRAC_X 0.04f   /* how far in from the UV edge on x -- "4% in from the edges" */
+#define MARKER_INSET_FRAC_Y 0.08f   /* double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise */
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
 #define MARKER_ALPHA_MIN 0.35f
 #define MARKER_ALPHA_MAX 1.0f
-#define MARKER_RADIUS_MIN_UV 0.025f
-#define MARKER_RADIUS_MAX_UV 0.04f
+#define MARKER_RADIUS_MIN_UV 0.0125f
+#define MARKER_RADIUS_MAX_UV 0.02f
 
 typedef struct { float x, y, z, r, g, b; } gizmo_vert;
 typedef struct { float x, y, r, g, b; } label_vert;
@@ -2143,7 +2144,7 @@ int main(void) {
         glUniform1i(uVidFlipH, map_cur.vid_flip_h ? 1 : 0);
         glUniform1i(uVidFlipV, map_cur.vid_flip_v ? 1 : 0);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
-        /* Keystone corner marker -- see MARKER_INSET_FRAC's comment above
+        /* Keystone corner marker -- see MARKER_INSET_FRAC_X's comment above
            and FS_SRC's uMarkerUV comment: computed here alongside the
            mesh's other per-frame uniforms since it's baked into that same
            draw call's fragment shader, not a separate pass. */
@@ -2154,8 +2155,8 @@ int main(void) {
             else if (!strcmp(map_cur.keystone_corner, "tr")) { mu = 1.f; mv = 1.f; }
             else if (!strcmp(map_cur.keystone_corner, "tl")) { mu = 0.f; mv = 1.f; }
             if (mu >= 0.f) {
-                mu = (mu == 0.f) ? MARKER_INSET_FRAC : 1.f - MARKER_INSET_FRAC;
-                mv = (mv == 0.f) ? MARKER_INSET_FRAC : 1.f - MARKER_INSET_FRAC;
+                mu = (mu == 0.f) ? MARKER_INSET_FRAC_X : 1.f - MARKER_INSET_FRAC_X;
+                mv = (mv == 0.f) ? MARKER_INSET_FRAC_Y : 1.f - MARKER_INSET_FRAC_Y;
                 double phase = fmod(now_sec(), MARKER_PERIOD_SEC) / MARKER_PERIOD_SEC;
                 float breathe = 0.5f - 0.5f * cosf((float)phase * 2.f * (float)M_PI);
                 glUniform2f(uMarkerUV, mu, mv);
