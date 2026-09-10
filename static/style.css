@@ -496,10 +496,10 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   --materialize-scale:.96;
   transform:translate(-50%,-50%) scale(var(--materialize-scale));
   opacity:0;
-  /* Narrower while locked -- only Library/Screensaver/Admin mode show, so
-     the wide calibration-section layout would just leave a big empty gap
-     on the right. Widens once admin mode (and everything it gates,
-     including the 2-column grid and the calibration section) is visible. */
+  /* Narrower while locked -- only Screensaver/Admin mode show, so the wide
+     section layout would just leave a big empty gap on the right. Widens
+     once admin mode (and everything it gates, including the 2-column grid
+     and the Library and calibration sections) is visible. */
   width:min(560px, 94vw);
   transition:width .2s ease, opacity .2s ease, transform .2s ease;
   max-height:96vh;
@@ -568,7 +568,10 @@ body.admin-mode .settings-grid{
 }
 .select-block:focus, .field input[type="text"]:focus{ outline:none; border-color:var(--color-accent); }
 
-#mappingField{ display:flex; flex-direction:column; gap:14px; width:100%; max-width:none; margin:0; }
+/* Both opt out of .field's 480px cap: these hold the collapsible sections,
+   which span the full width of the (wider) unlocked drawer rather than
+   sitting as one narrow centred column in the middle of it. */
+#libraryField, #mappingField{ display:flex; flex-direction:column; gap:14px; width:100%; max-width:none; margin:0; }
 #mappingField label{ margin-bottom:0; }
 /* Collapsible sections, so the calibration panel isn't one long scroll of
    controls when only one group is being worked on. <details> rather than a

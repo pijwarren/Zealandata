@@ -91,12 +91,11 @@
   </div>
 
   <!-- Everything about what's IN the library, as opposed to how it's
-       projected. Each control keeps the visibility it had when these lived
-       in the settings grid above: rescanning is open to anyone, while the
-       rest are admin-gated individually (app.js toggles them off the admin
-       token) rather than by the section as a whole -- so a visitor opening
-       this sees a rescan button and nothing else. -->
-  <div class="field">
+       projected. Admin-only as a whole, like the calibration panel below --
+       rescanning was open to anyone while it lived in the settings grid, but
+       a section that shows a lone rescan button to a locked-out visitor is
+       just clutter on the way to the controls that matter. -->
+  <div class="field hidden" id="libraryField">
     <details class="mapping-section" id="sectionLibrary">
       <summary class="mapping-section__summary">Library</summary>
 
@@ -105,7 +104,7 @@
         <button type="button" class="btn btn-secondary btn-block" id="rescanBtn">Rescan library</button>
       </div>
 
-      <div class="field hidden" id="uploadField">
+      <div class="field" id="uploadField">
         <label>Upload video</label>
         <input type="file" id="uploadInput" accept=".mp4,.mkv,.avi,.mov,.m4v,.webm,.ts" class="hidden">
         <button type="button" class="btn btn-secondary btn-block" id="uploadChooseBtn">Choose file…</button>
@@ -130,20 +129,20 @@
            captured view to the existing library -- also the only way a video
            copied straight into the media folder gets a projected thumbnail,
            since nothing rendered one for it at upload time. -->
-      <div class="field hidden" id="thumbnailField">
+      <div class="field" id="thumbnailField">
         <label>Thumbnails</label>
         <p class="field__hint" id="thumbnailViewNote">Checking captured view…</p>
         <button type="button" class="btn btn-secondary btn-block" id="thumbnailRerenderBtn">Re-render all thumbnails</button>
         <p class="field__hint" id="thumbnailRerenderStatus"></p>
       </div>
 
-      <div class="field hidden" id="playTrackingField">
+      <div class="field" id="playTrackingField">
         <label>Play tracking</label>
         <button type="button" class="btn btn-secondary btn-block" id="playTrackingBtn">Enable play tracking</button>
         <p class="field__hint">Counts plays to drive the "Most Popular" row.</p>
       </div>
 
-      <div class="field hidden" id="popularVisibilityField">
+      <div class="field" id="popularVisibilityField">
         <label>Most Popular row</label>
         <button type="button" class="btn btn-secondary btn-block" id="popularVisibilityBtn">Show Most Popular row</button>
         <p class="field__hint">Whether visitors see the "Most Popular" row at all, separate from whether plays are being counted — hide it while you curate, then reveal it once you're happy with the results.</p>

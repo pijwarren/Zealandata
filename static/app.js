@@ -11,7 +11,6 @@ const adminModeBtn = document.getElementById("adminModeBtn");
 const changePinField = document.getElementById("changePinField");
 const changePinBtn = document.getElementById("changePinBtn");
 const changePinStatus = document.getElementById("changePinStatus");
-const uploadField = document.getElementById("uploadField");
 const uploadCategorySelect = document.getElementById("uploadCategorySelect");
 const uploadNewCategory = document.getElementById("uploadNewCategory");
 const uploadInput = document.getElementById("uploadInput");
@@ -20,13 +19,12 @@ const uploadAttachmentsInput = document.getElementById("uploadAttachmentsInput")
 const uploadAttachmentsChooseBtn = document.getElementById("uploadAttachmentsChooseBtn");
 const uploadBtn = document.getElementById("uploadBtn");
 const uploadStatus = document.getElementById("uploadStatus");
-const playTrackingField = document.getElementById("playTrackingField");
 const playTrackingBtn = document.getElementById("playTrackingBtn");
-const popularVisibilityField = document.getElementById("popularVisibilityField");
 const popularVisibilityBtn = document.getElementById("popularVisibilityBtn");
 const previewField = document.getElementById("previewField");
 const previewToggleBtn = document.getElementById("previewToggleBtn");
 const previewGizmoBtn = document.getElementById("previewGizmoBtn");
+const libraryField = document.getElementById("libraryField");
 const mappingField = document.getElementById("mappingField");
 const mappingShadingBtn = document.getElementById("mappingShadingBtn");
 const mappingFpsBtn = document.getElementById("mappingFpsBtn");
@@ -34,7 +32,6 @@ const mappingFlipHBtn = document.getElementById("mappingFlipHBtn");
 const mappingFlipVBtn = document.getElementById("mappingFlipVBtn");
 const mappingGridcheckBtn = document.getElementById("mappingGridcheckBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
-const thumbnailField = document.getElementById("thumbnailField");
 const thumbnailRerenderBtn = document.getElementById("thumbnailRerenderBtn");
 const thumbnailViewNote = document.getElementById("thumbnailViewNote");
 const thumbnailRerenderStatus = document.getElementById("thumbnailRerenderStatus");
@@ -771,11 +768,11 @@ function paintAdminMode() {
   document.body.classList.toggle("admin-mode", !!adminToken);
   adminModeBtn.textContent = adminToken ? "Lock admin mode" : "Unlock admin mode";
   changePinField.classList.toggle("hidden", !adminToken);
-  uploadField.classList.toggle("hidden", !adminToken);
-  thumbnailField.classList.toggle("hidden", !adminToken);
-  playTrackingField.classList.toggle("hidden", !adminToken);
-  popularVisibilityField.classList.toggle("hidden", !adminToken);
   previewField.classList.toggle("hidden", !adminToken);
+  // The whole Library and calibration sections, rather than each control
+  // inside them -- everything they hold is admin-only, so gating them
+  // individually was four ways of saying the same thing.
+  libraryField.classList.toggle("hidden", !adminToken);
   mappingField.classList.toggle("hidden", !adminToken);
   if (adminToken) paintUploadCategories();
   else changePinStatus.textContent = "";
@@ -906,9 +903,9 @@ changePinBtn.addEventListener("click", async () => {
 
 // Off by default and left running server-side (not tied to any one
 // client's admin session) once switched on -- see server.py's
-// PLAY_TRACKING_ENABLED comment. playTrackingField only shows while
-// adminToken is set (paintAdminMode above), so this button is only ever
-// clickable with a live admin session already in hand.
+// PLAY_TRACKING_ENABLED comment. It lives in the Library section, which
+// only shows while adminToken is set (paintAdminMode above), so this button
+// is only ever clickable with a live admin session already in hand.
 let playTrackingEnabled = false;
 
 function paintPlayTrackingToggle(enabled) {
