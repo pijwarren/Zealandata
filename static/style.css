@@ -161,6 +161,34 @@ button.tag:active{ opacity:.65; }
 .btn-icon-lg:active{ background:var(--color-neutral-300); }
 .btn-icon-text{ font-size:11px; font-weight:600; letter-spacing:-0.02em; }
 
+/* Right-angle chevron -- the same two-arms-at-90-degrees mark the projector
+   paints over the selected keystone corner (see projector.c's FS_SRC), so a
+   nudge button on screen and the marker on the wall read as one shape,
+   rather than the arrow glyphs (left/right/up/down, single angle quotes)
+   each button used to pick for itself. Two borders of a square make the
+   arms and the corner where they meet is the point: unrotated it aims
+   up-and-right at a corner exactly as the projector's does, and the
+   modifiers swing it round to a cardinal direction. Sized in em so it
+   follows whatever font-size its button already sets. */
+.chevron{
+  --chevron-size:0.6em;
+  display:block;
+  width:var(--chevron-size); height:var(--chevron-size);
+  border-top:2px solid currentColor;
+  border-right:2px solid currentColor;
+  /* The arms only occupy the box's top and right, so their meeting point is
+     a quarter of the box up and to the right of the centre the box spins
+     around -- rotating alone would swing it off the middle of a round
+     button. Translating back by that quarter, in the box's own frame so it
+     holds at every angle, parks the point on the centre instead. */
+  transform:rotate(var(--chevron-angle,0deg))
+            translate(calc(var(--chevron-size) * -0.25), calc(var(--chevron-size) * 0.25));
+}
+.chevron--up{ --chevron-angle:-45deg; }
+.chevron--right{ --chevron-angle:45deg; }
+.chevron--down{ --chevron-angle:135deg; }
+.chevron--left{ --chevron-angle:-135deg; }
+
 button:focus-visible, .card:focus-visible{
   outline:2px solid var(--color-accent); outline-offset:2px;
 }

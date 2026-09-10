@@ -108,15 +108,23 @@ function wrapScroller(scroller) {
   scroller.parentNode.insertBefore(viewport, scroller);
   viewport.appendChild(scroller);
 
+  // Same .chevron the keystone nudges and the projector's own corner marker
+  // use -- see style.css -- rather than an angle-quote glyph of its own.
+  const chevron = (dir) => {
+    const span = document.createElement("span");
+    span.className = `chevron chevron--${dir}`;
+    return span;
+  };
+
   const leftBtn = document.createElement("button");
   leftBtn.className = "row__arrow row__arrow--left hidden";
   leftBtn.setAttribute("aria-label", "Scroll left");
-  leftBtn.textContent = "‹";
+  leftBtn.appendChild(chevron("left"));
 
   const rightBtn = document.createElement("button");
   rightBtn.className = "row__arrow row__arrow--right hidden";
   rightBtn.setAttribute("aria-label", "Scroll right");
-  rightBtn.textContent = "›";
+  rightBtn.appendChild(chevron("right"));
 
   viewport.insertBefore(leftBtn, scroller);
   viewport.appendChild(rightBtn);
