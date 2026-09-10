@@ -610,14 +610,49 @@ body.admin-mode .settings-grid{
 }
 .mapping-section[open] > .mapping-section__summary::before{ transform:rotate(90deg); }
 .mapping-section__summary:hover{ color:var(--color-accent); }
-/* The section's own contents stack the same way the field does.
-   Spaced with margins rather than a flex gap, which is not just a style
-   preference: browsers now wrap a <details>'s contents in a ::details-content
-   box, so the rows stopped being flex items of the <details> itself and a
-   gap here silently applied to that single wrapper instead of between them
-   -- every calibration section had quietly collapsed to no spacing at all.
-   Adjacent-sibling margins land on the rows either way, wrapper or not. */
-.mapping-section[open]{ display:flex; flex-direction:column; }
+/* Sections ease open instead of snapping to full height.
+   A <details> can't be transitioned directly: its contents live in a
+   ::details-content box the browser generates, and it's that box's height
+   that changes. Three pieces make it animatable -- interpolate-size, which
+   is what allows a height to interpolate to the "auto" keyword at all
+   (scoped here rather than on :root, so it can't quietly change how
+   anything else in the drawer sizes); the transition itself; and
+   allow-discrete, which keeps the box rendered through a close instead of
+   snapping to content-visibility:hidden the moment it starts.
+
+   Clipped rather than hidden, and with a margin: the controls inside run the
+   full width of the section, and a focused one draws its ring 2px outside
+   itself (see button:focus-visible), which a plain overflow:hidden would
+   shave off down both edges.
+
+   One trap, found the hard way: an open <details> laid out as a flex
+   container kills this transition outright when the content box is
+   overflow:clip -- the height jumps straight to full. It used to be
+   display:flex here for a gap that is now done with margins (see below), so
+   the flex is simply gone rather than worked around. Anything that brings it
+   back has to switch the clip below to overflow:hidden, and give up on the
+   focus rings.
+
+   A browser without ::details-content just opens instantly -- which is the
+   behaviour this replaces, so there's nothing to fall back to. */
+.mapping-section{ interpolate-size:allow-keywords; }
+.mapping-section::details-content{
+  block-size:0;
+  overflow:clip;
+  overflow-clip-margin:4px;
+  transition:block-size .26s cubic-bezier(.2,.8,.2,1), content-visibility .26s;
+  transition-behavior:allow-discrete;
+}
+.mapping-section[open]::details-content{ block-size:auto; }
+
+/* The section's own contents are spaced with margins rather than a flex gap,
+   which is not just a style preference: browsers now wrap a <details>'s
+   contents in a ::details-content box, so the rows stopped being flex items
+   of the <details> itself and a gap here silently applied to that single
+   wrapper instead of between them -- every calibration section had quietly
+   collapsed to no spacing at all. Adjacent-sibling margins land on the rows
+   either way, wrapper or not, and they work in plain block layout, which is
+   what the open-animation above needs the section to stay in. */
 .mapping-section[open] > * + *{ margin-top:20px; }
 
 .mapping-subheading{
@@ -1058,4 +1093,6 @@ body.admin-mode #setHeroBtn{ display:flex; }
    opacity still fades, just without the settle-from-scale motion. */
 @media (prefers-reduced-motion: reduce){
   .drawer, .pinpad, .doc-viewer{ --materialize-scale:1; }
+  /* Straight to open, no height sweep. */
+  .mapping-section::details-content{ transition:none; }
 }
