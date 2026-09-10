@@ -34,6 +34,7 @@ const mappingFlipHBtn = document.getElementById("mappingFlipHBtn");
 const mappingFlipVBtn = document.getElementById("mappingFlipVBtn");
 const mappingGridcheckBtn = document.getElementById("mappingGridcheckBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
+const thumbnailField = document.getElementById("thumbnailField");
 const thumbnailRerenderBtn = document.getElementById("thumbnailRerenderBtn");
 const thumbnailViewNote = document.getElementById("thumbnailViewNote");
 const thumbnailRerenderStatus = document.getElementById("thumbnailRerenderStatus");
@@ -771,6 +772,7 @@ function paintAdminMode() {
   adminModeBtn.textContent = adminToken ? "Lock admin mode" : "Unlock admin mode";
   changePinField.classList.toggle("hidden", !adminToken);
   uploadField.classList.toggle("hidden", !adminToken);
+  thumbnailField.classList.toggle("hidden", !adminToken);
   playTrackingField.classList.toggle("hidden", !adminToken);
   popularVisibilityField.classList.toggle("hidden", !adminToken);
   previewField.classList.toggle("hidden", !adminToken);

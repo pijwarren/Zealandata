@@ -595,14 +595,6 @@ body.admin-mode .settings-grid{
 /* The section's own contents stack the same way the field does. */
 .mapping-section[open]{ display:flex; flex-direction:column; gap:20px; }
 
-/* A line of plain explanatory text inside a calibration section -- what was
-   last captured, how far a re-render has got. */
-.mapping-note{
-  margin:0; font-size:12px; line-height:1.5;
-  color:var(--color-neutral-400);
-}
-.mapping-note:empty{ display:none; }
-
 .mapping-subheading{
   display:block; font-size:11px; font-weight:600; text-transform:uppercase;
   letter-spacing:.5px; color:var(--color-neutral-400);
