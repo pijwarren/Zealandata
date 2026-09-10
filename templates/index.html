@@ -71,6 +71,10 @@
       <button type="button" class="btn btn-secondary btn-block" id="screensaverToggleBtn">Turn on screensaver</button>
       <p class="field__hint">Shuffles random library videos, muted, when nothing's been chosen for a while.</p>
     </div>
+    <div class="field hidden" id="previewField">
+      <label>Output preview</label>
+      <button type="button" class="btn btn-secondary btn-block" id="previewToggleBtn">Open output preview</button>
+    </div>
 
     <div class="field">
       <label>Admin mode</label>
@@ -84,10 +88,6 @@
       <p class="field__hint" id="changePinStatus"></p>
     </div>
 
-    <div class="field hidden" id="previewField">
-      <label>Output preview</label>
-      <button type="button" class="btn btn-secondary btn-block" id="previewToggleBtn">Open output preview</button>
-    </div>
   </div>
 
   <!-- Everything about what's IN the library, as opposed to how it's
@@ -151,6 +151,22 @@
   </div>
 
   <div class="field hidden" id="mappingField">
+    <details class="mapping-section" id="sectionVideo">
+      <summary class="mapping-section__summary">Video orientation</summary>
+      <div class="mapping-row">
+        <span class="mapping-row__label">Rotation</span>
+        <input type="range" id="mappingVideoRotation" min="0" max="360" step="1" value="0">
+        <div class="mapping-row__stepper">
+          <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="-1" aria-label="Decrease rotation">−</button>
+          <input type="number" class="mapping-row__number" id="mappingVideoRotationNumber" min="0" max="360" step="1" value="0">
+          <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="1" aria-label="Increase rotation">+</button>
+        </div>
+      </div>
+      <div class="mapping-actions">
+        <button type="button" class="btn btn-secondary" id="mappingFlipHBtn">Flip video horizontally</button>
+        <button type="button" class="btn btn-secondary" id="mappingFlipVBtn">Flip video vertically</button>
+      </div>
+    </details>
     <details class="mapping-section" id="sectionMapping">
       <summary class="mapping-section__summary">Projection mapping</summary>
       <div class="mapping-row">
@@ -235,22 +251,6 @@
         </div>
       </div>
     </details>
-    <details class="mapping-section" id="sectionVideo">
-      <summary class="mapping-section__summary">Video orientation</summary>
-      <div class="mapping-row">
-        <span class="mapping-row__label">Rotation</span>
-        <input type="range" id="mappingVideoRotation" min="0" max="360" step="1" value="0">
-        <div class="mapping-row__stepper">
-          <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="-1" aria-label="Decrease rotation">−</button>
-          <input type="number" class="mapping-row__number" id="mappingVideoRotationNumber" min="0" max="360" step="1" value="0">
-          <button type="button" class="mapping-row__step" data-target="mappingVideoRotation" data-dir="1" aria-label="Increase rotation">+</button>
-        </div>
-      </div>
-      <div class="mapping-actions">
-        <button type="button" class="btn btn-secondary" id="mappingFlipHBtn">Flip video horizontally</button>
-        <button type="button" class="btn btn-secondary" id="mappingFlipVBtn">Flip video vertically</button>
-      </div>
-    </details>
     <details class="mapping-section" id="sectionKeystone">
       <summary class="mapping-section__summary">Keystone correction</summary>
       <!-- One corner at a time: pick which of the four is being moved, then
@@ -304,7 +304,6 @@
     </details>
     <div class="mapping-actions">
       <button type="button" class="btn btn-secondary" id="mappingShadingBtn">Turn on calibration shading</button>
-      <button type="button" class="btn btn-secondary" id="mappingGridcheckBtn">Play grid check (loop)</button>
       <button type="button" class="btn btn-secondary" id="mappingResetBtn">Reset to default</button>
       <button type="button" class="btn btn-secondary" id="previewGizmoBtn">Hide preview gizmo</button>
       <button type="button" class="btn btn-secondary" id="mappingFpsBtn">Show FPS on output</button>

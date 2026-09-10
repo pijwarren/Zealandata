@@ -205,6 +205,25 @@ MAPPING_STRING = {
 KEYSTONE_CORNERS = {"tl", "tr", "bl", "br"}
 DEFAULT_MAPPING = {**MAPPING_NUMERIC, **MAPPING_BOOLEAN, **MAPPING_STRING}
 
+# What the calibration panel's "Reset to default" puts back: everything in
+# its Projection mapping and Keystone correction sections, taking the values
+# from the schema above so there's one copy of them. The admin panel used to
+# keep its own list and it had already drifted -- projector distance and both
+# projector offsets were never reset at all.
+#
+# Video orientation (video_rotation, video_flip_h/v) is deliberately not in
+# here. Those describe how a particular video file happened to be exported,
+# not how the projector is aimed, so a geometry reset has no business
+# re-flipping the picture. The overlay toggles (shading, gizmo, fps) are out
+# for the same sort of reason: they're a view of the calibration, not part of
+# it, and silently switching them is just confusing.
+MAPPING_RESET_KEYS = (
+    "scale", "throw_distance", "throw_offset_x", "throw_offset_y",
+    "rotation_x", "rotation_y", "rotation_z", "offset_x", "offset_y",
+    "keystone_tl_x", "keystone_tl_y", "keystone_tr_x", "keystone_tr_y",
+    "keystone_bl_x", "keystone_bl_y", "keystone_br_x", "keystone_br_y",
+)
+
 # ----------------------------------------------------- thumbnail view ---
 # The view library thumbnails are rendered through: the same mapping fields
 # as above, but frozen at whatever the calibration was when someone captured
@@ -336,7 +355,6 @@ UPLOAD_MAX_MB = int(os.environ.get("ZEALANDATA_UPLOAD_MAX_MB", "8192"))
 
 # A projection-mapping test pattern, played looping/muted on demand from the
 # calibration section -- not a library item, just a fixed asset.
-GRIDCHECK_VIDEO_PATH = os.path.join(BASE_DIR, "static", "Gridcheck.mp4")
 
 # Resume threshold: only offer/apply "continue watching" if between these
 # fractions of the way through (avoids resuming a 3-second stub, and avoids
@@ -376,7 +394,7 @@ screensaver_stop_event = threading.Event()
 # Metadata for whatever's currently playing — mainly so /api/status can
 # report a description without mpv needing to know what one is.
 meta_lock = threading.Lock()
-current_media_meta = {"id": None, "title": None, "description": None, "is_sequence": False, "frame_count": None, "thumbnail": None, "is_gridcheck": False}
+current_media_meta = {"id": None, "title": None, "description": None, "is_sequence": False, "frame_count": None, "thumbnail": None}
 
 # Title of whatever the screensaver is currently showing -- separate from
 # current_media_meta above, which is only for a deliberate selection, so the
@@ -1197,13 +1215,11 @@ def _backend_set_props_and_load(path, keep_open, loop_file, mute, start, image_d
     # webgl backend: translate an mpv-style absolute filesystem path into a
     # URL the /projection page's <video> can actually load. media_id (when
     # the caller has one -- a real library item) is the normal case; the
-    # idle image and gridcheck pattern are the fixed exceptions.
+    # idle image is the one fixed exception.
     if media_id:
         url = f"/api/media/{media_id}/stream"
     elif path == LOADING_IMAGE_PATH:
         url = "/api/loading-image"
-    elif path == GRIDCHECK_VIDEO_PATH:
-        url = "/static/Gridcheck.mp4"
     else:
         url = None
     try:
@@ -1417,29 +1433,6 @@ def _watch_mpv_playback(generation, media_id, title):
 
     if last_pos is not None:
         update_progress(media_id, title, last_pos, last_dur)
-
-    with mpv_lock:
-        still_current = generation == mpv_generation
-    if still_current:
-        _enter_idle_state()
-
-
-def _watch_gridcheck_playback(generation):
-    """Same idle-detection loop as _watch_mpv_playback, minus the progress
-    tracking -- gridcheck isn't a library item, there's nothing to save.
-    Without this, current_kind would stay stuck on "video" after the dock's
-    Stop button actually stops mpv, and /api/status would keep reporting
-    the grid check as playing forever."""
-    while True:
-        time.sleep(2)
-        with mpv_lock:
-            if generation != mpv_generation:
-                return  # superseded by something newer
-        idle_active = backend_get("idle-active")
-        if idle_active is None:
-            continue  # socket hiccup / no heartbeat yet — don't mistake it for "went idle"
-        if idle_active:
-            break
 
     with mpv_lock:
         still_current = generation == mpv_generation
@@ -1681,13 +1674,12 @@ def api_set_mapping():
     return jsonify(set_mapping(values))
 
 
-@app.route("/api/mapping/gridcheck", methods=["POST"])
-def api_mapping_gridcheck():
-    """Plays static/Gridcheck.mp4 looping/muted on the projector -- a test
-    pattern for lining the physical print up against. Not a library item,
-    so this skips progress tracking, play counting, and the background
-    watcher thread that a real selection gets; use the dock's own Stop
-    button to end it, same as any other playback."""
+@app.route("/api/mapping/reset", methods=["POST"])
+def api_reset_mapping():
+    """Puts the geometry back to its defaults -- see MAPPING_RESET_KEYS for
+    what that covers and what it deliberately leaves alone. The admin panel
+    confirms first; this doesn't, since it's the same class of destructive
+    calibration write as any other POST to /api/mapping."""
     if not ADMIN_PIN:
         return jsonify({"error": "admin mode isn't configured on this server"}), 404
     body = request.get_json(silent=True) or {}
@@ -1696,22 +1688,7 @@ def api_mapping_gridcheck():
         return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
     if not ok:
         return jsonify({"error": "incorrect PIN"}), 403
-    if not os.path.exists(GRIDCHECK_VIDEO_PATH):
-        return jsonify({"error": "Gridcheck.mp4 not found in static/"}), 404
-
-    _mark_interaction()
-    with meta_lock:
-        current_media_meta.update({
-            "id": None, "title": "Gridcheck test pattern",
-            "description": None, "is_sequence": False,
-            "frame_count": None, "thumbnail": None,
-            "is_gridcheck": True,
-        })
-    gen = _claim_generation("video")
-    stop_screensaver()
-    _hdmi_load(GRIDCHECK_VIDEO_PATH, keep_open="yes", loop_file="inf", mute="yes", start="none", gen=gen)
-    threading.Thread(target=_watch_gridcheck_playback, args=(gen,), daemon=True).start()
-    return jsonify({"status": "playing", "title": "Gridcheck test pattern"})
+    return jsonify(set_mapping({k: DEFAULT_MAPPING[k] for k in MAPPING_RESET_KEYS}))
 
 
 @app.route("/api/loading-image")
@@ -2296,7 +2273,6 @@ def api_play(media_id):
             "is_sequence": match.get("is_sequence", False),
             "frame_count": match.get("frame_count"),
             "thumbnail": match.get("thumbnail"),
-            "is_gridcheck": False,
         })
 
     # Claim the generation *before* stopping the screensaver, not after --
@@ -2381,7 +2357,6 @@ def api_status():
         frame_count = current_media_meta.get("frame_count")
         thumbnail = current_media_meta.get("thumbnail")
         media_id = current_media_meta.get("id")
-        is_gridcheck = current_media_meta.get("is_gridcheck", False)
 
     return jsonify(
         {
@@ -2396,7 +2371,6 @@ def api_status():
             "description": description,
             "is_sequence": is_sequence,
             "frame_count": frame_count,
-            "is_gridcheck": is_gridcheck,
             # only worth the extra IPC round-trip for sequences, where the
             # dock actually shows a frame counter
             "frame_number": prop("estimated-frame-number") if is_sequence else None,

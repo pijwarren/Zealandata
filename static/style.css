@@ -540,8 +540,15 @@ body.admin-mode .drawer{ width:min(1100px, 94vw); }
   align-items:start;
 }
 .settings-grid .field{ margin:0; max-width:none; }
+/* Two up once unlocked and there's width for it: Screensaver and Output
+   preview fill the first column, Admin mode and Admin PIN the second.
+   Column flow with an explicit two-row track is what puts them side by side
+   like that rather than reading straight down one column -- so the row count
+   has to match how many fields are actually in a column, and this is the
+   pair-per-column layout the four of them make. The media query below drops
+   back to one column when the drawer is too narrow to carry two. */
 body.admin-mode .settings-grid{
-  grid-template-columns:1fr 1fr; grid-template-rows:repeat(4, auto); grid-auto-flow:column;
+  grid-template-columns:1fr 1fr; grid-template-rows:repeat(2, auto); grid-auto-flow:column;
 }
 @media (max-width:760px){
   body.admin-mode .settings-grid{ grid-template-columns:1fr; grid-template-rows:none; grid-auto-flow:row; }

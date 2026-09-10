@@ -30,7 +30,6 @@ const mappingShadingBtn = document.getElementById("mappingShadingBtn");
 const mappingFpsBtn = document.getElementById("mappingFpsBtn");
 const mappingFlipHBtn = document.getElementById("mappingFlipHBtn");
 const mappingFlipVBtn = document.getElementById("mappingFlipVBtn");
-const mappingGridcheckBtn = document.getElementById("mappingGridcheckBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
 const thumbnailRerenderBtn = document.getElementById("thumbnailRerenderBtn");
 const thumbnailViewNote = document.getElementById("thumbnailViewNote");
@@ -1383,42 +1382,21 @@ mappingFlipVBtn.addEventListener("click", async () => {
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
 });
-let gridcheckActive = false;
-function paintGridcheckBtn(active) {
-  gridcheckActive = active;
-  mappingGridcheckBtn.textContent = active ? "Stop grid check" : "Play grid check (loop)";
-}
-mappingGridcheckBtn.addEventListener("click", async () => {
+// Which fields count as "default" lives on the server (see its
+// MAPPING_RESET_KEYS), not here: this button used to carry its own copy of
+// every default value, and that copy had already drifted -- it never reset
+// the projector distance or either projector offset, and its idea of the
+// rest was only right by coincidence.
+mappingResetBtn.addEventListener("click", async () => {
   if (!adminToken) return;
-  if (gridcheckActive) {
-    await fetch("/api/control/stop", { method: "POST" });
-    paintGridcheckBtn(false);
-    return;
-  }
-  const res = await fetch("/api/mapping/gridcheck", {
+  if (!confirm(
+    "Reset every Projection mapping and Keystone correction control to its default? " +
+    "This cannot be undone. Video orientation is not affected."
+  )) return;
+  const res = await fetch("/api/mapping/reset", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token: adminToken }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (data.error) {
-    alert(data.error);
-    return;
-  }
-  paintGridcheckBtn(true);
-});
-mappingResetBtn.addEventListener("click", async () => {
-  if (!adminToken) return;
-  const defaults = {
-    scale: 1, rotation_x: 0, rotation_y: 0, rotation_z: 0, offset_x: 0, offset_y: 0,
-    video_rotation: 0, video_flip_h: false, video_flip_v: true,
-    keystone_tl_x: 0, keystone_tl_y: 0, keystone_tr_x: 0, keystone_tr_y: 0,
-    keystone_bl_x: 0, keystone_bl_y: 0, keystone_br_x: 0, keystone_br_y: 0,
-  };
-  const res = await fetch("/api/mapping", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: adminToken, ...defaults }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);
@@ -2009,7 +1987,6 @@ async function pollStatus() {
   try {
     const res = await fetch("/api/status");
     const s = await res.json();
-    paintGridcheckBtn(!!(s.playing && s.is_gridcheck));
     if (s.playing) {
       if (!wasPlaying) {
         // something's playing that this client didn't initiate (fresh
