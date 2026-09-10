@@ -48,11 +48,11 @@ The UI (colors, hero banner, settings drawer) is ported from a design built
 in Claude Design. A few deliberate deviations from
 that source design, worth knowing if you're comparing against it:
 
-- **Poster aspect ratio is square (1:1)**, not the 16:9 the design file
-  specifies — kept square on purpose to match the physical 3D-printed
-  terrain output rather than the literal import. One line in
-  `static/style.css` (`.card { aspect-ratio: ... }`) flips it back to 16/9
-  if you'd rather match the source design exactly.
+- **Poster aspect ratio is portrait (9:16)**, not the 16:9 the design file
+  specifies — matches the shape of the projected thumbnails themselves
+  (see `app.js`'s `THUMB_WIDTH`/`THUMB_HEIGHT`, 1080x1920) rather than the
+  literal import. One line in `static/style.css` (`.card { aspect-ratio: ... }`)
+  flips it back to 16/9 if you'd rather match the source design exactly.
 - **No external fonts.** The design pulls "Inter" from Google Fonts CDN;
   this Pi never has internet access (ad-hoc wifi hotspot), so a system font
   stack approximating it is used instead.
