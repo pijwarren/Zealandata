@@ -104,10 +104,10 @@ MAPPING_NUMERIC = {
     # values approximate the old purely-orthographic behaviour (no
     # elevation-dependent drift); dial it down towards the real projector's
     # actual throw distance until misalignment on the model's tallest/
-    # lowest relief disappears. Defaulted low for an ultra-short-throw unit
-    # (e.g. Epson EB-770F, ~0.27:1 throw ratio) -- a conventional long-throw
-    # projector sitting much further back would want this dialled way up.
-    "throw_distance": 0.6,
+    # lowest relief disappears. The default is what this installation's own
+    # projector measured out at -- a unit sitting much closer or further
+    # back wants it moved to match.
+    "throw_distance": 1.0,
     # Lateral position of the (virtual) projector relative to the model,
     # same normalized units as throw_distance -- e.g. an ultra-short-throw
     # unit mounted off to one side rather than centered above the model.
@@ -120,8 +120,13 @@ MAPPING_NUMERIC = {
     # elevation lines up the same way at every point of the model, not
     # just the center -- that's the tell for a real physical offset vs.
     # just needing offset_x/y.
+    #
+    # x defaults to centered; y doesn't, because this installation's
+    # projector genuinely sits well off-axis on that one. A reset landing on
+    # 0.0 there would put the picture somewhere the projector has never
+    # actually been, which is a worse starting point than the real mounting.
     "throw_offset_x": 0.0,
-    "throw_offset_y": 0.0,
+    "throw_offset_y": -1.5,
     # Independent Euler rotation in degrees around each axis, applied in
     # x/y/z order -- not just a single "yaw" around the model's detected
     # up-axis -- since correcting for a projector that isn't perfectly

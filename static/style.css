@@ -775,8 +775,18 @@ body.admin-mode .settings-grid{
   background:var(--color-accent); cursor:pointer;
   box-shadow:0 0 0 1px var(--color-accent);
 }
-.mapping-actions{ display:flex; flex-wrap:wrap; justify-content:center; gap:12px; }
-.mapping-actions .btn{ flex:0 1 240px; justify-content:center; }
+/* The same two-up, full-width layout the settings grid at the top of the
+   drawer uses, down to its spacing tokens -- these are the same kind of
+   control, so they shouldn't read as a different kind. (The buttons carry
+   .btn-block for the full width; nothing here needs to size them.) Drops to
+   a single column on the same breakpoint the settings grid does. */
+.mapping-actions{
+  display:grid; grid-template-columns:1fr 1fr;
+  column-gap:var(--space-8); row-gap:var(--space-6);
+}
+@media (max-width:760px){
+  .mapping-actions{ grid-template-columns:1fr; }
+}
 
 .pinpad{
   position:fixed; top:50%; left:50%; z-index:71;
