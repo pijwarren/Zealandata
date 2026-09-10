@@ -570,8 +570,16 @@ body.admin-mode .settings-grid{
 
 /* Both opt out of .field's 480px cap: these hold the collapsible sections,
    which span the full width of the (wider) unlocked drawer rather than
-   sitting as one narrow centred column in the middle of it. */
+   sitting as one narrow centred column in the middle of it. The nested rule
+   is for the Library section specifically, whose contents are .fields in
+   their own right -- without it they'd keep the cap and huddle in the middle
+   of a section that had already gone full width. */
 #libraryField, #mappingField{ display:flex; flex-direction:column; gap:14px; width:100%; max-width:none; margin:0; }
+/* Only the cap is lifted, deliberately not the margins: .field's own
+   "margin:0 auto" already resolves to zero once there's no free space to
+   centre in, while a margin shorthand here would outrank the 20px sibling
+   spacing above on specificity and flatten the section. */
+#libraryField .field{ max-width:none; }
 #mappingField label{ margin-bottom:0; }
 /* Collapsible sections, so the calibration panel isn't one long scroll of
    controls when only one group is being worked on. <details> rather than a
