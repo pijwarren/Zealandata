@@ -1188,9 +1188,22 @@ function keystoneKey(axis) {
 // The handle is the only readout: the pad reads like the projected
 // picture, so where it sits is the value. +Y is up on the wall, and up the
 // screen is a smaller CSS top, so the Y axis flips on the way out.
+//
+// The picture itself lands vertically flipped for the viewer relative to
+// the raw keystone_*_y field -- see index.html's keystone__corners comment
+// on why the corner *buttons* had to cross top<->bottom -- so the same
+// flip applies here: dragging the handle up is meant to move the corner up
+// on the wall, which means DECREASING the stored field value, not
+// increasing it. Pad position is kept in this "up is positive" sense
+// throughout the pad code below, and converted to/from the field's own
+// (inverted) sign only at the two places that actually touch storage --
+// here, and setKeystone. Negation is its own inverse, so one helper covers
+// both directions.
+const flipKeystoneFieldY = (y) => -y;
+
 function paintKeystone() {
   const x = keystoneValues[keystoneKey("x")];
-  const y = keystoneValues[keystoneKey("y")];
+  const y = flipKeystoneFieldY(keystoneValues[keystoneKey("y")]);
   keystoneHandle.style.left = `${((x + KEYSTONE_RANGE) / (2 * KEYSTONE_RANGE)) * 100}%`;
   keystoneHandle.style.top = `${((KEYSTONE_RANGE - y) / (2 * KEYSTONE_RANGE)) * 100}%`;
 }
@@ -1213,13 +1226,17 @@ function markKeystoneActive() {
   }, KEYSTONE_ACTIVE_MS);
 }
 
+// x, y are pad-space (up/right positive, matching the drag gesture) --
+// see flipKeystoneFieldY's comment for why the Y that actually gets stored
+// and sent is its negation.
 function setKeystone(x, y) {
   const nx = clamp(x, -KEYSTONE_RANGE, KEYSTONE_RANGE);
   const ny = clamp(y, -KEYSTONE_RANGE, KEYSTONE_RANGE);
+  const fieldY = flipKeystoneFieldY(ny);
   keystoneValues[keystoneKey("x")] = nx;
-  keystoneValues[keystoneKey("y")] = ny;
+  keystoneValues[keystoneKey("y")] = fieldY;
   paintKeystone();
-  sendMappingUpdate({ [keystoneKey("x")]: nx, [keystoneKey("y")]: ny });
+  sendMappingUpdate({ [keystoneKey("x")]: nx, [keystoneKey("y")]: fieldY });
   markKeystoneActive();
 }
 
@@ -1274,8 +1291,10 @@ document.querySelectorAll(".keystone__corner").forEach((btn) => {
     const d = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] }[e.key];
     if (!d) return;
     e.preventDefault();
+    // Un-flip the stored Y back to pad-space before nudging it -- see
+    // flipKeystoneFieldY's comment -- so ArrowUp still means "up" here.
     setKeystone(keystoneValues[keystoneKey("x")] + d[0] * KEYSTONE_STEP,
-                keystoneValues[keystoneKey("y")] + d[1] * KEYSTONE_STEP);
+                flipKeystoneFieldY(keystoneValues[keystoneKey("y")]) + d[1] * KEYSTONE_STEP);
   });
 })();
 
@@ -1283,7 +1302,9 @@ document.querySelectorAll(".keystone__corner").forEach((btn) => {
  ["keystoneYDown", "y", -1], ["keystoneYUp", "y", 1]].forEach(([id, axis, dir]) => {
   document.getElementById(id).addEventListener("click", () => {
     const x = keystoneValues[keystoneKey("x")];
-    const y = keystoneValues[keystoneKey("y")];
+    // Un-flip back to pad-space before nudging -- see flipKeystoneFieldY's
+    // comment -- so the Y+ ("Move corner up") button still means "up" here.
+    const y = flipKeystoneFieldY(keystoneValues[keystoneKey("y")]);
     if (axis === "x") setKeystone(x + dir * KEYSTONE_STEP, y);
     else setKeystone(x, y + dir * KEYSTONE_STEP);
   });

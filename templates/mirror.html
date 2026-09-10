@@ -16,9 +16,21 @@
     /* The canvas's offsetParent, which is what calibration_preview.js
        positions the axis labels against -- so this has to establish a
        containing block even though it fills the window. */
+    /* Rotated 180 rather than flipped -- whatever's viewing this tab
+       (a second screen propped up next to the print) is mounted the
+       opposite way up from a normal monitor. A pure CSS transform, applied
+       after layout: it rotates the canvas's painted pixels together with
+       the axis labels calibration_preview.js positions on top of it (both
+       are descendants of this div, so they rotate as one rigid unit and
+       stay aligned), without calibration_preview.js needing to know
+       anything changed. Safe at exactly 180 -- rotating a non-square
+       fixed-to-viewport rect by 180 degrees maps it exactly back onto
+       itself; 90/270 would need the width/height swapped too to avoid
+       clipping, which this doesn't. */
     #stage {
       position: fixed;
       inset: 0;
+      transform: rotate(180deg);
     }
     #stage canvas {
       display: block;
