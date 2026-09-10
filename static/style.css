@@ -592,8 +592,15 @@ body.admin-mode .settings-grid{
 }
 .mapping-section[open] > .mapping-section__summary::before{ transform:rotate(90deg); }
 .mapping-section__summary:hover{ color:var(--color-accent); }
-/* The section's own contents stack the same way the field does. */
-.mapping-section[open]{ display:flex; flex-direction:column; gap:20px; }
+/* The section's own contents stack the same way the field does.
+   Spaced with margins rather than a flex gap, which is not just a style
+   preference: browsers now wrap a <details>'s contents in a ::details-content
+   box, so the rows stopped being flex items of the <details> itself and a
+   gap here silently applied to that single wrapper instead of between them
+   -- every calibration section had quietly collapsed to no spacing at all.
+   Adjacent-sibling margins land on the rows either way, wrapper or not. */
+.mapping-section[open]{ display:flex; flex-direction:column; }
+.mapping-section[open] > * + *{ margin-top:20px; }
 
 .mapping-subheading{
   display:block; font-size:11px; font-weight:600; text-transform:uppercase;
