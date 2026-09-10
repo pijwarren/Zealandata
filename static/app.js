@@ -1171,7 +1171,11 @@ const KEYSTONE_RANGE = 0.3;   // matches the number inputs' min/max
 const KEYSTONE_STEP = 0.005;  // and their step, for the +/- buttons
 const keystonePad = document.getElementById("keystonePad");
 const keystoneHandle = document.getElementById("keystoneHandle");
-let keystoneCorner = "tl";
+// Matches whichever data-corner the template marks .is-selected by default
+// (currently the "Top left" button, which -- see its own comment in
+// index.html -- deliberately carries data-corner="bl") rather than the
+// field this variable's own name might suggest.
+let keystoneCorner = "bl";
 const keystoneValues = {
   keystone_tl_x: 0, keystone_tl_y: 0, keystone_tr_x: 0, keystone_tr_y: 0,
   keystone_bl_x: 0, keystone_bl_y: 0, keystone_br_x: 0, keystone_br_y: 0,
