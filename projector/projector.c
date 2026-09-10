@@ -921,6 +921,11 @@ static const char *FS_SRC =
     "in vec3 vPos;\n"
     "uniform sampler2D uTex;\n"
     "uniform int uShading;\n"
+    /* Keystone corner marker -- see MARKER_INSET_FRAC's comment above.
+       uMarkerRadius <= 0.0 means "no corner selected, don't draw it". */
+    "uniform vec2 uMarkerUV;\n"
+    "uniform float uMarkerRadius;\n"
+    "uniform float uMarkerAlpha;\n"
     "out vec4 oColor;\n"
     "void main(){\n"
     "  vec4 c = texture(uTex, vUV);\n"
@@ -966,6 +971,20 @@ static const char *FS_SRC =
        -- the area light above already lifts the shadow terminator, and
        a high floor on top of that washed the shape out. */
     "    c.rgb *= (0.2 + 1.1 * d);\n"
+    "  }\n"
+    /* Blended in after shading (so it always reads full-brightness white,
+       never dimmed by the area light above), straight onto the texture-
+       sampled color -- see uMarkerUV's comment for why this rides through
+       the model transform and keystone warp for free instead of needing
+       its own pass. */
+    "  if (uMarkerRadius > 0.0) {\n"
+    "    float d = length(vUV - uMarkerUV) / uMarkerRadius;\n"
+    "    if (d < 1.0) {\n"
+    "      float core = smoothstep(0.35, 0.0, d);\n"
+    "      float glow = smoothstep(1.0, 0.0, d);\n"
+    "      float g = (core * 0.9 + glow * 0.5) * uMarkerAlpha;\n"
+    "      c.rgb = mix(c.rgb, vec3(1.0), g);\n"
+    "    }\n"
     "  }\n"
     "  oColor = vec4(c.rgb, 1.0);\n"
     "}\n";
@@ -1026,58 +1045,20 @@ static const char *GIZMO_LABEL_VS_SRC =
  * A soft white glow over whichever corner the admin panel's keystone pad
  * currently has selected (mapping.keystone_corner) -- lets an operator
  * standing in front of the print confirm which corner a drag is about to
- * move before committing to it. Drawn as a screen-space quad straight over
- * the finished picture (after the keystone warp, unlike the gizmo, which is
- * drawn *without* it) since it is marking a spot on the actual output, not
- * a property of the unwarped model -- its position is instead derived by
- * applying the same per-frame keystone homography (H in the render loop)
- * to an inset point near the target corner, so it tracks the corner
- * exactly, however it's currently keystoned. */
-static const char *MARKER_VS_SRC =
-    "#version 300 es\n"
-    "layout(location=0) in vec2 aOffset;\n"
-    "uniform vec2 uCenter;\n"
-    "uniform vec2 uRadiusNdc;\n"
-    "out vec2 vOffset;\n"
-    "void main(){\n"
-    "  vOffset = aOffset;\n"
-    "  gl_Position = vec4(uCenter + aOffset * uRadiusNdc, 0.0, 1.0);\n"
-    "}\n";
-
-static const char *MARKER_FS_SRC =
-    "#version 300 es\n"
-    "precision mediump float;\n"
-    "in vec2 vOffset;\n"
-    "uniform float uAlpha;\n"
-    "out vec4 oColor;\n"
-    "void main(){\n"
-    "  float d = length(vOffset);\n"
-    "  if (d > 1.0) discard;\n"
-    "  float core = smoothstep(0.35, 0.0, d);\n"
-    "  float glow = smoothstep(1.0, 0.0, d);\n"
-    "  float a = (core * 0.9 + glow * 0.5) * uAlpha;\n"
-    "  oColor = vec4(1.0, 1.0, 1.0, a);\n"
-    "}\n";
-
-/* How far the marker sits in from the true corner, as a fraction of the
-   keystoned quad's own edge -- moving the homography's s,t input inward
-   (rather than nudging the resulting NDC position by a fixed pixel amount)
-   keeps it following the warp exactly instead of drifting off-quad once a
-   corner is actually dragged far from default. */
-#define MARKER_INSET_FRAC 0.09f
+ * move before committing to it. Baked straight into FS_SRC's texture-
+ * sampled color (see its uMarkerUV comment) at a fixed point in the
+ * model's own UV space, rather than drawn as a separate screen-space pass
+ * -- that means it rides through exactly the same UV mapping, model
+ * transform and keystone warp the video itself does, with nothing extra to
+ * keep in step, and it's contained inside the mapped/warped picture by
+ * construction (vUV's domain is always exactly 0..1) rather than something
+ * to work out fresh each frame. */
+#define MARKER_INSET_FRAC 0.09f   /* how far in from the UV edge -- "9% in from the edges" */
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
 #define MARKER_ALPHA_MIN 0.35f
 #define MARKER_ALPHA_MAX 1.0f
-#define MARKER_RADIUS_MIN_PX 26.f
-#define MARKER_RADIUS_MAX_PX 38.f
-/* Caps the breathing radius above to (at most) this fraction of the pixel
-   distance from the marker's center to the two picture edges nearest the
-   corner it's inset from, recomputed every frame from the same homography
-   the warp pass uses -- so a corner keystoned into a tight spot shrinks the
-   glow to fit rather than letting it bleed past the edge of the mapped
-   texture. Below 1 as a margin for what that distance actually measures
-   (the exact straight edge vs. the single point on it this measures to). */
-#define MARKER_EDGE_SAFETY 0.85f
+#define MARKER_RADIUS_MIN_UV 0.05f
+#define MARKER_RADIUS_MAX_UV 0.08f   /* stays under MARKER_INSET_FRAC -- see the comment above */
 
 typedef struct { float x, y, z, r, g, b; } gizmo_vert;
 typedef struct { float x, y, r, g, b; } label_vert;
@@ -1866,6 +1847,9 @@ int main(void) {
     GLint uVidFlipV = glGetUniformLocation(prog, "uVidFlipV");
     GLint uShading = glGetUniformLocation(prog, "uShading");
     GLint uKeystone = glGetUniformLocation(prog, "uKeystone");
+    GLint uMarkerUV = glGetUniformLocation(prog, "uMarkerUV");
+    GLint uMarkerRadius = glGetUniformLocation(prog, "uMarkerRadius");
+    GLint uMarkerAlpha = glGetUniformLocation(prog, "uMarkerAlpha");
     glUniform1i(glGetUniformLocation(prog, "uTex"), 0);
 
     /* ---- calibration gizmo: ring program + static ring geometry ---- */
@@ -1911,26 +1895,6 @@ int main(void) {
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(label_vert), (void *)0);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(label_vert), (void *)(2 * sizeof(float)));
-
-    /* ---- keystone corner marker: breathing-glow program + static unit quad ---- */
-    GLuint markerProg = glCreateProgram();
-    glAttachShader(markerProg, compile_shader(GL_VERTEX_SHADER, MARKER_VS_SRC));
-    glAttachShader(markerProg, compile_shader(GL_FRAGMENT_SHADER, MARKER_FS_SRC));
-    glLinkProgram(markerProg);
-    GLint markerLinked = 0; glGetProgramiv(markerProg, GL_LINK_STATUS, &markerLinked);
-    if (!markerLinked) { char log[2048]; glGetProgramInfoLog(markerProg, sizeof log, NULL, log);
-                          fprintf(stderr, "marker link: %s\n", log); return 1; }
-    GLint uMarkerCenter = glGetUniformLocation(markerProg, "uCenter");
-    GLint uMarkerRadiusNdc = glGetUniformLocation(markerProg, "uRadiusNdc");
-    GLint uMarkerAlpha = glGetUniformLocation(markerProg, "uAlpha");
-
-    GLuint markerVao, markerVbo;
-    glGenVertexArrays(1, &markerVao); glBindVertexArray(markerVao);
-    glGenBuffers(1, &markerVbo); glBindBuffer(GL_ARRAY_BUFFER, markerVbo);
-    static const float markerQuad[8] = { -1, -1, 1, -1, -1, 1, 1, 1 };
-    glBufferData(GL_ARRAY_BUFFER, sizeof markerQuad, markerQuad, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
     glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
 
@@ -2143,6 +2107,28 @@ int main(void) {
         glUniform1i(uVidFlipH, map_cur.vid_flip_h ? 1 : 0);
         glUniform1i(uVidFlipV, map_cur.vid_flip_v ? 1 : 0);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
+        /* Keystone corner marker -- see MARKER_INSET_FRAC's comment above
+           and FS_SRC's uMarkerUV comment: computed here alongside the
+           mesh's other per-frame uniforms since it's baked into that same
+           draw call's fragment shader, not a separate pass. */
+        {
+            float mu = -1.f, mv = -1.f;
+            if (!strcmp(map_cur.keystone_corner, "bl"))      { mu = 0.f; mv = 0.f; }
+            else if (!strcmp(map_cur.keystone_corner, "br")) { mu = 1.f; mv = 0.f; }
+            else if (!strcmp(map_cur.keystone_corner, "tr")) { mu = 1.f; mv = 1.f; }
+            else if (!strcmp(map_cur.keystone_corner, "tl")) { mu = 0.f; mv = 1.f; }
+            if (mu >= 0.f) {
+                mu = (mu == 0.f) ? MARKER_INSET_FRAC : 1.f - MARKER_INSET_FRAC;
+                mv = (mv == 0.f) ? MARKER_INSET_FRAC : 1.f - MARKER_INSET_FRAC;
+                double phase = fmod(now_sec(), MARKER_PERIOD_SEC) / MARKER_PERIOD_SEC;
+                float breathe = 0.5f - 0.5f * cosf((float)phase * 2.f * (float)M_PI);
+                glUniform2f(uMarkerUV, mu, mv);
+                glUniform1f(uMarkerRadius, MARKER_RADIUS_MIN_UV + (MARKER_RADIUS_MAX_UV - MARKER_RADIUS_MIN_UV) * breathe);
+                glUniform1f(uMarkerAlpha, MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe);
+            } else {
+                glUniform1f(uMarkerRadius, -1.f);
+            }
+        }
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_still_image ? idle_tex : cur_tex);
         glBindVertexArray(vao);
@@ -2210,60 +2196,6 @@ int main(void) {
             glBindBuffer(GL_ARRAY_BUFFER, labelVbo);
             glBufferSubData(GL_ARRAY_BUFFER, 0, hc * sizeof(label_vert), hudVerts);
             glDrawArrays(GL_LINES, 0, hc);
-        }
-
-        /* ---- keystone corner marker: see the block comment above
-           MARKER_VS_SRC. Reuses H exactly as computed above for the mesh's
-           own uKeystone -- unlike the gizmo, this one *does* want the warp,
-           since it is pointing at a spot on the finished output picture. */
-        float mcs = -1.f, mct = -1.f;
-        if (!strcmp(map_cur.keystone_corner, "bl"))      { mcs = 0.f; mct = 0.f; }
-        else if (!strcmp(map_cur.keystone_corner, "br")) { mcs = 1.f; mct = 0.f; }
-        else if (!strcmp(map_cur.keystone_corner, "tr")) { mcs = 1.f; mct = 1.f; }
-        else if (!strcmp(map_cur.keystone_corner, "tl")) { mcs = 0.f; mct = 1.f; }
-        if (mcs >= 0.f) {
-            float s = (mcs == 0.f) ? MARKER_INSET_FRAC : 1.f - MARKER_INSET_FRAC;
-            float t = (mct == 0.f) ? MARKER_INSET_FRAC : 1.f - MARKER_INSET_FRAC;
-            float mx = H[0] * s + H[1] * t + H[2];
-            float my = H[3] * s + H[4] * t + H[5];
-            float mw = H[6] * s + H[7] * t + H[8];
-            float mcx = mx / mw, mcy = my / mw;
-            float dispW = (float)drm.mode.hdisplay, dispH = (float)drm.mode.vdisplay;
-            float cpx = ((mcx + 1.f) / 2.f) * dispW, cpy = ((1.f - mcy) / 2.f) * dispH;
-
-            /* Never let the breathing radius below push the circle past the
-               two picture edges nearest this corner -- see MARKER_EDGE_SAFETY's
-               comment. esx/esy/esw is the point on the s=mcs edge at the
-               center's own t; etx/ety/etw is the point on the t=mct edge at
-               the center's own s. */
-            float esx = H[0] * mcs + H[1] * t + H[2];
-            float esy = H[3] * mcs + H[4] * t + H[5];
-            float esw = H[6] * mcs + H[7] * t + H[8];
-            float etx = H[0] * s + H[1] * mct + H[2];
-            float ety = H[3] * s + H[4] * mct + H[5];
-            float etw = H[6] * s + H[7] * mct + H[8];
-            float espx = ((esx / esw + 1.f) / 2.f) * dispW, espy = ((1.f - esy / esw) / 2.f) * dispH;
-            float etpx = ((etx / etw + 1.f) / 2.f) * dispW, etpy = ((1.f - ety / etw) / 2.f) * dispH;
-            float distS = hypotf(espx - cpx, espy - cpy);
-            float distT = hypotf(etpx - cpx, etpy - cpy);
-            float maxRadiusPx = MARKER_EDGE_SAFETY * fminf(distS, distT);
-            if (maxRadiusPx < 4.f) maxRadiusPx = 4.f;
-
-            double phase = fmod(now_sec(), MARKER_PERIOD_SEC) / MARKER_PERIOD_SEC;
-            float breathe = 0.5f - 0.5f * cosf((float)phase * 2.f * (float)M_PI);
-            float alpha = MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe;
-            float radiusPx = MARKER_RADIUS_MIN_PX + (MARKER_RADIUS_MAX_PX - MARKER_RADIUS_MIN_PX) * breathe;
-            if (radiusPx > maxRadiusPx) radiusPx = maxRadiusPx;
-
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glUseProgram(markerProg);
-            glUniform2f(uMarkerCenter, mcx, mcy);
-            glUniform2f(uMarkerRadiusNdc, (radiusPx / dispW) * 2.f, (radiusPx / dispH) * 2.f);
-            glUniform1f(uMarkerAlpha, alpha);
-            glBindVertexArray(markerVao);
-            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-            glDisable(GL_BLEND);
         }
 
         glBindVertexArray(vao);   /* restore, matching the mesh pass */

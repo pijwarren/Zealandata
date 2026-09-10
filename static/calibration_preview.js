@@ -29,29 +29,25 @@ const SCALE_BASELINE = 1.82;
 const GIZMO_SEGMENTS = 64;
 const GIZMO_RADIUS = 0.4;
 
-// Which corner of the unit-square keystone parameterisation each named
-// corner sits at -- see quadHomography/render's warp pass below, which
-// bilinear-interpolates s,t=(0,0)..(1,1) across bl/br/tr/tl in that order.
+// Which corner of the unit-square UV/keystone parameterisation each named
+// corner sits at (bl/br/tr/tl, matching quadHomography's own corner order).
 const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
-// How far the corner marker sits in from the true corner, as a fraction of
-// the quad's own edge -- moving s,t inward keeps it following the warp
-// (keystone, aspect, whatever) exactly instead of an afterthought pixel
-// nudge that would drift off-quad once the corner's actually dragged.
-const MARKER_INSET_FRAC = 0.09;
+// The corner marker is drawn straight into vUV in MODEL_FS -- i.e. baked
+// into the texture-sampled color itself, at a fixed point in the model's
+// own 0..1 texture space -- rather than as a separate screen-space overlay
+// computed from the keystone homography. That means it rides through
+// exactly the same UV mapping, model transform and keystone warp the video
+// itself does, with nothing extra to keep in step: containment inside the
+// mapped/warped picture is automatic (it's already correct by construction
+// as long as MARKER_RADIUS_MAX_UV stays under MARKER_INSET_FRAC below,
+// since vUV's domain is always exactly 0..1), not something a separate pass
+// has to reason about after the fact.
+const MARKER_INSET_FRAC = 0.09; // how far in from the UV edge, i.e. "9% in from the edges"
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
 const MARKER_ALPHA_MIN = 0.35;
 const MARKER_ALPHA_MAX = 1.0;
-const MARKER_RADIUS_MIN_PX = 26;
-const MARKER_RADIUS_MAX_PX = 38;
-// However big the breathing radius above wants to be, it's clamped every
-// frame to (at most) this fraction of the actual pixel distance from the
-// marker's center to the two picture edges nearest the corner it's inset
-// from -- computed fresh each frame from the same homography as the warp,
-// so a corner keystoned into a tight spot shrinks the glow to fit rather
-// than letting it bleed past the edge of the mapped texture. Kept below 1
-// as a margin for the approximation this distance is (the exact straight
-// edge vs. the single point on it this measures to).
-const MARKER_EDGE_SAFETY = 0.85;
+const MARKER_RADIUS_MIN_UV = 0.05;
+const MARKER_RADIUS_MAX_UV = 0.08; // stays under MARKER_INSET_FRAC -- see the comment above
 
 // ---------------------------------------------------------------- shaders
 
@@ -116,6 +112,11 @@ in vec3 vNrm;
 in vec3 vPos;
 uniform sampler2D uTex;
 uniform int uShading;
+// Keystone corner marker -- see CORNER_ST/MARKER_* comments in JS.
+// uMarkerRadius <= 0.0 means "no corner selected, don't draw it".
+uniform vec2 uMarkerUV;
+uniform float uMarkerRadius;
+uniform float uMarkerAlpha;
 out vec4 oColor;
 void main(){
   vec4 c = texture(uTex, vUV);
@@ -134,6 +135,20 @@ void main(){
     float d = (ndl >= w) ? ndl
             : ((ndl <= -w) ? 0.0 : (ndl + w) * (ndl + w) / (4.0 * w));
     c.rgb *= (0.2 + 1.1 * d);
+  }
+  // Blended in after shading (so it always reads full-brightness white,
+  // never dimmed by the area light above), straight onto the texture-
+  // sampled color -- see uMarkerUV's comment for why this rides through
+  // the model transform and keystone warp for free instead of needing its
+  // own pass.
+  if (uMarkerRadius > 0.0) {
+    float d = length(vUV - uMarkerUV) / uMarkerRadius;
+    if (d < 1.0) {
+      float core = smoothstep(0.35, 0.0, d);
+      float glow = smoothstep(1.0, 0.0, d);
+      float g = (core * 0.9 + glow * 0.5) * uMarkerAlpha;
+      c.rgb = mix(c.rgb, vec3(1.0), g);
+    }
   }
   oColor = vec4(c.rgb, 1.0);
 }`;
@@ -171,33 +186,6 @@ precision mediump float;
 in vec3 vCol;
 out vec4 oColor;
 void main(){ oColor = vec4(vCol, 1.0); }`;
-
-// A screen-space glow, not a warped one: it marks a corner of the *output*
-// picture for the operator's eye, so it should always read as a circle,
-// not the flattened sliver a keystoned corner would warp it into.
-const MARKER_VS = `#version 300 es
-layout(location=0) in vec2 aOffset;
-uniform vec2 uCenter;
-uniform vec2 uRadiusNdc;
-out vec2 vOffset;
-void main(){
-  vOffset = aOffset;
-  gl_Position = vec4(uCenter + aOffset * uRadiusNdc, 0.0, 1.0);
-}`;
-
-const MARKER_FS = `#version 300 es
-precision mediump float;
-in vec2 vOffset;
-uniform float uAlpha;
-out vec4 oColor;
-void main(){
-  float d = length(vOffset);
-  if (d > 1.0) discard;
-  float core = smoothstep(0.35, 0.0, d);
-  float glow = smoothstep(1.0, 0.0, d);
-  float a = (core * 0.9 + glow * 0.5) * uAlpha;
-  oColor = vec4(1.0, 1.0, 1.0, a);
-}`;
 
 // ------------------------------------------------------------- mat4 math
 // Column-major, matching projector.c's mat4 convention exactly (out = a*b,
@@ -469,11 +457,10 @@ let ready = false;
 let loading = false;
 let model = null; // { pos, nrm, idx }
 let texture = null;
-let modelProg, warpProg, gizmoProg, markerProg;
+let modelProg, warpProg, gizmoProg;
 let modelVao, sceneFbo, sceneTex, sceneDepth;
 let warpVao, warpVbo;
 let gizmoVao;
-let markerVao;
 let sceneW = 640, sceneH = 360;
 let labelEls = null;
 let statusEl = null;
@@ -523,7 +510,6 @@ async function ensureInit(canvasEl, labels, status) {
     modelProg = linkProgram(gl, MODEL_VS, MODEL_FS);
     warpProg = linkProgram(gl, WARP_VS, WARP_FS);
     gizmoProg = linkProgram(gl, GIZMO_VS, GIZMO_FS);
-    markerProg = linkProgram(gl, MARKER_VS, MARKER_FS);
 
     modelVao = gl.createVertexArray();
     gl.bindVertexArray(modelVao);
@@ -562,10 +548,6 @@ async function ensureInit(canvasEl, labels, status) {
     gizmoVao = gl.createVertexArray();
     gl.bindVertexArray(gizmoVao);
     bindAttribBuffer6(buildGizmoRings());
-
-    markerVao = gl.createVertexArray();
-    gl.bindVertexArray(markerVao);
-    bindAttribBuffer(0, 2, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
 
     ready = true;
     setStatus(null);
@@ -714,6 +696,28 @@ function render(mapping) {
   // here should depend on whether "calibration shading" happens to be
   // toggled on for the actual projector right now.
   gl.uniform1i(gl.getUniformLocation(modelProg, "uShading"), 1);
+  // Keystone corner marker -- see CORNER_ST/MARKER_* comments above and
+  // MODEL_FS's own comment: baked straight into the texture-sampled color
+  // at a fixed point in the model's own UV space, so it's carried through
+  // this same draw call rather than needing a separate pass afterward.
+  const cornerSt = CORNER_ST[mapping.keystone_corner];
+  if (cornerSt) {
+    const u = cornerSt[0] === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
+    const v = cornerSt[1] === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
+    const phase = (performance.now() % MARKER_PERIOD_MS) / MARKER_PERIOD_MS;
+    const breathe = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // eases 0 -> 1 -> 0
+    gl.uniform2f(gl.getUniformLocation(modelProg, "uMarkerUV"), u, v);
+    gl.uniform1f(
+      gl.getUniformLocation(modelProg, "uMarkerRadius"),
+      MARKER_RADIUS_MIN_UV + (MARKER_RADIUS_MAX_UV - MARKER_RADIUS_MIN_UV) * breathe,
+    );
+    gl.uniform1f(
+      gl.getUniformLocation(modelProg, "uMarkerAlpha"),
+      MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe,
+    );
+  } else {
+    gl.uniform1f(gl.getUniformLocation(modelProg, "uMarkerRadius"), -1);
+  }
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
   gl.uniform1i(gl.getUniformLocation(modelProg, "uTex"), 0);
@@ -767,61 +771,6 @@ function render(mapping) {
     for (let ring = 0; ring < 3; ring++) gl.drawArrays(gl.LINE_LOOP, ring * GIZMO_SEGMENTS, GIZMO_SEGMENTS);
   }
   positionLabels(gizmoMvp, showGizmo);
-
-  // ---- keystone corner marker: a soft white glow over whichever corner the
-  // admin panel currently has selected, drawn straight over the finished
-  // frame (not through the warp -- it's marking a spot on the *output*
-  // picture, not the model) so an operator watching this tab can confirm
-  // which corner is about to move before dragging it. Inset by nudging s,t
-  // in from the true 0/1 corner and re-applying the same H the warp pass
-  // used, so the marker still lands right on the corner however it's
-  // currently keystoned. ----
-  const cornerSt = CORNER_ST[mapping.keystone_corner];
-  if (cornerSt) {
-    const bs = cornerSt[0], bt = cornerSt[1];
-    const s = bs === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
-    const t = bt === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
-    const [mx, my, mw] = homographyApply(H, s, t);
-    const cx = mx / mw, cy = my / mw;
-    const cpx = ((cx + 1) / 2) * canvas.width, cpy = ((1 - cy) / 2) * canvas.height;
-
-    // Never let the breathing radius below push the circle past the two
-    // picture edges nearest this corner -- measured as the exact pixel
-    // distance from the center to the point on each edge at the center's
-    // own other coordinate (e.g. the s=0/1 edge at the center's own t),
-    // which is a legitimate (if slightly conservative once the quad's
-    // properly keystoned) stand-in for the true perpendicular distance;
-    // MARKER_EDGE_SAFETY covers the gap between the two.
-    const [esx, esy, esw] = homographyApply(H, bs, t);
-    const [etx, ety, etw] = homographyApply(H, s, bt);
-    const espx = ((esx / esw + 1) / 2) * canvas.width, espy = ((1 - esy / esw) / 2) * canvas.height;
-    const etpx = ((etx / etw + 1) / 2) * canvas.width, etpy = ((1 - ety / etw) / 2) * canvas.height;
-    const distS = Math.hypot(espx - cpx, espy - cpy);
-    const distT = Math.hypot(etpx - cpx, etpy - cpy);
-    const maxRadiusPx = Math.max(4, MARKER_EDGE_SAFETY * Math.min(distS, distT));
-
-    const phase = (performance.now() % MARKER_PERIOD_MS) / MARKER_PERIOD_MS;
-    const breathe = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // eases 0 -> 1 -> 0
-    const alpha = MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe;
-    const radiusPx = Math.min(
-      MARKER_RADIUS_MIN_PX + (MARKER_RADIUS_MAX_PX - MARKER_RADIUS_MIN_PX) * breathe,
-      maxRadiusPx,
-    );
-
-    gl.enable(gl.BLEND);
-    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    gl.useProgram(markerProg);
-    gl.uniform2f(gl.getUniformLocation(markerProg, "uCenter"), cx, cy);
-    gl.uniform2f(
-      gl.getUniformLocation(markerProg, "uRadiusNdc"),
-      (radiusPx / canvas.width) * 2,
-      (radiusPx / canvas.height) * 2,
-    );
-    gl.uniform1f(gl.getUniformLocation(markerProg, "uAlpha"), alpha);
-    gl.bindVertexArray(markerVao);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    gl.disable(gl.BLEND);
-  }
 
   // The breathing pulse needs to keep animating even while nothing about
   // the mapping itself is changing, which is the one case this module's
