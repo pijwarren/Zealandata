@@ -46,16 +46,16 @@ const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
 // extra to keep in step: it never draws outside the mapped/warped picture
 // by construction (vMarkerUV's domain is always exactly 0..1), not
 // something a separate pass has to reason about after the fact.
-// MARKER_RADIUS_UV stays comfortably under both MARKER_INSET_FRAC_X and
-// MARKER_INSET_FRAC_Y, so the marker (halo included) always reads as a
-// complete circle -- it doesn't need to work out anything about the corner
-// it's nearest to.
+// Since the chevron's arms always run from MARKER_INSET_FRAC_X/Y inward
+// (see MODEL_FS), MARKER_ARM_UV growing the marker never risks pushing it
+// past the picture's edge the way a symmetric shape centred on the inset
+// point would.
 const MARKER_INSET_FRAC_X = 0.04; // how far in from the UV edge on x, i.e. "4% in from the edges"
 const MARKER_INSET_FRAC_Y = 0.08; // double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
-const MARKER_ALPHA_MIN = 0.35; // breathing dims the halo down to this, never the disk itself -- see MODEL_FS
+const MARKER_ALPHA_MIN = 0.35; // breathing dims the halo down to this, never the chevron itself -- see MODEL_FS
 const MARKER_ALPHA_MAX = 1.0;
-const MARKER_RADIUS_UV = 0.02; // fixed -- breathing no longer changes the marker's size, only its halo's opacity
+const MARKER_ARM_UV = 0.02; // length of each of the chevron's two arms; fixed, doesn't breathe
 
 // ---------------------------------------------------------------- shaders
 
@@ -132,10 +132,10 @@ uniform int uShading;
 // baked in (see MODEL_VS), which orient the *video content* and have
 // nothing to do with the keystone warp's own reference frame; matching
 // against it made the marker disagree with which corner the keystone
-// fields actually move whenever a flip was in effect. uMarkerRadius <= 0.0
+// fields actually move whenever a flip was in effect. uMarkerArm <= 0.0
 // means "no corner selected, don't draw it".
 uniform vec2 uMarkerUV;
-uniform float uMarkerRadius;
+uniform float uMarkerArm;
 uniform float uMarkerAlpha;
 out vec4 oColor;
 void main(){
@@ -161,31 +161,49 @@ void main(){
   // sampled color -- see uMarkerUV's comment for why this rides through
   // the model transform and keystone warp for free instead of needing its
   // own pass.
-  if (uMarkerRadius > 0.0) {
-    // The model's raw UV space isn't square, so a marker with an equal x/y
-    // UV radius came out visibly stretched on the actual print/mirror.
-    // Shrinking the y half of the offset before it's measured against
-    // uMarkerRadius turns the marker into an ellipse with a 1:2 x:y
-    // UV-space radius ratio, which reads as circular once carried through
-    // that non-square mapping -- ported line-for-line into projector.c's
-    // FS_SRC, keep the two in sync.
+  if (uMarkerArm > 0.0) {
+    // The model's raw UV space isn't square, so an x/y-symmetric shape
+    // came out visibly stretched on the actual print/mirror. Shrinking the
+    // y half of the offset before it's used for anything below
+    // un-stretches it -- ported line-for-line into projector.c's FS_SRC,
+    // keep the two in sync.
     const float MARKER_ASPECT_Y = 2.0;
     vec2 delta = vMarkerUV - uMarkerUV;
     delta.y /= MARKER_ASPECT_Y;
-    float d = length(delta) / uMarkerRadius;
-    // d = 1.0 is the disk's own hard edge (uMarkerRadius, unshrunk). Past
-    // that, MARKER_GLOW_FRAC is how far the soft halo bleeds outward, as a
-    // fraction of the disk's own radius -- small on purpose (a quarter of
-    // a radius, not a whole one) so it reads as a slight glow around a
-    // hard-edged circle, not a soft blob with no edge at all.
+    // A right-angle chevron: two arms, each a straight line segment
+    // running from the marker position (the tip, i.e. delta's origin) out
+    // to length uMarkerArm, one horizontal and one vertical -- so together
+    // they trace the two picture edges that meet at the selected corner.
+    // The tip sits at uMarkerUV, same inset-from-the-corner position the
+    // marker always used, and each arm runs inward from there -- away from
+    // its own nearest edge -- so the shape only ever grows toward the
+    // picture's interior and can't bleed off either edge near the corner.
+    // Which way each arm runs falls out of which side of the picture
+    // uMarkerUV is already on (its raw, un-inset x/y each land either side
+    // of 0.5), so there's no need for a separate per-corner uniform just
+    // to carry that.
+    float armDirX = uMarkerUV.x < 0.5 ? 1.0 : -1.0;
+    float armDirY = uMarkerUV.y < 0.5 ? 1.0 : -1.0;
+    vec2 armX = vec2(armDirX * uMarkerArm, 0.0);
+    vec2 armY = vec2(0.0, armDirY * uMarkerArm);
+    float hx = clamp(dot(delta, armX) / dot(armX, armX), 0.0, 1.0);
+    float hy = clamp(dot(delta, armY) / dot(armY, armY), 0.0, 1.0);
+    float distArm = min(length(delta - armX * hx), length(delta - armY * hy));
+    // Same hard-edge-plus-slight-halo treatment the old disk used, just
+    // measured against distArm (distance to the nearer arm) instead of
+    // distance to a center point. MARKER_THICKNESS_FRAC is the stroke's
+    // own half-width, as a fraction of the arm length; MARKER_GLOW_FRAC is
+    // how far past that edge the halo bleeds, same as before.
+    const float MARKER_THICKNESS_FRAC = 0.25;
     const float MARKER_GLOW_FRAC = 0.25;
+    float d = distArm / (uMarkerArm * MARKER_THICKNESS_FRAC);
     if (d < 1.0 + MARKER_GLOW_FRAC) {
-      float disk = 1.0 - smoothstep(0.9, 1.0, d);
+      float stroke = 1.0 - smoothstep(0.9, 1.0, d);
       float halo = smoothstep(1.0 + MARKER_GLOW_FRAC, 1.0, d) * 0.5;
       // uMarkerAlpha (the breathing pulse) only scales the halo now -- the
-      // disk stays a steady, fully-opaque marker of exactly where the
-      // corner is, and only the glow around it pulses.
-      float g = max(disk, halo * uMarkerAlpha);
+      // chevron itself stays a steady, fully-opaque marker of exactly
+      // where the corner is, and only the glow around it pulses.
+      float g = max(stroke, halo * uMarkerAlpha);
       c.rgb = mix(c.rgb, vec3(1.0), g);
     }
   }
@@ -746,13 +764,13 @@ function render(mapping) {
     const phase = (performance.now() % MARKER_PERIOD_MS) / MARKER_PERIOD_MS;
     const breathe = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // eases 0 -> 1 -> 0
     gl.uniform2f(gl.getUniformLocation(modelProg, "uMarkerUV"), u, v);
-    gl.uniform1f(gl.getUniformLocation(modelProg, "uMarkerRadius"), MARKER_RADIUS_UV);
+    gl.uniform1f(gl.getUniformLocation(modelProg, "uMarkerArm"), MARKER_ARM_UV);
     gl.uniform1f(
       gl.getUniformLocation(modelProg, "uMarkerAlpha"),
       MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe,
     );
   } else {
-    gl.uniform1f(gl.getUniformLocation(modelProg, "uMarkerRadius"), -1);
+    gl.uniform1f(gl.getUniformLocation(modelProg, "uMarkerArm"), -1);
   }
   gl.activeTexture(gl.TEXTURE0);
   gl.bindTexture(gl.TEXTURE_2D, texture);
