@@ -232,23 +232,27 @@
            The steppers underneath are the same +/- and numeric entry as
            every other calibration control, for nudges too small to drag.
 
-           data-corner is deliberately crossed top<->bottom from its own
-           label here (Top left carries "bl", Bottom left carries "tl", and
-           the same for the right pair): given where viewers actually stand
-           relative to the projector, the keystone_tl_*/keystone_bl_* pair
-           (and tr_*/br_*) land swapped top-to-bottom on the real output
-           from what their field names suggest. Left/right needs no such
-           swap. Keeping the field names themselves untouched (they still
-           match mapping.json, projector.c and calibration_preview.js) and
+           data-corner is deliberately crossed to its label's DIAGONAL
+           opposite here (Top left carries "br", Bottom right carries "tl",
+           and the same for the other pair): measured directly against the
+           real output (drag each corner, watch which one on the wall
+           actually moves), the picture lands rotated a full 180 degrees --
+           both left-right AND top-to-bottom -- from what the keystone_*
+           field names suggest, not just top-to-bottom. An earlier version
+           of this comment crossed only top<->bottom, which fixed the
+           labels for two corners by coincidence but was wrong for the
+           other two -- see git history for that dead end. Keeping the
+           field names themselves untouched (they still match
+           mapping.json, projector.c and calibration_preview.js) and
            correcting it only here, at the one place an operator actually
            reads a label, means the physical-vs-field mismatch is fixed
            without having to touch the render pipeline at all. -->
       <div class="keystone">
         <div class="keystone__corners" role="group" aria-label="Corner being adjusted">
-          <button type="button" class="keystone__corner is-selected" data-corner="bl" aria-pressed="true">Top left</button>
-          <button type="button" class="keystone__corner" data-corner="br" aria-pressed="false">Top right</button>
-          <button type="button" class="keystone__corner" data-corner="tl" aria-pressed="false">Bottom left</button>
-          <button type="button" class="keystone__corner" data-corner="tr" aria-pressed="false">Bottom right</button>
+          <button type="button" class="keystone__corner is-selected" data-corner="br" aria-pressed="true">Top left</button>
+          <button type="button" class="keystone__corner" data-corner="bl" aria-pressed="false">Top right</button>
+          <button type="button" class="keystone__corner" data-corner="tr" aria-pressed="false">Bottom left</button>
+          <button type="button" class="keystone__corner" data-corner="tl" aria-pressed="false">Bottom right</button>
         </div>
         <!-- Arrows sit on the axis they move: left/right above the pad,
              up/down beside it, so a nudge is reached in the direction it

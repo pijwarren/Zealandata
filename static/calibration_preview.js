@@ -32,16 +32,22 @@ const GIZMO_RADIUS = 0.4;
 // Which corner of the unit-square UV/keystone parameterisation each named
 // corner sits at (bl/br/tr/tl, matching quadHomography's own corner order).
 const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
-// The corner marker is drawn straight into vUV in MODEL_FS -- i.e. baked
-// into the texture-sampled color itself, at a fixed point in the model's
-// own 0..1 texture space -- rather than as a separate screen-space overlay
-// computed from the keystone homography. That means it rides through
-// exactly the same UV mapping, model transform and keystone warp the video
-// itself does, with nothing extra to keep in step: containment inside the
-// mapped/warped picture is automatic (it's already correct by construction
-// as long as MARKER_RADIUS_MAX_UV stays under MARKER_INSET_FRAC below,
-// since vUV's domain is always exactly 0..1), not something a separate pass
-// has to reason about after the fact.
+// The corner marker is drawn straight into vMarkerUV in MODEL_FS -- i.e.
+// baked into the texture-sampled color itself, at a fixed point in the
+// model's own raw 0..1 UV space -- rather than as a separate screen-space
+// overlay computed from the keystone homography. vMarkerUV specifically,
+// not vUV: vUV has the video-orientation controls (rotation/flip) baked
+// in, which have nothing to do with the keystone warp's own reference
+// frame and, when reused for this, measured as disagreeing with which
+// corner the keystone fields actually move on the real output whenever a
+// flip was in effect. Baking the marker into (the untouched) vMarkerUV
+// means it rides through exactly the same model transform and keystone
+// warp the keystone fields themselves are defined against, with nothing
+// extra to keep in step: containment inside the mapped/warped picture is
+// automatic (it's already correct by construction as long as
+// MARKER_RADIUS_MAX_UV stays under MARKER_INSET_FRAC below, since
+// vMarkerUV's domain is always exactly 0..1), not something a separate
+// pass has to reason about after the fact.
 const MARKER_INSET_FRAC = 0.09; // how far in from the UV edge, i.e. "9% in from the edges"
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
 const MARKER_ALPHA_MIN = 0.35;
@@ -68,6 +74,11 @@ uniform float uVidRotation;
 uniform bool uVidFlipH;
 uniform bool uVidFlipV;
 out vec2 vUV;
+// Raw model-surface UV, before uVidRotation/uVidFlipH/uVidFlipV -- for the
+// keystone corner marker (see MODEL_FS's uMarkerUV comment), which needs
+// to track the same untouched reference frame the keystone warp itself
+// uses, not however the video content happens to be oriented.
+out vec2 vMarkerUV;
 out vec3 vNrm;
 // Eye-space position. uModel has mEye folded into it (see
 // buildMatrices), so this is already relative to the projector's own
@@ -91,6 +102,7 @@ void main(){
   // texture just needs to sit on the model's surface first, the same way
   // paint would. Ported from projector.c's VS_SRC -- see its comment.
   vec2 uv = aPos.xy / uModelSize + 0.5;
+  vMarkerUV = uv;
   // Manual video orientation -- ported from projector.c's VS_SRC (see its
   // comment for why this is a live control rather than a fixed constant);
   // edit both together if the underlying transform ever needs to change.
@@ -108,12 +120,18 @@ void main(){
 const MODEL_FS = `#version 300 es
 precision mediump float;
 in vec2 vUV;
+in vec2 vMarkerUV;
 in vec3 vNrm;
 in vec3 vPos;
 uniform sampler2D uTex;
 uniform int uShading;
-// Keystone corner marker -- see CORNER_ST/MARKER_* comments in JS.
-// uMarkerRadius <= 0.0 means "no corner selected, don't draw it".
+// Keystone corner marker -- see CORNER_ST/MARKER_* comments in JS. Checked
+// against vMarkerUV, NOT vUV -- vUV has uVidRotation/uVidFlipH/uVidFlipV
+// baked in (see MODEL_VS), which orient the *video content* and have
+// nothing to do with the keystone warp's own reference frame; matching
+// against it made the marker disagree with which corner the keystone
+// fields actually move whenever a flip was in effect. uMarkerRadius <= 0.0
+// means "no corner selected, don't draw it".
 uniform vec2 uMarkerUV;
 uniform float uMarkerRadius;
 uniform float uMarkerAlpha;
@@ -142,7 +160,7 @@ void main(){
   // the model transform and keystone warp for free instead of needing its
   // own pass.
   if (uMarkerRadius > 0.0) {
-    float d = length(vUV - uMarkerUV) / uMarkerRadius;
+    float d = length(vMarkerUV - uMarkerUV) / uMarkerRadius;
     if (d < 1.0) {
       float core = smoothstep(0.35, 0.0, d);
       float glow = smoothstep(1.0, 0.0, d);

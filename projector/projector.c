@@ -864,6 +864,11 @@ static const char *VS_SRC =
     "uniform bool uVidFlipH;\n"
     "uniform bool uVidFlipV;\n"
     "out vec2 vUV;\n"
+    /* Raw model-surface UV, before uVidRotation/uVidFlipH/uVidFlipV -- for
+       the keystone corner marker (see FS_SRC's uMarkerUV comment), which
+       needs to track the same untouched reference frame the keystone warp
+       above uses, not however the video content happens to be oriented. */
+    "out vec2 vMarkerUV;\n"
     "out vec3 vNrm;\n"
     /* Eye-space position. uModel has mEye folded into it at the call
        site, so this is already relative to the projector's own eye at
@@ -893,6 +898,7 @@ static const char *VS_SRC =
        that same camera/frustum correctly; the texture just needs to sit
        on the model's surface first, the same way paint would. */
     "  vec2 uv = aPos.xy / uModelSize + 0.5;\n"
+    "  vMarkerUV = uv;\n"
     /* Manual video orientation: how a given video file needs turning to
        land the right way up on this print isn't something derivable from
        the model/projector geometry -- it depends on how that file happened
@@ -917,11 +923,19 @@ static const char *FS_SRC =
     "#version 300 es\n"
     "precision mediump float;\n"
     "in vec2 vUV;\n"
+    "in vec2 vMarkerUV;\n"
     "in vec3 vNrm;\n"
     "in vec3 vPos;\n"
     "uniform sampler2D uTex;\n"
     "uniform int uShading;\n"
     /* Keystone corner marker -- see MARKER_INSET_FRAC's comment above.
+       Checked against vMarkerUV, NOT vUV -- vUV has uVidRotation/
+       uVidFlipH/uVidFlipV baked in (see VS_SRC), which orient the *video
+       content* and have nothing to do with the keystone warp's own
+       reference frame; matching against it made the marker disagree with
+       which corner the keystone fields actually move whenever a flip was
+       in effect (confirmed against the real output: the marker read
+       correctly while the actual drag target was off by a flip).
        uMarkerRadius <= 0.0 means "no corner selected, don't draw it". */
     "uniform vec2 uMarkerUV;\n"
     "uniform float uMarkerRadius;\n"
@@ -978,7 +992,7 @@ static const char *FS_SRC =
        the model transform and keystone warp for free instead of needing
        its own pass. */
     "  if (uMarkerRadius > 0.0) {\n"
-    "    float d = length(vUV - uMarkerUV) / uMarkerRadius;\n"
+    "    float d = length(vMarkerUV - uMarkerUV) / uMarkerRadius;\n"
     "    if (d < 1.0) {\n"
     "      float core = smoothstep(0.35, 0.0, d);\n"
     "      float glow = smoothstep(1.0, 0.0, d);\n"
@@ -1047,12 +1061,14 @@ static const char *GIZMO_LABEL_VS_SRC =
  * standing in front of the print confirm which corner a drag is about to
  * move before committing to it. Baked straight into FS_SRC's texture-
  * sampled color (see its uMarkerUV comment) at a fixed point in the
- * model's own UV space, rather than drawn as a separate screen-space pass
- * -- that means it rides through exactly the same UV mapping, model
- * transform and keystone warp the video itself does, with nothing extra to
- * keep in step, and it's contained inside the mapped/warped picture by
- * construction (vUV's domain is always exactly 0..1) rather than something
- * to work out fresh each frame. */
+ * model's own raw UV space (vMarkerUV, not vUV -- vUV carries the video
+ * orientation controls, which have nothing to do with the keystone warp's
+ * own reference frame), rather than drawn as a separate screen-space pass
+ * -- that means it rides through exactly the same model transform and
+ * keystone warp the keystone fields are themselves defined against, with
+ * nothing extra to keep in step, and it's contained inside the
+ * mapped/warped picture by construction (vMarkerUV's domain is always
+ * exactly 0..1) rather than something to work out fresh each frame. */
 #define MARKER_INSET_FRAC 0.09f   /* how far in from the UV edge -- "9% in from the edges" */
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
 #define MARKER_ALPHA_MIN 0.35f
