@@ -1012,7 +1012,10 @@ static const char *FS_SRC =
     "    if (d < 1.0 + MARKER_GLOW_FRAC) {\n"
     "      float disk = 1.0 - smoothstep(0.9, 1.0, d);\n"
     "      float halo = smoothstep(1.0 + MARKER_GLOW_FRAC, 1.0, d) * 0.5;\n"
-    "      float g = max(disk, halo) * uMarkerAlpha;\n"
+    /* uMarkerAlpha (the breathing pulse) only scales the halo now -- the
+       disk stays a steady, fully-opaque marker of exactly where the
+       corner is, and only the glow around it pulses. */
+    "      float g = max(disk, halo * uMarkerAlpha);\n"
     "      c.rgb = mix(c.rgb, vec3(1.0), g);\n"
     "    }\n"
     "  }\n"
@@ -1085,17 +1088,16 @@ static const char *GIZMO_LABEL_VS_SRC =
  * nothing extra to keep in step, and it never draws outside the
  * mapped/warped picture by construction (vMarkerUV's domain is always
  * exactly 0..1) rather than something to work out fresh each frame.
- * MARKER_RADIUS_MAX_UV stays comfortably under both MARKER_INSET_FRAC_X and
+ * MARKER_RADIUS_UV stays comfortably under both MARKER_INSET_FRAC_X and
  * MARKER_INSET_FRAC_Y, so the marker (halo included) always reads as a
  * complete circle -- it doesn't need to work out anything about the
  * corner it's nearest to. */
 #define MARKER_INSET_FRAC_X 0.04f   /* how far in from the UV edge on x -- "4% in from the edges" */
 #define MARKER_INSET_FRAC_Y 0.08f   /* double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise */
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
-#define MARKER_ALPHA_MIN 0.35f
+#define MARKER_ALPHA_MIN 0.35f   /* breathing dims the halo down to this, never the disk itself -- see FS_SRC */
 #define MARKER_ALPHA_MAX 1.0f
-#define MARKER_RADIUS_MIN_UV 0.0125f
-#define MARKER_RADIUS_MAX_UV 0.02f
+#define MARKER_RADIUS_UV 0.02f   /* fixed -- breathing no longer changes the marker's size, only its halo's opacity */
 
 typedef struct { float x, y, z, r, g, b; } gizmo_vert;
 typedef struct { float x, y, r, g, b; } label_vert;
@@ -2160,7 +2162,7 @@ int main(void) {
                 double phase = fmod(now_sec(), MARKER_PERIOD_SEC) / MARKER_PERIOD_SEC;
                 float breathe = 0.5f - 0.5f * cosf((float)phase * 2.f * (float)M_PI);
                 glUniform2f(uMarkerUV, mu, mv);
-                glUniform1f(uMarkerRadius, MARKER_RADIUS_MIN_UV + (MARKER_RADIUS_MAX_UV - MARKER_RADIUS_MIN_UV) * breathe);
+                glUniform1f(uMarkerRadius, MARKER_RADIUS_UV);
                 glUniform1f(uMarkerAlpha, MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe);
             } else {
                 glUniform1f(uMarkerRadius, -1.f);

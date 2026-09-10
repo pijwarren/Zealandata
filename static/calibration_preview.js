@@ -46,17 +46,16 @@ const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
 // extra to keep in step: it never draws outside the mapped/warped picture
 // by construction (vMarkerUV's domain is always exactly 0..1), not
 // something a separate pass has to reason about after the fact.
-// MARKER_RADIUS_MAX_UV stays comfortably under both MARKER_INSET_FRAC_X and
+// MARKER_RADIUS_UV stays comfortably under both MARKER_INSET_FRAC_X and
 // MARKER_INSET_FRAC_Y, so the marker (halo included) always reads as a
 // complete circle -- it doesn't need to work out anything about the corner
 // it's nearest to.
 const MARKER_INSET_FRAC_X = 0.04; // how far in from the UV edge on x, i.e. "4% in from the edges"
 const MARKER_INSET_FRAC_Y = 0.08; // double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
-const MARKER_ALPHA_MIN = 0.35;
+const MARKER_ALPHA_MIN = 0.35; // breathing dims the halo down to this, never the disk itself -- see MODEL_FS
 const MARKER_ALPHA_MAX = 1.0;
-const MARKER_RADIUS_MIN_UV = 0.0125;
-const MARKER_RADIUS_MAX_UV = 0.02;
+const MARKER_RADIUS_UV = 0.02; // fixed -- breathing no longer changes the marker's size, only its halo's opacity
 
 // ---------------------------------------------------------------- shaders
 
@@ -183,7 +182,10 @@ void main(){
     if (d < 1.0 + MARKER_GLOW_FRAC) {
       float disk = 1.0 - smoothstep(0.9, 1.0, d);
       float halo = smoothstep(1.0 + MARKER_GLOW_FRAC, 1.0, d) * 0.5;
-      float g = max(disk, halo) * uMarkerAlpha;
+      // uMarkerAlpha (the breathing pulse) only scales the halo now -- the
+      // disk stays a steady, fully-opaque marker of exactly where the
+      // corner is, and only the glow around it pulses.
+      float g = max(disk, halo * uMarkerAlpha);
       c.rgb = mix(c.rgb, vec3(1.0), g);
     }
   }
@@ -744,10 +746,7 @@ function render(mapping) {
     const phase = (performance.now() % MARKER_PERIOD_MS) / MARKER_PERIOD_MS;
     const breathe = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // eases 0 -> 1 -> 0
     gl.uniform2f(gl.getUniformLocation(modelProg, "uMarkerUV"), u, v);
-    gl.uniform1f(
-      gl.getUniformLocation(modelProg, "uMarkerRadius"),
-      MARKER_RADIUS_MIN_UV + (MARKER_RADIUS_MAX_UV - MARKER_RADIUS_MIN_UV) * breathe,
-    );
+    gl.uniform1f(gl.getUniformLocation(modelProg, "uMarkerRadius"), MARKER_RADIUS_UV);
     gl.uniform1f(
       gl.getUniformLocation(modelProg, "uMarkerAlpha"),
       MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe,
