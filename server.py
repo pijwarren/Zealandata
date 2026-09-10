@@ -43,6 +43,11 @@ from werkzeug.utils import secure_filename
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.environ.get("ZEALANDATA_MEDIA_DIR", "/home/pi/media")
 THUMB_DIR = os.path.join(BASE_DIR, "static", "thumbnails")
+# The plain extracted frame each projected thumbnail is rendered FROM, kept
+# separately from the thumbnail itself. Without this the two would be the
+# same file, and re-rendering the library a second time would project an
+# already-projected image -- the model, drawn onto the model.
+FRAME_DIR = os.path.join(BASE_DIR, "static", "frames")
 # Generous next to the ~50KB a 440px-wide JPEG actually comes to -- it's
 # here to stop a runaway upload filling the SD card, not to police the size.
 THUMBNAIL_MAX_BYTES = 4 * 1024 * 1024
@@ -340,6 +345,7 @@ RESUME_MIN_SECONDS = 10
 RESUME_MAX_FRACTION = 0.95
 
 os.makedirs(THUMB_DIR, exist_ok=True)
+os.makedirs(FRAME_DIR, exist_ok=True)
 os.makedirs(HERO_THUMB_DIR, exist_ok=True)
 os.makedirs(SEQUENCE_CACHE_DIR, exist_ok=True)
 
@@ -2165,6 +2171,44 @@ def api_upload_media():
     get_media(force=True)
     item = next((i for i in get_media() if i["path"] == dest_path), None)
     return jsonify({"ok": True, "item": item})
+
+
+@app.route("/api/admin/frame/<media_id>", methods=["POST"])
+def api_media_frame(media_id):
+    """The plain, unprojected frame for one item -- what the admin panel
+    renders through the frozen view when it's backfilling thumbnails for
+    videos it didn't upload itself (see app.js's re-render button).
+
+    Cached in its own directory rather than reusing the thumbnail: once a
+    thumbnail has been replaced by a projected render, it's no longer a
+    frame of the video, and rendering the library twice would end up
+    projecting the model onto the model.
+
+    A POST returning an image, which is unusual, but it keeps the admin
+    token in the request body -- check_admin_pin only ever reads it from
+    there or a form field, and a token in a query string would both miss
+    that gate and land in the access log."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+
+    match = get_media_by_id(media_id)
+    if not match:
+        return jsonify({"error": "not found"}), 404
+
+    frame_path = os.path.join(FRAME_DIR, f"{media_id}.jpg")
+    if not os.path.exists(frame_path):
+        # Full width rather than the 440px poster size: this is the texture
+        # for a 1080x1920 render, so detail thrown away here can't come back.
+        _extract_frame(match["path"], frame_path, "'min(1920,iw)':-2")
+    if not os.path.exists(frame_path):
+        return jsonify({"error": "no frame could be extracted"}), 500
+    return send_from_directory(FRAME_DIR, f"{media_id}.jpg")
 
 
 @app.route("/api/admin/thumbnail/<media_id>", methods=["POST"])

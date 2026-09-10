@@ -37,3 +37,7 @@ __pycache__/
 # from this projector's own calibration, so like mapping.json it describes
 # this installation rather than the code.
 thumbnail_view.json
+
+# Plain extracted frames -- the source images projected thumbnails are
+# rendered from. Regenerated from the videos on demand.
+static/frames/

@@ -281,6 +281,24 @@
       <button type="button" class="btn btn-secondary" id="previewGizmoBtn">Hide preview gizmo</button>
       <button type="button" class="btn btn-secondary" id="mappingFpsBtn">Show FPS on output</button>
     </div>
+    <!-- Library thumbnails are rendered onto the model through a frozen
+         copy of this calibration, not whatever it happens to be when a
+         video is uploaded (see server.py's THUMBNAIL_VIEW_FILE). Capturing
+         is therefore a deliberate act: frame the model in the output mirror
+         the way thumbnails should look, then press the first button. The
+         second re-renders the existing library through whatever view was
+         captured last -- also the way to give videos that were copied
+         straight into the media folder a projected thumbnail, since nothing
+         rendered one for them at upload time. -->
+    <details class="mapping-section" id="sectionThumbnails">
+      <summary class="mapping-section__summary">Library thumbnails</summary>
+      <p class="mapping-note" id="thumbnailViewNote">Checking captured view…</p>
+      <div class="mapping-actions">
+        <button type="button" class="btn btn-secondary" id="thumbnailCaptureBtn">Use this view for thumbnails</button>
+        <button type="button" class="btn btn-secondary" id="thumbnailRerenderBtn">Re-render all thumbnails</button>
+      </div>
+      <p class="mapping-note" id="thumbnailRerenderStatus"></p>
+    </details>
   </div>
 </div>
 

@@ -34,6 +34,10 @@ const mappingFlipHBtn = document.getElementById("mappingFlipHBtn");
 const mappingFlipVBtn = document.getElementById("mappingFlipVBtn");
 const mappingGridcheckBtn = document.getElementById("mappingGridcheckBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
+const thumbnailCaptureBtn = document.getElementById("thumbnailCaptureBtn");
+const thumbnailRerenderBtn = document.getElementById("thumbnailRerenderBtn");
+const thumbnailViewNote = document.getElementById("thumbnailViewNote");
+const thumbnailRerenderStatus = document.getElementById("thumbnailRerenderStatus");
 const pinScrim = document.getElementById("pinScrim");
 const pinModal = document.getElementById("pinModal");
 const pinTitle = document.getElementById("pinTitle");
@@ -1587,35 +1591,131 @@ function extractVideoFrame(file) {
   });
 }
 
+async function fetchThumbnailView() {
+  const res = await fetch("/api/thumbnail-view", { cache: "no-store" });
+  const { view } = await res.json();
+  return view || null;
+}
+
+// Fetched rather than pointed at with an <img src>: the endpoint is admin
+// gated and the token belongs in the body, not in a URL (see server.py's
+// api_media_frame).
+async function fetchSourceFrame(mediaId) {
+  const res = await fetch(`/api/admin/frame/${mediaId}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: adminToken }),
+  });
+  if (!res.ok) throw new Error(`no frame available (${res.status})`);
+  return await createImageBitmap(await res.blob());
+}
+
+async function renderAndStoreThumbnail(view, source, mediaId) {
+  const preview = await previewModule();
+  const blob = await preview.renderFrameToBlob({
+    canvasEl: thumbnailCanvas(),
+    mapping: view,
+    source,
+    width: THUMB_WIDTH,
+    height: THUMB_HEIGHT,
+  });
+  const form = new FormData();
+  form.append("token", adminToken);
+  form.append("image", blob, `${mediaId}.jpg`);
+  const res = await fetch(`/api/admin/thumbnail/${mediaId}`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(`storing the thumbnail failed (${res.status})`);
+}
+
 async function captureProjectedThumbnail(file, item) {
   if (!item || !item.id) return;
   try {
-    const res = await fetch("/api/thumbnail-view", { cache: "no-store" });
-    const { view } = await res.json();
     // No view captured yet -- leave the item to the server rather than
     // inventing one from the live calibration, which is exactly the
     // "depends on the sliders right now" behaviour the frozen view avoids.
+    const view = await fetchThumbnailView();
     if (!view) return;
-
     uploadStatus.textContent = "Rendering thumbnail…";
-    const frame = await extractVideoFrame(file);
-    const preview = await previewModule();
-    const blob = await preview.renderFrameToBlob({
-      canvasEl: thumbnailCanvas(),
-      mapping: view,
-      source: frame,
-      width: THUMB_WIDTH,
-      height: THUMB_HEIGHT,
-    });
-
-    const form = new FormData();
-    form.append("token", adminToken);
-    form.append("image", blob, `${item.id}.jpg`);
-    await fetch(`/api/admin/thumbnail/${item.id}`, { method: "POST", body: form });
+    await renderAndStoreThumbnail(view, await extractVideoFrame(file), item.id);
   } catch (err) {
     console.warn("[thumbnail] projected render failed; falling back to the server's own", err);
   }
 }
+
+// ------------------------------------------- thumbnail view + backfill
+async function refreshThumbnailViewNote() {
+  if (!thumbnailViewNote) return;
+  const view = await fetchThumbnailView().catch(() => null);
+  thumbnailViewNote.textContent = view
+    ? "A view is captured — uploads render through it, not through the live calibration."
+    : "No view captured yet — thumbnails stay plain video frames until one is.";
+}
+
+thumbnailCaptureBtn.addEventListener("click", async () => {
+  if (!adminToken) return;
+  thumbnailCaptureBtn.disabled = true;
+  thumbnailViewNote.textContent = "Capturing…";
+  try {
+    const res = await fetch("/api/admin/thumbnail-view", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: adminToken }),
+    });
+    const data = await res.json().catch(() => ({}));
+    thumbnailViewNote.textContent = data.error
+      ? data.error
+      : "Captured. New uploads use this view — re-render below to apply it to the existing library.";
+  } catch (err) {
+    thumbnailViewNote.textContent = "Capture failed — check your connection.";
+  } finally {
+    thumbnailCaptureBtn.disabled = false;
+  }
+});
+
+// Renders the whole library through the captured view, one item at a time.
+// Driven from here rather than the server for the same reason the upload
+// path is (see captureProjectedThumbnail): this is where the renderer that
+// defines the view actually runs. It's also the only way a video copied
+// straight into the media folder ever gets a projected thumbnail, since
+// nothing rendered one for it at upload time.
+//
+// Sequential on purpose -- every render goes through the one WebGL context,
+// and a 1080x1920 draw per item is enough work that firing them all at once
+// would just queue up inside the GPU anyway.
+thumbnailRerenderBtn.addEventListener("click", async () => {
+  if (!adminToken) return;
+  const view = await fetchThumbnailView().catch(() => null);
+  if (!view) {
+    thumbnailRerenderStatus.textContent = "Capture a view first.";
+    return;
+  }
+
+  thumbnailRerenderBtn.disabled = true;
+  thumbnailRerenderStatus.textContent = "Loading library…";
+  let done = 0;
+  let failed = 0;
+  try {
+    const items = await (await fetch("/api/media")).json();
+    for (const item of items) {
+      thumbnailRerenderStatus.textContent = `Rendering ${done + failed + 1} of ${items.length}…`;
+      try {
+        await renderAndStoreThumbnail(view, await fetchSourceFrame(item.id), item.id);
+        done++;
+      } catch (err) {
+        // One unreadable video shouldn't stop the rest of the library.
+        console.warn(`[thumbnail] ${item.id} failed`, err);
+        failed++;
+      }
+    }
+    thumbnailRerenderStatus.textContent =
+      `Rendered ${done} thumbnail${done === 1 ? "" : "s"}` +
+      (failed ? `, ${failed} could not be rendered.` : ".");
+    await loadMedia();
+  } catch (err) {
+    thumbnailRerenderStatus.textContent = "Re-render failed — check your connection.";
+  } finally {
+    thumbnailRerenderBtn.disabled = false;
+  }
+});
 
 uploadBtn.addEventListener("click", async () => {
   const file = uploadInput.files[0];
@@ -1987,6 +2087,7 @@ async function pollStatus() {
   loadPlayTrackingState();
   loadPopularVisibilityState();
   loadMappingState();
+  refreshThumbnailViewNote();
   restoreAdminSession();
   pollStatus();
   setInterval(pollStatus, 1000);
