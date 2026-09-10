@@ -34,7 +34,6 @@ const mappingFlipHBtn = document.getElementById("mappingFlipHBtn");
 const mappingFlipVBtn = document.getElementById("mappingFlipVBtn");
 const mappingGridcheckBtn = document.getElementById("mappingGridcheckBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
-const thumbnailCaptureBtn = document.getElementById("thumbnailCaptureBtn");
 const thumbnailRerenderBtn = document.getElementById("thumbnailRerenderBtn");
 const thumbnailViewNote = document.getElementById("thumbnailViewNote");
 const thumbnailRerenderStatus = document.getElementById("thumbnailRerenderStatus");
@@ -1649,27 +1648,6 @@ async function refreshThumbnailViewNote() {
     ? "A view is captured — uploads render through it, not through the live calibration."
     : "No view captured yet — thumbnails stay plain video frames until one is.";
 }
-
-thumbnailCaptureBtn.addEventListener("click", async () => {
-  if (!adminToken) return;
-  thumbnailCaptureBtn.disabled = true;
-  thumbnailViewNote.textContent = "Capturing…";
-  try {
-    const res = await fetch("/api/admin/thumbnail-view", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ token: adminToken }),
-    });
-    const data = await res.json().catch(() => ({}));
-    thumbnailViewNote.textContent = data.error
-      ? data.error
-      : "Captured. New uploads use this view — re-render below to apply it to the existing library.";
-  } catch (err) {
-    thumbnailViewNote.textContent = "Capture failed — check your connection.";
-  } finally {
-    thumbnailCaptureBtn.disabled = false;
-  }
-});
 
 // Renders the whole library through the captured view, one item at a time.
 // Driven from here rather than the server for the same reason the upload
