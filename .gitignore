@@ -32,3 +32,8 @@ __pycache__/
 # far too large for git, and doesn't need version history. Keep it on the
 # Pi's filesystem wherever ZEALANDATA_MEDIA_DIR points, entirely separate
 # from this repo.
+
+# The frozen view library thumbnails are rendered through -- captured
+# from this projector's own calibration, so like mapping.json it describes
+# this installation rather than the code.
+thumbnail_view.json

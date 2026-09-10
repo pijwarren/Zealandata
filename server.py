@@ -43,6 +43,9 @@ from werkzeug.utils import secure_filename
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 MEDIA_DIR = os.environ.get("ZEALANDATA_MEDIA_DIR", "/home/pi/media")
 THUMB_DIR = os.path.join(BASE_DIR, "static", "thumbnails")
+# Generous next to the ~50KB a 440px-wide JPEG actually comes to -- it's
+# here to stop a runaway upload filling the SD card, not to police the size.
+THUMBNAIL_MAX_BYTES = 4 * 1024 * 1024
 HERO_THUMB_DIR = os.path.join(BASE_DIR, "static", "hero_thumbnails")
 SEQUENCE_CACHE_DIR = os.path.join(BASE_DIR, "static", "sequence_cache")
 PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
@@ -196,6 +199,39 @@ MAPPING_STRING = {
 }
 KEYSTONE_CORNERS = {"tl", "tr", "bl", "br"}
 DEFAULT_MAPPING = {**MAPPING_NUMERIC, **MAPPING_BOOLEAN, **MAPPING_STRING}
+
+# ----------------------------------------------------- thumbnail view ---
+# The view library thumbnails are rendered through: the same mapping fields
+# as above, but frozen at whatever the calibration was when someone captured
+# it, and never read back from the live one afterwards.
+#
+# Deliberately its own file rather than a read of mapping.json. The live
+# calibration exists to line the picture up on the physical print and moves
+# whenever anyone touches a slider; a thumbnail has to frame the model the
+# same way for the whole library, or the browse grid ends up a jumble of
+# angles depending on when each video happened to be uploaded. Runtime state
+# like mapping.json (gitignored, per-installation) -- it describes this
+# projector in this room, not anything about the code.
+THUMBNAIL_VIEW_FILE = os.path.join(BASE_DIR, "thumbnail_view.json")
+
+# Applied on top of whatever was captured, in both directions.
+#
+# The overlays are calibration aids -- a gizmo, an FPS readout, the glowing
+# corner chevron -- and have no business being baked into a library
+# thumbnail, so they're forced off however the calibration was left.
+#
+# shading is forced the other way, ON, and that one is worth explaining: the
+# output mirror always shades the model regardless of this field (see
+# calibration_preview.js's render), so the view someone frames in the mirror
+# is a shaded one. Rendering the thumbnail flat because the projector
+# happened to have shading off would hand back something that looks nothing
+# like the view they picked.
+THUMBNAIL_VIEW_FORCED = {
+    "gizmo": False,
+    "fps": False,
+    "keystone_corner": "",
+    "shading": True,
+}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts"}
 
 # Image sequences: a leaf folder containing this many (or more) images, all
@@ -409,6 +445,43 @@ def set_mapping(values):
             json.dump(merged, f)
         os.replace(tmp, MAPPING_FILE)
         return merged
+
+
+def _coerce_mapping(values):
+    """Keeps only the fields the mapping schema knows about, defaulting the
+    rest -- so a captured view can't carry stray keys, and stays readable
+    even if the schema grows a field after it was captured."""
+    return {**DEFAULT_MAPPING, **{k: values[k] for k in DEFAULT_MAPPING if k in values}}
+
+
+def get_thumbnail_view():
+    """The frozen thumbnail view, or None if one was never captured.
+
+    None rather than a fallback to the live mapping on purpose: substituting
+    the live calibration would reintroduce exactly the "depends on whatever
+    the sliders were at the time" behaviour this exists to avoid. Callers
+    fall back to a plain unprojected frame instead, which is at least
+    obviously not the projected view rather than subtly the wrong one."""
+    try:
+        with open(THUMBNAIL_VIEW_FILE, "r") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return None
+    return {**_coerce_mapping(data), **THUMBNAIL_VIEW_FORCED}
+
+
+def set_thumbnail_view(values):
+    """Freezes `values` -- in practice the live mapping, at the moment
+    someone has the model framed the way they want it -- as the view every
+    thumbnail is rendered through from here on. Written via a temp file and
+    os.replace so a reader mid-write sees the old view or the new one, never
+    a half-written file."""
+    frozen = {**_coerce_mapping(values), **THUMBNAIL_VIEW_FORCED}
+    tmp = THUMBNAIL_VIEW_FILE + ".tmp"
+    with open(tmp, "w") as f:
+        json.dump(frozen, f, indent=2)
+    os.replace(tmp, THUMBNAIL_VIEW_FILE)
+    return frozen
 
 
 def backend_get(name):
@@ -1546,6 +1619,30 @@ def api_get_mapping():
     return jsonify(get_mapping())
 
 
+@app.route("/api/thumbnail-view", methods=["GET"])
+def api_get_thumbnail_view():
+    """The frozen view thumbnails are rendered through. Ungated like
+    /api/mapping's GET -- it's the same class of information, and the admin
+    panel needs it to render a thumbnail client-side at upload time."""
+    return jsonify({"view": get_thumbnail_view()})
+
+
+@app.route("/api/admin/thumbnail-view", methods=["POST"])
+def api_set_thumbnail_view():
+    """Freezes the live calibration as the thumbnail view -- the "I've got
+    the model framed how I want thumbnails to look, use this" action. Admin
+    gated like the calibration controls it snapshots."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    body = request.get_json(silent=True) or {}
+    ok, locked_seconds = check_admin_pin(str(body.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+    return jsonify({"view": set_thumbnail_view(get_mapping())})
+
+
 @app.route("/api/mapping", methods=["POST"])
 def api_set_mapping():
     """Admin-gated, same PIN pattern as the other calibration-adjacent
@@ -2068,6 +2165,56 @@ def api_upload_media():
     get_media(force=True)
     item = next((i for i in get_media() if i["path"] == dest_path), None)
     return jsonify({"ok": True, "item": item})
+
+
+@app.route("/api/admin/thumbnail/<media_id>", methods=["POST"])
+def api_set_thumbnail(media_id):
+    """Stores a thumbnail the admin panel rendered itself, through the frozen
+    thumbnail view (see app.js's renderProjectedThumbnail).
+
+    The browser is what draws it because the output mirror's renderer -- the
+    thing that decides what that view actually looks like -- is WebGL running
+    in the page. Having the server reproduce it would mean a third copy of
+    the same transform maths alongside projector.c and
+    calibration_preview.js, and those two are already only correct as long as
+    they stay in lockstep.
+
+    Best-effort by design: the upload itself has already succeeded by the
+    time this is called, so a failure here costs the projected thumbnail, not
+    the video -- the item just falls back to a plain extracted frame."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    ok, locked_seconds = check_admin_pin(str(request.form.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+
+    # Has to name a real item: media_id becomes a filename below, and this is
+    # what keeps it to ids the scan actually produced (12 hex chars) rather
+    # than anything a caller made up.
+    if not get_media_by_id(media_id):
+        return jsonify({"error": "not found"}), 404
+
+    image = request.files.get("image")
+    if not image:
+        return jsonify({"error": "no image provided"}), 400
+    data = image.read(THUMBNAIL_MAX_BYTES + 1)
+    if len(data) > THUMBNAIL_MAX_BYTES:
+        return jsonify({"error": "thumbnail too large"}), 413
+    # The canvas encodes to JPEG (see app.js), so anything else means
+    # something went wrong upstream rather than a format worth accepting --
+    # and writing unchecked bytes into static/ would serve them to every
+    # viewer as an image.
+    if not data.startswith(b"\xff\xd8\xff"):
+        return jsonify({"error": "thumbnail must be a JPEG"}), 400
+
+    path = os.path.join(THUMB_DIR, f"{media_id}.jpg")
+    tmp = path + ".tmp"
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.replace(tmp, path)
+    return jsonify({"ok": True, "thumbnail": f"/thumbnails/{media_id}.jpg"})
 
 
 @app.route("/api/play/<media_id>", methods=["POST"])

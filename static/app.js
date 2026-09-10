@@ -1493,6 +1493,130 @@ uploadAttachmentsInput.addEventListener("change", () => {
     : "Add supplementary files (optional)";
 });
 
+// ------------------------------------------------ projected thumbnails
+// A library thumbnail is a frame of the video rendered through the frozen
+// thumbnail view (server.py's THUMBNAIL_VIEW_FILE) -- the same view of the
+// model the output mirror tab shows -- rather than a flat grab of the video
+// frame. It's done here, in the page, because that view is defined by
+// WebGL running in the browser; see calibration_preview.js's
+// renderFrameToBlob for why it isn't reproduced server-side instead.
+//
+// Best-effort throughout: the upload has already succeeded before any of
+// this runs, so a browser that can't decode the file (an .mkv whose codecs
+// it doesn't carry, say) costs the projected thumbnail and nothing else --
+// the server falls back to a plain extracted frame.
+// Fixed 1080x1920 portrait, deliberately independent of the browser window
+// the upload happens in. The render aspect is not just a crop -- it decides
+// how the model is framed (see calibration_preview.js's buildMatrices, which
+// builds the frustum from the drawing buffer's own aspect) -- so letting it
+// follow whoever's window did the upload would frame every thumbnail
+// differently. Portrait because that's the shape the display these are
+// headed for wants.
+const THUMB_WIDTH = 1080;
+const THUMB_HEIGHT = 1920;
+
+// Imported on demand rather than up front: app.js is a classic script (not
+// a module), and the renderer pulls the whole projection model down with
+// it, which is far too much to load for a page that may never upload
+// anything.
+let previewModulePromise = null;
+function previewModule() {
+  if (!previewModulePromise) previewModulePromise = import("/static/calibration_preview.js");
+  return previewModulePromise;
+}
+
+// One reused off-screen canvas: the renderer keeps a single WebGL context
+// bound to a single canvas, so handing it a fresh one per upload would leak
+// a context each time.
+let thumbCanvas = null;
+function thumbnailCanvas() {
+  if (!thumbCanvas) {
+    thumbCanvas = document.createElement("canvas");
+    thumbCanvas.hidden = true;
+    document.body.appendChild(thumbCanvas);
+  }
+  return thumbCanvas;
+}
+
+// Decodes one frame out of the file the user is uploading, without waiting
+// for a server round-trip -- the browser already has the file in hand.
+// Aims at the same ~10% mark server.py's _extract_frame picks, so the
+// projected thumbnail and the server's fallback show the same moment.
+function extractVideoFrame(file) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement("video");
+    const url = URL.createObjectURL(file);
+    let settled = false;
+    const finish = (fn, arg) => {
+      if (settled) return;
+      settled = true;
+      URL.revokeObjectURL(url);
+      fn(arg);
+    };
+    // A file the browser can't decode fires neither seeked nor error in
+    // some cases, so this is what stops an upload hanging on it forever.
+    const timer = setTimeout(() => finish(reject, new Error("timed out decoding video")), 20000);
+    const grab = () => {
+      clearTimeout(timer);
+      try {
+        const frame = document.createElement("canvas");
+        frame.width = video.videoWidth;
+        frame.height = video.videoHeight;
+        frame.getContext("2d").drawImage(video, 0, 0);
+        finish(resolve, frame);
+      } catch (err) {
+        finish(reject, err);
+      }
+    };
+    video.muted = true;
+    video.preload = "auto";
+    video.addEventListener("error", () => {
+      clearTimeout(timer);
+      finish(reject, new Error("browser cannot decode this video"));
+    });
+    video.addEventListener("loadeddata", () => {
+      const at = Math.min(Math.max((video.duration || 0) * 0.1, 0.1), 60);
+      // A stream with no seekable duration (some .webm exports) reports
+      // Infinity -- take whatever frame already decoded rather than seeking
+      // to a timestamp that will never resolve.
+      if (!Number.isFinite(at) || at <= 0) return grab();
+      video.addEventListener("seeked", grab, { once: true });
+      video.currentTime = at;
+    }, { once: true });
+    video.src = url;
+  });
+}
+
+async function captureProjectedThumbnail(file, item) {
+  if (!item || !item.id) return;
+  try {
+    const res = await fetch("/api/thumbnail-view", { cache: "no-store" });
+    const { view } = await res.json();
+    // No view captured yet -- leave the item to the server rather than
+    // inventing one from the live calibration, which is exactly the
+    // "depends on the sliders right now" behaviour the frozen view avoids.
+    if (!view) return;
+
+    uploadStatus.textContent = "Rendering thumbnail…";
+    const frame = await extractVideoFrame(file);
+    const preview = await previewModule();
+    const blob = await preview.renderFrameToBlob({
+      canvasEl: thumbnailCanvas(),
+      mapping: view,
+      source: frame,
+      width: THUMB_WIDTH,
+      height: THUMB_HEIGHT,
+    });
+
+    const form = new FormData();
+    form.append("token", adminToken);
+    form.append("image", blob, `${item.id}.jpg`);
+    await fetch(`/api/admin/thumbnail/${item.id}`, { method: "POST", body: form });
+  } catch (err) {
+    console.warn("[thumbnail] projected render failed; falling back to the server's own", err);
+  }
+}
+
 uploadBtn.addEventListener("click", async () => {
   const file = uploadInput.files[0];
   if (!file) return;
@@ -1518,6 +1642,10 @@ uploadBtn.addEventListener("click", async () => {
       uploadStatus.textContent = data.error || "Upload failed";
       return;
     }
+    // Before the file inputs are cleared below -- this still needs the File
+    // itself to decode a frame out of.
+    await captureProjectedThumbnail(file, data.item);
+
     uploadStatus.textContent = `Uploaded ${file.name}`;
     uploadInput.value = "";
     uploadAttachmentsInput.value = "";

@@ -523,6 +523,9 @@ let labelEls = null;
 let statusEl = null;
 let lastMapping = null;
 let resizeObserver = null;
+// Set only by renderFrameToBlob, which needs the drawing buffer to be
+// exactly the size it asked for rather than whatever CSS makes of it.
+let fixedSize = null;
 
 // The canvas is sized by CSS (it fills its page's stage), so its *drawing
 // buffer* has to track whatever on-screen size that works out to --
@@ -530,7 +533,7 @@ let resizeObserver = null;
 // upscaled or clipped by the browser as the window resizes.
 // Devicepixelratio-aware so it stays sharp on hi-DPI displays too.
 function resizeCanvasToDisplaySize() {
-  if (!canvas) return;
+  if (!canvas || fixedSize) return;
   const dpr = window.devicePixelRatio || 1;
   const w = Math.max(16, Math.round(canvas.clientWidth * dpr));
   const h = Math.max(16, Math.round(canvas.clientHeight * dpr));
@@ -890,4 +893,80 @@ export async function init(canvasEl, labels, statusEl2, mapping) {
 
 export function isReady() {
   return ready;
+}
+
+// --------------------------------------------------- one-shot rendering ---
+// Draws a single image through a given mapping and hands back an encoded
+// JPEG, for the admin panel's upload flow (see app.js's
+// renderProjectedThumbnail). A library thumbnail is meant to show the same
+// view of the model the output mirror does, so it's drawn by the same code
+// here rather than reproduced somewhere else -- projector.c and this module
+// are already only correct while they stay in lockstep, and a third copy of
+// the same transform maths would be a third thing to keep in step.
+//
+// `source` is anything texImage2D takes (a canvas holding a video frame, in
+// practice). Only for a page that isn't also running the live mirror: the
+// module keeps a single GL context bound to a single canvas, so the two
+// would fight over it. The admin panel qualifies, since it opens the mirror
+// in a tab of its own.
+export async function renderFrameToBlob({ canvasEl, mapping, source, width, height, quality = 0.85 }) {
+  fixedSize = { width, height };
+  canvasEl.width = width;
+  canvasEl.height = height;
+  await ensureInit(canvasEl, null, null);
+  if (!ready) throw new Error("preview renderer unavailable");
+
+  // Straight over the top of the idle image the module loaded at init --
+  // same texture object, same parameters, so nothing else has to change.
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, source);
+  render(mapping);
+
+  // readPixels rather than canvas.toBlob: the context is created with
+  // preserveDrawingBuffer false, so the drawing buffer is only reliably
+  // readable before this task yields -- and toBlob is asynchronous.
+  const pixels = new Uint8Array(width * height * 4);
+  gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  gl.readPixels(0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+
+  const out = document.createElement("canvas");
+  out.width = width;
+  out.height = height;
+  const ctx = out.getContext("2d");
+  const image = ctx.createImageData(width, height);
+  // Two corrections at once, which is why this is a pixel loop rather than
+  // a row-wise copy:
+  //
+  //   1. GL reads bottom-row-first, a canvas expects top-row-first.
+  //   2. The thumbnail has to match what the output mirror shows, and that
+  //      page rotates the whole stage 180 degrees (see mirror.html's #stage
+  //      -- the screen it's shown on is mounted upside down). The view
+  //      someone frames there is the rotated one, so a thumbnail without
+  //      the same rotation would come out upside down against it.
+  //
+  // A 180 rotation is "reverse the rows and reverse each row", and the
+  // bottom-up readback already reverses the rows -- so the two together
+  // come out as: keep the row order, reverse within each row. If
+  // mirror.html's rotation ever changes, this has to change with it.
+  const stride = width * 4;
+  for (let y = 0; y < height; y++) {
+    const row = y * stride;
+    for (let x = 0; x < width; x++) {
+      const from = row + x * 4;
+      const to = row + (width - 1 - x) * 4;
+      image.data[to] = pixels[from];
+      image.data[to + 1] = pixels[from + 1];
+      image.data[to + 2] = pixels[from + 2];
+      image.data[to + 3] = 255;
+    }
+  }
+  ctx.putImageData(image, 0, 0);
+
+  return await new Promise((resolve, reject) => {
+    out.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("thumbnail encode failed"))),
+      "image/jpeg",
+      quality,
+    );
+  });
 }
