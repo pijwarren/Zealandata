@@ -606,7 +606,8 @@ body.admin-mode .settings-grid{
   content:""; flex:0 0 auto;
   border-left:5px solid currentColor;
   border-top:4px solid transparent; border-bottom:4px solid transparent;
-  transition:transform .15s ease;
+  /* Same timing as the contents it's announcing -- see --section-duration. */
+  transition:transform var(--section-duration) var(--section-ease);
 }
 .mapping-section[open] > .mapping-section__summary::before{ transform:rotate(90deg); }
 .mapping-section__summary:hover{ color:var(--color-accent); }
@@ -635,12 +636,24 @@ body.admin-mode .settings-grid{
 
    A browser without ::details-content just opens instantly -- which is the
    behaviour this replaces, so there's nothing to fall back to. */
-.mapping-section{ interpolate-size:allow-keywords; }
+/* Timing lives here so the disclosure triangle above can borrow it and turn
+   in step with the contents -- at different durations the two read as two
+   separate things happening rather than one section opening. The curve is a
+   heavier ease-out than the cards' (.2,.8,.2,1): with a control point pinned
+   to zero at the end it keeps decelerating right up to the stop, which over
+   this longer distance settles rather than arrives. */
+.mapping-section{
+  interpolate-size:allow-keywords;
+  --section-duration:.42s;
+  --section-ease:cubic-bezier(.32,.72,0,1);
+}
 .mapping-section::details-content{
   block-size:0;
   overflow:clip;
   overflow-clip-margin:4px;
-  transition:block-size .26s cubic-bezier(.2,.8,.2,1), content-visibility .26s;
+  transition:
+    block-size var(--section-duration) var(--section-ease),
+    content-visibility var(--section-duration);
   transition-behavior:allow-discrete;
 }
 .mapping-section[open]::details-content{ block-size:auto; }
