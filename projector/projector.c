@@ -126,6 +126,15 @@ struct mapping {
        see server.py's MAPPING_NUMERIC/BOOLEAN comments. */
     float vid_rotation;
     bool vid_flip_h, vid_flip_v;
+    /* Which corner the admin panel's keystone pad currently has selected --
+       "tl"/"tr"/"bl"/"br", or empty when nobody's actively touching it (the
+       admin page clears it back to empty a few seconds after the last
+       keystone interaction -- see app.js). Drives a breathing glow over
+       that corner on the real output so an operator can confirm which one
+       a drag is about to move; see the marker pass in the render loop.
+       Not a MAPPING_NUMERIC/BOOLEAN field in server.py, so it's parsed with
+       json_str below rather than json_num/json_bool. */
+    char keystone_corner[4];
 };
 /* Designated rather than positional: these defaults used to be a bare list
    in struct order, which meant inserting a field anywhere but the end
@@ -141,6 +150,7 @@ static struct mapping map_cur = {
     .ks_tl_x = 0, .ks_tl_y = 0, .ks_tr_x = 0, .ks_tr_y = 0,
     .ks_bl_x = 0, .ks_bl_y = 0, .ks_br_x = 0, .ks_br_y = 0,
     .vid_rotation = 0, .vid_flip_h = false, .vid_flip_v = true,
+    .keystone_corner = "",
 };
 static const char *mapping_path = "/home/pj/zealandata/mapping.json";
 /* Sub-second resolution matters here: st_mtime alone is whole seconds, so
@@ -172,6 +182,28 @@ static bool json_bool(const char *buf, const char *key, bool *out) {
     if (!p) return false;
     while (*++p == ' ') {}
     *out = (strncmp(p, "true", 4) == 0);
+    return true;
+}
+
+/* Like json_num/json_bool above, but for the one plain-string field
+   (keystone_corner) this schema has -- still deliberately not a real JSON
+   parser, so this only handles a simple "key":"value" pair with no escapes,
+   which is all the admin panel ever writes here. Truncates rather than
+   overflowing outsz; callers pass a buffer sized for the longest value they
+   accept and validate the result themselves. */
+static bool json_str(const char *buf, const char *key, char *out, size_t outsz) {
+    char pat[64];
+    snprintf(pat, sizeof pat, "\"%s\"", key);
+    const char *p = strstr(buf, pat);
+    if (!p) return false;
+    p = strchr(p + strlen(pat), ':');
+    if (!p) return false;
+    while (*++p == ' ') {}
+    if (*p != '"') return false;
+    p++;
+    size_t i = 0;
+    while (*p && *p != '"' && i + 1 < outsz) out[i++] = *p++;
+    out[i] = 0;
     return true;
 }
 
@@ -212,13 +244,21 @@ static void mapping_reload(void) {
     json_num(buf, "video_rotation", &map_cur.vid_rotation);
     json_bool(buf, "video_flip_h", &map_cur.vid_flip_h);
     json_bool(buf, "video_flip_v", &map_cur.vid_flip_v);
+    char corner[4] = "";
+    json_str(buf, "keystone_corner", corner, sizeof corner);
+    if (strcmp(corner, "tl") == 0 || strcmp(corner, "tr") == 0 ||
+        strcmp(corner, "bl") == 0 || strcmp(corner, "br") == 0) {
+        strcpy(map_cur.keystone_corner, corner);
+    } else {
+        map_cur.keystone_corner[0] = 0;
+    }
     if (map_cur.render_scale < 0.25f) map_cur.render_scale = 0.25f;
     if (map_cur.render_scale > 1.0f) map_cur.render_scale = 1.0f;
     /* Below this the near plane (see the render loop's frustum setup)
        starts crowding the model itself. */
     if (map_cur.throw_dist < 0.3f) map_cur.throw_dist = 0.3f;
     printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f throw_off=(%.2f,%.2f) shading=%d gizmo=%d fps=%d "
-           "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f) "
+           "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f) ks_corner=%s "
            "video_rotation=%.0f video_flip=(%d,%d)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
            map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.throw_dist,
@@ -226,6 +266,7 @@ static void mapping_reload(void) {
            map_cur.shading, map_cur.gizmo, map_cur.fps_overlay,
            map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
            map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y,
+           map_cur.keystone_corner[0] ? map_cur.keystone_corner : "-",
            map_cur.vid_rotation, map_cur.vid_flip_h, map_cur.vid_flip_v);
 }
 
@@ -980,6 +1021,55 @@ static const char *GIZMO_LABEL_VS_SRC =
 #define GIZMO_SEGMENTS 64
 #define GIZMO_RADIUS 0.4f
 #define GIZMO_LABEL_MAX_VERTS 32   /* 3 letters, at most 3 segments (6 verts) each */
+
+/* ============================================== keystone corner marker == *
+ * A soft white glow over whichever corner the admin panel's keystone pad
+ * currently has selected (mapping.keystone_corner) -- lets an operator
+ * standing in front of the print confirm which corner a drag is about to
+ * move before committing to it. Drawn as a screen-space quad straight over
+ * the finished picture (after the keystone warp, unlike the gizmo, which is
+ * drawn *without* it) since it is marking a spot on the actual output, not
+ * a property of the unwarped model -- its position is instead derived by
+ * applying the same per-frame keystone homography (H in the render loop)
+ * to an inset point near the target corner, so it tracks the corner
+ * exactly, however it's currently keystoned. */
+static const char *MARKER_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec2 aOffset;\n"
+    "uniform vec2 uCenter;\n"
+    "uniform vec2 uRadiusNdc;\n"
+    "out vec2 vOffset;\n"
+    "void main(){\n"
+    "  vOffset = aOffset;\n"
+    "  gl_Position = vec4(uCenter + aOffset * uRadiusNdc, 0.0, 1.0);\n"
+    "}\n";
+
+static const char *MARKER_FS_SRC =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "in vec2 vOffset;\n"
+    "uniform float uAlpha;\n"
+    "out vec4 oColor;\n"
+    "void main(){\n"
+    "  float d = length(vOffset);\n"
+    "  if (d > 1.0) discard;\n"
+    "  float core = smoothstep(0.35, 0.0, d);\n"
+    "  float glow = smoothstep(1.0, 0.0, d);\n"
+    "  float a = (core * 0.9 + glow * 0.5) * uAlpha;\n"
+    "  oColor = vec4(1.0, 1.0, 1.0, a);\n"
+    "}\n";
+
+/* How far the marker sits in from the true corner, as a fraction of the
+   keystoned quad's own edge -- moving the homography's s,t input inward
+   (rather than nudging the resulting NDC position by a fixed pixel amount)
+   keeps it following the warp exactly instead of drifting off-quad once a
+   corner is actually dragged far from default. */
+#define MARKER_INSET_FRAC 0.09f
+#define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
+#define MARKER_ALPHA_MIN 0.35f
+#define MARKER_ALPHA_MAX 1.0f
+#define MARKER_RADIUS_MIN_PX 13.f
+#define MARKER_RADIUS_MAX_PX 19.f
 
 typedef struct { float x, y, z, r, g, b; } gizmo_vert;
 typedef struct { float x, y, r, g, b; } label_vert;
@@ -1814,6 +1904,26 @@ int main(void) {
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(label_vert), (void *)(2 * sizeof(float)));
 
+    /* ---- keystone corner marker: breathing-glow program + static unit quad ---- */
+    GLuint markerProg = glCreateProgram();
+    glAttachShader(markerProg, compile_shader(GL_VERTEX_SHADER, MARKER_VS_SRC));
+    glAttachShader(markerProg, compile_shader(GL_FRAGMENT_SHADER, MARKER_FS_SRC));
+    glLinkProgram(markerProg);
+    GLint markerLinked = 0; glGetProgramiv(markerProg, GL_LINK_STATUS, &markerLinked);
+    if (!markerLinked) { char log[2048]; glGetProgramInfoLog(markerProg, sizeof log, NULL, log);
+                          fprintf(stderr, "marker link: %s\n", log); return 1; }
+    GLint uMarkerCenter = glGetUniformLocation(markerProg, "uCenter");
+    GLint uMarkerRadiusNdc = glGetUniformLocation(markerProg, "uRadiusNdc");
+    GLint uMarkerAlpha = glGetUniformLocation(markerProg, "uAlpha");
+
+    GLuint markerVao, markerVbo;
+    glGenVertexArrays(1, &markerVao); glBindVertexArray(markerVao);
+    glGenBuffers(1, &markerVbo); glBindBuffer(GL_ARRAY_BUFFER, markerVbo);
+    static const float markerQuad[8] = { -1, -1, 1, -1, -1, 1, 1, 1 };
+    glBufferData(GL_ARRAY_BUFFER, sizeof markerQuad, markerQuad, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
     glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
 
 
@@ -2092,6 +2202,41 @@ int main(void) {
             glBindBuffer(GL_ARRAY_BUFFER, labelVbo);
             glBufferSubData(GL_ARRAY_BUFFER, 0, hc * sizeof(label_vert), hudVerts);
             glDrawArrays(GL_LINES, 0, hc);
+        }
+
+        /* ---- keystone corner marker: see the block comment above
+           MARKER_VS_SRC. Reuses H exactly as computed above for the mesh's
+           own uKeystone -- unlike the gizmo, this one *does* want the warp,
+           since it is pointing at a spot on the finished output picture. */
+        float mcs = -1.f, mct = -1.f;
+        if (!strcmp(map_cur.keystone_corner, "bl"))      { mcs = 0.f; mct = 0.f; }
+        else if (!strcmp(map_cur.keystone_corner, "br")) { mcs = 1.f; mct = 0.f; }
+        else if (!strcmp(map_cur.keystone_corner, "tr")) { mcs = 1.f; mct = 1.f; }
+        else if (!strcmp(map_cur.keystone_corner, "tl")) { mcs = 0.f; mct = 1.f; }
+        if (mcs >= 0.f) {
+            float s = (mcs == 0.f) ? MARKER_INSET_FRAC : 1.f - MARKER_INSET_FRAC;
+            float t = (mct == 0.f) ? MARKER_INSET_FRAC : 1.f - MARKER_INSET_FRAC;
+            float mx = H[0] * s + H[1] * t + H[2];
+            float my = H[3] * s + H[4] * t + H[5];
+            float mw = H[6] * s + H[7] * t + H[8];
+            float mcx = mx / mw, mcy = my / mw;
+
+            double phase = fmod(now_sec(), MARKER_PERIOD_SEC) / MARKER_PERIOD_SEC;
+            float breathe = 0.5f - 0.5f * cosf((float)phase * 2.f * (float)M_PI);
+            float alpha = MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe;
+            float radiusPx = MARKER_RADIUS_MIN_PX + (MARKER_RADIUS_MAX_PX - MARKER_RADIUS_MIN_PX) * breathe;
+
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glUseProgram(markerProg);
+            glUniform2f(uMarkerCenter, mcx, mcy);
+            glUniform2f(uMarkerRadiusNdc,
+                        (radiusPx / (float)drm.mode.hdisplay) * 2.f,
+                        (radiusPx / (float)drm.mode.vdisplay) * 2.f);
+            glUniform1f(uMarkerAlpha, alpha);
+            glBindVertexArray(markerVao);
+            glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            glDisable(GL_BLEND);
         }
 
         glBindVertexArray(vao);   /* restore, matching the mesh pass */

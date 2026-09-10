@@ -143,7 +143,12 @@
           lastSerialised = JSON.stringify(mapping);
           currentMapping = mapping;
         } else if (Date.now() - lastPushAt > PUSH_AUTHORITY_MS) {
-          apply(mapping);
+          // Merged rather than swapped wholesale: the server mapping has no
+          // notion of which corner is currently selected (that's admin-panel
+          // UI state, never persisted), so a plain replace would blank out
+          // the corner glow about a second after every broadcast even
+          // though the operator hasn't changed the selection at all.
+          apply({ ...(currentMapping || {}), ...mapping });
         }
         // init() clears the status itself on success; this covers
         // recovering from a failed poll after we were already running.

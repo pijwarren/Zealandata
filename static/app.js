@@ -559,22 +559,58 @@ if (typeof ResizeObserver !== "undefined") {
 }
 window.addEventListener("resize", syncStickyOffsets, { passive: true });
 
+// ------------------------------------------------------------- overlays
+
+// Shared open/close for the glass scrim+panel pairs (settings drawer, PIN
+// pad, doc viewer). `hidden` still removes a closed overlay from
+// layout/hit-testing, but the class flip is sequenced around the
+// `.is-open` transition (see style.css) so the surface materializes --
+// fades and settles from a slight scale -- instead of popping instantly.
+const OVERLAY_TRANSITION_MS = 200;
+function openOverlay(scrimEl, panelEl) {
+  scrimEl.classList.remove("hidden");
+  panelEl.classList.remove("hidden");
+  // Force layout so the browser paints the closed state for one frame
+  // before is-open lands -- otherwise both class changes land in the same
+  // frame and there's nothing for the transition to animate from.
+  void panelEl.offsetWidth;
+  scrimEl.classList.add("is-open");
+  panelEl.classList.add("is-open");
+}
+function closeOverlay(scrimEl, panelEl, onClosed) {
+  scrimEl.classList.remove("is-open");
+  panelEl.classList.remove("is-open");
+  let done = false;
+  const finish = () => {
+    if (done) return;
+    done = true;
+    scrimEl.classList.add("hidden");
+    panelEl.classList.add("hidden");
+    if (onClosed) onClosed();
+  };
+  panelEl.addEventListener("transitionend", finish, { once: true });
+  // Safety net: reduced-motion or a dropped transitionend shouldn't leave
+  // the overlay's content (e.g. the doc viewer's iframe) alive forever.
+  setTimeout(finish, OVERLAY_TRANSITION_MS + 100);
+}
+
 // -------------------------------------------------------------- settings
 
 // The drawer scrolls its own contents, so the page behind it is locked
 // while it's open -- otherwise a scroll that ran past the end of the
 // drawer, or one made with the pointer over the scrim, moved the whole
 // library underneath. See style.css's .scroll-locked, which is set on
-// <html> because that's what actually scrolls here.
+// <html> because that's what actually scrolls here. Kept locked through
+// the close animation too, or the page behind would jump into view before
+// the drawer has finished fading out.
 function openSettings() {
-  settingsScrim.classList.remove("hidden");
-  settingsDrawer.classList.remove("hidden");
   document.documentElement.classList.add("scroll-locked");
+  openOverlay(settingsScrim, settingsDrawer);
 }
 function closeSettings() {
-  settingsScrim.classList.add("hidden");
-  settingsDrawer.classList.add("hidden");
-  document.documentElement.classList.remove("scroll-locked");
+  closeOverlay(settingsScrim, settingsDrawer, () => {
+    document.documentElement.classList.remove("scroll-locked");
+  });
 }
 settingsBtn.addEventListener("click", openSettings);
 settingsCloseBtn.addEventListener("click", closeSettings);
@@ -648,18 +684,17 @@ function openPinPad(title, verifyFn) {
     pinTitle.textContent = title;
     pinError.classList.add("hidden");
     paintPinDots();
-    pinScrim.classList.remove("hidden");
-    pinModal.classList.remove("hidden");
+    openOverlay(pinScrim, pinModal);
   });
 }
 
 function closePinPad(result) {
-  pinScrim.classList.add("hidden");
-  pinModal.classList.add("hidden");
-  const resolve = pinResolve;
-  pinResolve = null;
-  pinVerify = null;
-  if (resolve) resolve(result);
+  closeOverlay(pinScrim, pinModal, () => {
+    const resolve = pinResolve;
+    pinResolve = null;
+    pinVerify = null;
+    if (resolve) resolve(result);
+  });
 }
 
 function pinPadFail(message) {
@@ -1017,6 +1052,10 @@ function currentMappingSnapshot() {
     // pad writes to -- without these the mirror would draw an un-keystoned
     // picture while a corner was being dragged.
     ...keystoneValues,
+    // UI-only selection state, never persisted server-side -- lets the
+    // mirror glow the corner that's actually selected, not just wherever
+    // the last drag happened to leave off.
+    keystone_corner: keystoneCorner,
   };
   MAPPING_CONTROLS.forEach(({ key, rangeEl }) => { snap[key] = Number(rangeEl.value); });
   return snap;
@@ -1152,6 +1191,24 @@ function paintKeystone() {
   keystoneHandle.style.top = `${((KEYSTONE_RANGE - y) / (2 * KEYSTONE_RANGE)) * 100}%`;
 }
 
+// Real-output corner glow (see projector.c's keystone-corner-marker
+// comment): persisted to mapping.json like everything else here, but
+// deliberately ephemeral -- an admin tab left open on a corner shouldn't
+// leave a permanent white circle sitting on the projected picture. Every
+// touch of the pad (select, drag, nudge) both pushes the current corner and
+// pushes the clock out; once KEYSTONE_ACTIVE_MS passes with no further
+// touch, it's cleared back to "" on its own.
+const KEYSTONE_ACTIVE_MS = 5000;
+let keystoneActiveTimer = null;
+function markKeystoneActive() {
+  sendMappingUpdate({ keystone_corner: keystoneCorner });
+  if (keystoneActiveTimer) clearTimeout(keystoneActiveTimer);
+  keystoneActiveTimer = setTimeout(() => {
+    keystoneActiveTimer = null;
+    sendMappingUpdate({ keystone_corner: "" });
+  }, KEYSTONE_ACTIVE_MS);
+}
+
 function setKeystone(x, y) {
   const nx = clamp(x, -KEYSTONE_RANGE, KEYSTONE_RANGE);
   const ny = clamp(y, -KEYSTONE_RANGE, KEYSTONE_RANGE);
@@ -1159,6 +1216,7 @@ function setKeystone(x, y) {
   keystoneValues[keystoneKey("y")] = ny;
   paintKeystone();
   sendMappingUpdate({ [keystoneKey("x")]: nx, [keystoneKey("y")]: ny });
+  markKeystoneActive();
 }
 
 document.querySelectorAll(".keystone__corner").forEach((btn) => {
@@ -1170,6 +1228,13 @@ document.querySelectorAll(".keystone__corner").forEach((btn) => {
       other.setAttribute("aria-pressed", String(on));
     });
     paintKeystone();
+    // So the mirror's corner glow jumps to the new selection right away,
+    // rather than waiting on the next slider drag to happen to broadcast it.
+    broadcastMapping();
+    // And the real projector's corner glow too -- this is the one that
+    // actually needs a server round-trip, not just the same-browser
+    // BroadcastChannel the mirror tab listens on.
+    markKeystoneActive();
   });
 });
 
@@ -1499,14 +1564,13 @@ function openDocViewer(list, index) {
   docViewerList = list;
   docViewerIndex = index;
   renderDocViewerItem();
-  docScrim.classList.remove("hidden");
-  docViewer.classList.remove("hidden");
+  openOverlay(docScrim, docViewer);
 }
 function closeDocViewer() {
-  docScrim.classList.add("hidden");
-  docViewer.classList.add("hidden");
-  docViewerContent.innerHTML = "";
-  docViewerList = [];
+  closeOverlay(docScrim, docViewer, () => {
+    docViewerContent.innerHTML = "";
+    docViewerList = [];
+  });
 }
 function stepDocViewer(delta) {
   docViewerIndex = (docViewerIndex + delta + docViewerList.length) % docViewerList.length;
@@ -1517,7 +1581,7 @@ docScrim.addEventListener("click", closeDocViewer);
 docViewerPrev.addEventListener("click", () => stepDocViewer(-1));
 docViewerNext.addEventListener("click", () => stepDocViewer(1));
 window.addEventListener("keydown", (e) => {
-  if (docViewer.classList.contains("hidden")) return;
+  if (!docViewer.classList.contains("is-open")) return;
   if (e.key === "Escape") closeDocViewer();
   else if (e.key === "ArrowLeft") stepDocViewer(-1);
   else if (e.key === "ArrowRight") stepDocViewer(1);
@@ -1649,8 +1713,7 @@ let knownDuration = 0;
 let scrubbing = false;
 function fracFromEvent(e) {
   const rect = scrubBar.getBoundingClientRect();
-  const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-  return Math.min(1, Math.max(0, (clientX - rect.left) / rect.width));
+  return Math.min(1, Math.max(0, (e.clientX - rect.left) / rect.width));
 }
 function paintScrub(frac) {
   scrubFill.style.width = `${frac * 100}%`;
@@ -1667,9 +1730,11 @@ async function seekToFraction(frac) {
 function startScrub(e) {
   if (!knownDuration) return;
   scrubbing = true;
+  scrubBar.setPointerCapture(e.pointerId);
   const frac = fracFromEvent(e);
   paintScrub(frac);
   playerPos.textContent = fmtTime(knownDuration * frac);
+  e.preventDefault();
 }
 function moveScrub(e) {
   if (!scrubbing) return;
@@ -1682,12 +1747,14 @@ async function endScrub(e) {
   scrubbing = false;
   await seekToFraction(fracFromEvent(e));
 }
-scrubBar.addEventListener("mousedown", startScrub);
-window.addEventListener("mousemove", moveScrub);
-window.addEventListener("mouseup", endScrub);
-scrubBar.addEventListener("touchstart", startScrub, { passive: true });
-window.addEventListener("touchmove", moveScrub, { passive: true });
-window.addEventListener("touchend", endScrub);
+// Pointer events (matching the keystone pad's pattern) rather than
+// separate mouse/touch listeners -- those double-fired on touch devices,
+// since touchend is followed by a synthetic mousedown/mouseup pair that
+// could restart a scrub after it had already ended.
+scrubBar.addEventListener("pointerdown", startScrub);
+scrubBar.addEventListener("pointermove", moveScrub);
+scrubBar.addEventListener("pointerup", endScrub);
+scrubBar.addEventListener("pointercancel", () => { scrubbing = false; });
 
 // ----------------------------------------------------------------------
 // Status polling — keeps the player in sync (including a fresh pageload

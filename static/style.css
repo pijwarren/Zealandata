@@ -116,6 +116,7 @@ html,body{
 .tag-accent{ background:var(--color-accent-800); color:var(--color-accent-100); }
 button.tag{ cursor:pointer; transition:opacity .15s ease; }
 button.tag:hover{ opacity:.85; }
+button.tag:active{ opacity:.65; }
 
 .btn{
   font-family:var(--font-body);
@@ -135,8 +136,10 @@ button.tag:hover{ opacity:.85; }
 .btn svg{ display:block; }
 .btn-primary{ background:var(--color-text); color:var(--color-bg); border-color:var(--color-text); }
 .btn-primary:hover{ background:var(--color-neutral-200); }
+.btn-primary:active{ background:var(--color-neutral-300); }
 .btn-secondary{ border-color:var(--color-divider); }
 .btn-secondary:hover{ background:rgba(233,233,237,0.07); }
+.btn-secondary:active{ background:rgba(233,233,237,0.14); border-color:var(--color-accent); }
 .btn-block{ width:100%; justify-content:center; }
 
 .btn-icon{
@@ -151,9 +154,11 @@ button.tag:hover{ opacity:.85; }
   transition:background .15s ease, border-color .15s ease;
 }
 .btn-icon:hover{ background:rgba(233,233,237,0.1); border-color:var(--color-accent); }
+.btn-icon:active{ background:rgba(233,233,237,0.18); border-color:var(--color-accent); }
 .btn-icon:disabled{ opacity:.35; cursor:default; pointer-events:none; }
 .btn-icon-lg{ width:68px; height:68px; }
 .btn-icon-lg:hover{ background:var(--color-neutral-200); }
+.btn-icon-lg:active{ background:var(--color-neutral-300); }
 .btn-icon-text{ font-size:11px; font-weight:600; letter-spacing:-0.02em; }
 
 button:focus-visible, .card:focus-visible{
@@ -307,6 +312,7 @@ body.topbar-hidden .hero{
   transition:background .15s ease, border-color .15s ease, transform .15s ease;
 }
 .category-nav__item:hover{ background:rgba(43,39,65,0.68); border-color:var(--color-accent); transform:translateY(-2px); }
+.category-nav__item:active{ background:rgba(43,39,65,0.85); border-color:var(--color-accent); transform:translateY(0); transition-duration:.08s; }
 .category-nav__item--empty{ opacity:.35; cursor:default; pointer-events:none; }
 .row__scroller{
   display:flex; gap:20px; overflow-x:auto;
@@ -366,6 +372,13 @@ body.topbar-hidden .hero{
   z-index:2;
 }
 .card:focus-visible{ outline:none; }
+/* Faster than the hover transition: hover is a lingering "preview" state
+   that can afford to glide, but a tap needs to register the instant it
+   lands, not 220ms later. */
+.card:active{
+  transform:scale(1.04) translateY(-2px);
+  transition-duration:.08s;
+}
 .card--selected{
   transform:scale(1.08) translateY(-4px);
   box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(0,0,0,0.55), 0 0 34px rgba(145,132,217,0.35);
@@ -420,6 +433,7 @@ body.topbar-hidden .hero{
 body.admin-mode .card__rename{ display:flex; }
 body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .card__rename, body.admin-mode .card--selected .card__rename{ opacity:1; }
 .card__rename:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
+.card__rename:active{ border-color:var(--color-accent); background:var(--color-accent-900); }
 .card__restart{
   position:absolute; top:9px; left:9px; width:28px; height:28px; border-radius:50%;
   border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
@@ -429,6 +443,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 }
 .card:hover .card__restart, .card:focus-within .card__restart, .card--selected .card__restart{ opacity:1; }
 .card__restart:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
+.card__restart:active{ border-color:var(--color-accent); background:var(--color-accent-900); }
 .card__progress{ position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(233,233,237,0.15); z-index:1; }
 .card__progress-fill{ height:100%; background:var(--color-accent); }
 
@@ -437,15 +452,28 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 
 /* --------------------------------------------------------- settings */
 
-.scrim{ position:fixed; inset:0; z-index:60; background:rgba(10,11,18,0.55); backdrop-filter:blur(2px); }
+/* Open/close is sequenced from app.js's openOverlay/closeOverlay rather
+   than the raw `hidden` class alone: `hidden` still removes the surface
+   from layout/hit-testing once fully closed, but a `.is-open` class flip
+   in between drives this transition so a glass surface materializes
+   (fades + settles from a slight scale) instead of popping. Reduced
+   motion below keeps the fade but drops the scale. */
+.scrim{
+  position:fixed; inset:0; z-index:60; background:rgba(10,11,18,0.55); backdrop-filter:blur(2px);
+  opacity:0; transition:opacity .2s ease;
+}
+.scrim.is-open{ opacity:1; }
 .drawer{
-  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:61;
+  position:fixed; top:50%; left:50%; z-index:61;
+  --materialize-scale:.96;
+  transform:translate(-50%,-50%) scale(var(--materialize-scale));
+  opacity:0;
   /* Narrower while locked -- only Library/Screensaver/Admin mode show, so
      the wide calibration-section layout would just leave a big empty gap
      on the right. Widens once admin mode (and everything it gates,
      including the 2-column grid and the calibration section) is visible. */
   width:min(560px, 94vw);
-  transition:width .2s ease;
+  transition:width .2s ease, opacity .2s ease, transform .2s ease;
   max-height:96vh;
   background:rgba(43,39,65,0.5);
   backdrop-filter:blur(28px) saturate(180%);
@@ -474,6 +502,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
 }
 body.admin-mode .drawer{ width:min(1100px, 94vw); }
+.drawer.is-open{ opacity:1; --materialize-scale:1; }
 .drawer__header{ position:relative; flex:0 0 auto; width:100%; text-align:center; }
 .drawer__header h2{ font-family:var(--font-heading); font-weight:500; font-size:20px; margin:0; }
 .drawer__header #settingsCloseBtn{ position:absolute; top:50%; right:0; transform:translateY(-50%); }
@@ -575,6 +604,7 @@ body.admin-mode .settings-grid{
   cursor:pointer; transition:background-color .1s ease, border-color .1s ease, color .1s ease;
 }
 .keystone__corner:hover{ border-color:var(--color-accent); color:var(--color-accent); }
+.keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(233,233,237,0.18); }
 .keystone__corner.is-selected{
   border-color:var(--color-accent); color:var(--color-accent);
   background:rgba(233,233,237,0.12);
@@ -647,6 +677,7 @@ body.admin-mode .settings-grid{
   transition:background-color .1s ease, border-color .1s ease;
 }
 .mapping-row__step:hover{ border-color:var(--color-accent); color:var(--color-accent); }
+.mapping-row__step:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(233,233,237,0.18); }
 .mapping-row__number{
   width:84px; flex:0 0 auto; box-sizing:border-box; text-align:center;
   font:inherit; font-size:15px; font-variant-numeric:tabular-nums;
@@ -695,7 +726,11 @@ body.admin-mode .settings-grid{
 .mapping-actions .btn{ flex:0 1 240px; justify-content:center; }
 
 .pinpad{
-  position:fixed; top:50%; left:50%; transform:translate(-50%,-50%); z-index:71;
+  position:fixed; top:50%; left:50%; z-index:71;
+  --materialize-scale:.96;
+  transform:translate(-50%,-50%) scale(var(--materialize-scale));
+  opacity:0;
+  transition:opacity .2s ease, transform .2s ease;
   background:rgba(43,39,65,0.5);
   backdrop-filter:blur(28px) saturate(180%);
   -webkit-backdrop-filter:blur(28px) saturate(180%);
@@ -709,6 +744,7 @@ body.admin-mode .settings-grid{
   width:min(280px, 88vw);
   display:flex; flex-direction:column; align-items:center; gap:var(--space-6);
 }
+.pinpad.is-open{ opacity:1; --materialize-scale:1; }
 .pinpad::before{
   content:"";
   position:absolute; inset:0; z-index:-1;
@@ -849,6 +885,7 @@ body.admin-mode .settings-grid{
   cursor:pointer; transition:transform .15s ease;
 }
 .dock__doc-chip:hover{ transform:translateY(-2px); }
+.dock__doc-chip:active{ transform:translateY(0) scale(.96); }
 .dock__doc-chip__thumb{
   display:block; width:68px; height:68px; border-radius:12px; object-fit:cover;
   background:var(--color-surface); border:1px solid var(--color-divider);
@@ -861,7 +898,12 @@ body.admin-mode .settings-grid{
   position:fixed; inset:0; z-index:72;
   display:flex; align-items:center; justify-content:center;
   padding:min(48px, 5vh) min(88px, 9vw);
+  --materialize-scale:.97;
+  opacity:0;
+  transform:scale(var(--materialize-scale));
+  transition:opacity .2s ease, transform .2s ease;
 }
+.doc-viewer.is-open{ opacity:1; --materialize-scale:1; }
 .doc-viewer__content{
   width:100%; height:100%;
   display:flex; align-items:center; justify-content:center;
@@ -947,4 +989,10 @@ body.admin-mode #setHeroBtn{ display:flex; }
   .dock__controls .btn-icon{ width:clamp(38px, 12vw, 50px); height:clamp(38px, 12vw, 50px); flex-shrink:0; }
   .dock__time{ margin-top:16px; }
   .dock__frame-counter{ margin-top:16px; }
+}
+
+/* The overlays' materialize scale is dropped, not the whole transition --
+   opacity still fades, just without the settle-from-scale motion. */
+@media (prefers-reduced-motion: reduce){
+  .drawer, .pinpad, .doc-viewer{ --materialize-scale:1; }
 }

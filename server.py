@@ -181,7 +181,21 @@ MAPPING_BOOLEAN = {
     "video_flip_h": False,
     "video_flip_v": True,
 }
-DEFAULT_MAPPING = {**MAPPING_NUMERIC, **MAPPING_BOOLEAN}
+# The one plain-string calibration field, so it gets its own tiny schema
+# rather than being shoehorned into MAPPING_NUMERIC or MAPPING_BOOLEAN.
+# Ephemeral in spirit even though it round-trips through mapping.json like
+# everything else here: it's which corner the admin panel's keystone pad
+# currently has selected, so the native renderer (see projector.c's
+# keystone-corner-marker comment) can glow that corner on the real output
+# while a drag is imminent or happening. The admin panel itself clears it
+# back to "" a few seconds after the last keystone interaction, so a
+# forgotten-open admin tab doesn't leave a permanent marker on the
+# projected picture -- see app.js's keystone corner section.
+MAPPING_STRING = {
+    "keystone_corner": "",
+}
+KEYSTONE_CORNERS = {"tl", "tr", "bl", "br"}
+DEFAULT_MAPPING = {**MAPPING_NUMERIC, **MAPPING_BOOLEAN, **MAPPING_STRING}
 VIDEO_EXTS = {".mp4", ".mkv", ".avi", ".mov", ".m4v", ".webm", ".ts"}
 
 # Image sequences: a leaf folder containing this many (or more) images, all
@@ -1555,6 +1569,12 @@ def api_set_mapping():
     for key in MAPPING_BOOLEAN:
         if key in body:
             values[key] = bool(body[key])
+    for key in MAPPING_STRING:
+        if key in body:
+            val = str(body[key])
+            if key == "keystone_corner" and val not in KEYSTONE_CORNERS and val != "":
+                return jsonify({"error": "keystone_corner must be tl, tr, bl, br, or empty"}), 400
+            values[key] = val
     return jsonify(set_mapping(values))
 
 

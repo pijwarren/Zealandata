@@ -9,8 +9,9 @@
 // video here at all, just the model textured with the same static loading
 // image the projector shows when idle, plus the same orientation gizmo.
 // Rendering is done on demand (on open, and whenever a mapping value
-// changes) rather than in a continuous rAF loop, since nothing here
-// animates on its own.
+// changes) rather than in a continuous rAF loop -- the one exception is the
+// breathing keystone-corner marker (see render's tail end), which runs its
+// own short-lived rAF loop only while a corner is actually selected.
 
 const MODEL_URL = "/api/projection/model";
 const TEXTURE_URL = "/api/loading-image";
@@ -27,6 +28,21 @@ const SCALE_BASELINE = 1.82;
 
 const GIZMO_SEGMENTS = 64;
 const GIZMO_RADIUS = 0.4;
+
+// Which corner of the unit-square keystone parameterisation each named
+// corner sits at -- see quadHomography/render's warp pass below, which
+// bilinear-interpolates s,t=(0,0)..(1,1) across bl/br/tr/tl in that order.
+const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
+// How far the corner marker sits in from the true corner, as a fraction of
+// the quad's own edge -- moving s,t inward keeps it following the warp
+// (keystone, aspect, whatever) exactly instead of an afterthought pixel
+// nudge that would drift off-quad once the corner's actually dragged.
+const MARKER_INSET_FRAC = 0.09;
+const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
+const MARKER_ALPHA_MIN = 0.35;
+const MARKER_ALPHA_MAX = 1.0;
+const MARKER_RADIUS_MIN_PX = 13;
+const MARKER_RADIUS_MAX_PX = 19;
 
 // ---------------------------------------------------------------- shaders
 
@@ -146,6 +162,33 @@ precision mediump float;
 in vec3 vCol;
 out vec4 oColor;
 void main(){ oColor = vec4(vCol, 1.0); }`;
+
+// A screen-space glow, not a warped one: it marks a corner of the *output*
+// picture for the operator's eye, so it should always read as a circle,
+// not the flattened sliver a keystoned corner would warp it into.
+const MARKER_VS = `#version 300 es
+layout(location=0) in vec2 aOffset;
+uniform vec2 uCenter;
+uniform vec2 uRadiusNdc;
+out vec2 vOffset;
+void main(){
+  vOffset = aOffset;
+  gl_Position = vec4(uCenter + aOffset * uRadiusNdc, 0.0, 1.0);
+}`;
+
+const MARKER_FS = `#version 300 es
+precision mediump float;
+in vec2 vOffset;
+uniform float uAlpha;
+out vec4 oColor;
+void main(){
+  float d = length(vOffset);
+  if (d > 1.0) discard;
+  float core = smoothstep(0.35, 0.0, d);
+  float glow = smoothstep(1.0, 0.0, d);
+  float a = (core * 0.9 + glow * 0.5) * uAlpha;
+  oColor = vec4(1.0, 1.0, 1.0, a);
+}`;
 
 // ------------------------------------------------------------- mat4 math
 // Column-major, matching projector.c's mat4 convention exactly (out = a*b,
@@ -417,10 +460,11 @@ let ready = false;
 let loading = false;
 let model = null; // { pos, nrm, idx }
 let texture = null;
-let modelProg, warpProg, gizmoProg;
+let modelProg, warpProg, gizmoProg, markerProg;
 let modelVao, sceneFbo, sceneTex, sceneDepth;
 let warpVao, warpVbo;
 let gizmoVao;
+let markerVao;
 let sceneW = 640, sceneH = 360;
 let labelEls = null;
 let statusEl = null;
@@ -470,6 +514,7 @@ async function ensureInit(canvasEl, labels, status) {
     modelProg = linkProgram(gl, MODEL_VS, MODEL_FS);
     warpProg = linkProgram(gl, WARP_VS, WARP_FS);
     gizmoProg = linkProgram(gl, GIZMO_VS, GIZMO_FS);
+    markerProg = linkProgram(gl, MARKER_VS, MARKER_FS);
 
     modelVao = gl.createVertexArray();
     gl.bindVertexArray(modelVao);
@@ -508,6 +553,10 @@ async function ensureInit(canvasEl, labels, status) {
     gizmoVao = gl.createVertexArray();
     gl.bindVertexArray(gizmoVao);
     bindAttribBuffer6(buildGizmoRings());
+
+    markerVao = gl.createVertexArray();
+    gl.bindVertexArray(markerVao);
+    bindAttribBuffer(0, 2, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]));
 
     ready = true;
     setStatus(null);
@@ -709,6 +758,58 @@ function render(mapping) {
     for (let ring = 0; ring < 3; ring++) gl.drawArrays(gl.LINE_LOOP, ring * GIZMO_SEGMENTS, GIZMO_SEGMENTS);
   }
   positionLabels(gizmoMvp, showGizmo);
+
+  // ---- keystone corner marker: a soft white glow over whichever corner the
+  // admin panel currently has selected, drawn straight over the finished
+  // frame (not through the warp -- it's marking a spot on the *output*
+  // picture, not the model) so an operator watching this tab can confirm
+  // which corner is about to move before dragging it. Inset by nudging s,t
+  // in from the true 0/1 corner and re-applying the same H the warp pass
+  // used, so the marker still lands right on the corner however it's
+  // currently keystoned. ----
+  const cornerSt = CORNER_ST[mapping.keystone_corner];
+  if (cornerSt) {
+    const s = cornerSt[0] === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
+    const t = cornerSt[1] === 0 ? MARKER_INSET_FRAC : 1 - MARKER_INSET_FRAC;
+    const [mx, my, mw] = homographyApply(H, s, t);
+    const cx = mx / mw, cy = my / mw;
+    const phase = (performance.now() % MARKER_PERIOD_MS) / MARKER_PERIOD_MS;
+    const breathe = 0.5 - 0.5 * Math.cos(phase * Math.PI * 2); // eases 0 -> 1 -> 0
+    const alpha = MARKER_ALPHA_MIN + (MARKER_ALPHA_MAX - MARKER_ALPHA_MIN) * breathe;
+    const radiusPx = MARKER_RADIUS_MIN_PX + (MARKER_RADIUS_MAX_PX - MARKER_RADIUS_MIN_PX) * breathe;
+
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    gl.useProgram(markerProg);
+    gl.uniform2f(gl.getUniformLocation(markerProg, "uCenter"), cx, cy);
+    gl.uniform2f(
+      gl.getUniformLocation(markerProg, "uRadiusNdc"),
+      (radiusPx / canvas.width) * 2,
+      (radiusPx / canvas.height) * 2,
+    );
+    gl.uniform1f(gl.getUniformLocation(markerProg, "uAlpha"), alpha);
+    gl.bindVertexArray(markerVao);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.disable(gl.BLEND);
+  }
+
+  // The breathing pulse needs to keep animating even while nothing about
+  // the mapping itself is changing, which is the one case this module's
+  // otherwise-on-demand rendering (see requestRender) doesn't cover on its
+  // own -- so run a rAF loop for exactly as long as a corner is actually
+  // selected, and no longer.
+  if (cornerSt && !pulseRaf) {
+    pulseRaf = requestAnimationFrame(pulseTick);
+  } else if (!cornerSt && pulseRaf) {
+    cancelAnimationFrame(pulseRaf);
+    pulseRaf = null;
+  }
+}
+
+let pulseRaf = null;
+function pulseTick() {
+  pulseRaf = requestAnimationFrame(pulseTick);
+  if (lastMapping) render(lastMapping);
 }
 
 // Labels are plain HTML overlaid on the canvas (positioned from the same
