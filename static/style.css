@@ -611,58 +611,40 @@ body.admin-mode .settings-grid{
 }
 .mapping-section[open] > .mapping-section__summary::before{ transform:rotate(90deg); }
 .mapping-section__summary:hover{ color:var(--color-accent); }
-/* Sections ease open instead of snapping to full height.
-   A <details> can't be transitioned directly: its contents live in a
-   ::details-content box the browser generates, and it's that box's height
-   that changes. Three pieces make it animatable -- interpolate-size, which
-   is what allows a height to interpolate to the "auto" keyword at all
-   (scoped here rather than on :root, so it can't quietly change how
-   anything else in the drawer sizes); the transition itself; and
-   allow-discrete, which keeps the box rendered through a close instead of
-   snapping to content-visibility:hidden the moment it starts.
+/* Contents fade and slide into place when a section opens.
+   Deliberately NOT a height sweep, which is what this used to be, for two
+   separate reasons.
 
-   Clipped rather than hidden, and with a margin: the controls inside run the
-   full width of the section, and a focused one draws its ring 2px outside
-   itself (see button:focus-visible), which a plain overflow:hidden would
-   shave off down both edges.
+   The first is portability. A height sweep needs interpolate-size (to reach
+   the "auto" keyword at all) and ::details-content (to have a box to size),
+   and both are Chromium-only. Every measurement of the sweep was taken in
+   Edge; in Firefox, where this panel actually gets used, those declarations
+   do nothing and the "animation" was whatever fell out of the leftovers.
+   Nothing below is newer than CSS animations on plain elements.
 
-   One trap, found the hard way: an open <details> laid out as a flex
-   container kills this transition outright when the content box is
-   overflow:clip -- the height jumps straight to full. It used to be
-   display:flex here for a gap that is now done with margins (see below), so
-   the flex is simply gone rather than worked around. Anything that brings it
-   back has to switch the clip below to overflow:hidden, and give up on the
-   focus rings.
+   The second is cost. Animating height is a full layout pass, a repaint,
+   and -- since the drawer is a scroll container under a 28px
+   backdrop-filter -- a blur recomputed across the whole panel, every frame.
+   Opacity and transform are the two things a compositor can animate by
+   itself, touching neither layout nor the drawer behind it.
 
-   A browser without ::details-content just opens instantly -- which is the
-   behaviour this replaces, so there's nothing to fall back to. */
-/* Timing lives here so the disclosure triangle above can borrow it and turn
-   in step with the contents -- at different durations the two read as two
-   separate things happening rather than one section opening.
-
-   Linear, deliberately, and it is smoother here than an ease-out despite
-   sounding cruder. Measured over an open of the tallest section: the cards'
-   ease-out covered ~25px per frame early and then crawled to ~1.4px, with
-   23 frames moving less than a whole pixel. Layout is quantised to integer
-   pixels, so that sub-pixel tail lands as visible stutter -- the section
-   appears to stall on the way in. Constant velocity is ~13px every frame
-   from start to finish, with nothing to quantise away. (Frame pacing was
-   never the problem: neither version dropped a single frame.) */
+   The children are animated rather than any wrapper, because they're real
+   elements: no pseudo-element, so nothing here depends on how a given engine
+   models the inside of a <details>. The cost is that the section's height
+   still snaps -- everything below moves at once and the contents catch up. */
 .mapping-section{
-  interpolate-size:allow-keywords;
-  --section-duration:.8s;
-  --section-ease:linear;
+  --section-duration:.42s;
+  --section-ease:cubic-bezier(.2,.8,.2,1);
 }
-.mapping-section::details-content{
-  block-size:0;
-  overflow:clip;
-  overflow-clip-margin:4px;
-  transition:
-    block-size var(--section-duration) var(--section-ease),
-    content-visibility var(--section-duration);
-  transition-behavior:allow-discrete;
+@media (prefers-reduced-motion: no-preference){
+  .mapping-section[open] > *:not(summary){
+    animation:section-reveal var(--section-duration) var(--section-ease);
+  }
 }
-.mapping-section[open]::details-content{ block-size:auto; }
+@keyframes section-reveal{
+  from{ opacity:0; transform:translateY(-10px); }
+  to{ opacity:1; transform:none; }
+}
 
 /* The section's own contents are spaced with margins rather than a flex gap,
    which is not just a style preference: browsers now wrap a <details>'s
@@ -1112,6 +1094,6 @@ body.admin-mode #setHeroBtn{ display:flex; }
    opacity still fades, just without the settle-from-scale motion. */
 @media (prefers-reduced-motion: reduce){
   .drawer, .pinpad, .doc-viewer{ --materialize-scale:1; }
-  /* Straight to open, no height sweep. */
-  .mapping-section::details-content{ transition:none; }
+  /* The section reveal opts in under no-preference rather than being
+     cancelled here -- see the section-reveal keyframes. */
 }
