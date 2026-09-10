@@ -1110,8 +1110,8 @@ static const char *GIZMO_LABEL_VS_SRC =
  * (see FS_SRC), MARKER_ARM_UV growing the marker never risks pushing it
  * past the picture's edge the way a symmetric shape centred on the inset
  * point would. */
-#define MARKER_INSET_FRAC_X 0.04f   /* how far in from the UV edge on x -- "4% in from the edges" */
-#define MARKER_INSET_FRAC_Y 0.08f   /* double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise */
+#define MARKER_INSET_FRAC_X 0.02f   /* how far in from the UV edge on x -- "2% in from the edges" */
+#define MARKER_INSET_FRAC_Y 0.04f   /* double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise */
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
 #define MARKER_ALPHA_MIN 0.35f   /* breathing dims the halo down to this, never the chevron itself -- see FS_SRC */
 #define MARKER_ALPHA_MAX 1.0f

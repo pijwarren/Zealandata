@@ -50,8 +50,8 @@ const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
 // (see MODEL_FS), MARKER_ARM_UV growing the marker never risks pushing it
 // past the picture's edge the way a symmetric shape centred on the inset
 // point would.
-const MARKER_INSET_FRAC_X = 0.04; // how far in from the UV edge on x, i.e. "4% in from the edges"
-const MARKER_INSET_FRAC_Y = 0.08; // double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise
+const MARKER_INSET_FRAC_X = 0.02; // how far in from the UV edge on x, i.e. "2% in from the edges"
+const MARKER_INSET_FRAC_Y = 0.04; // double MARKER_INSET_FRAC_X -- the marker sat too close to the top/bottom edge otherwise
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
 const MARKER_ALPHA_MIN = 0.35; // breathing dims the halo down to this, never the chevron itself -- see MODEL_FS
 const MARKER_ALPHA_MAX = 1.0;
