@@ -43,20 +43,19 @@ const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
 // flip was in effect. Baking the marker into (the untouched) vMarkerUV
 // means it rides through exactly the same model transform and keystone
 // warp the keystone fields themselves are defined against, with nothing
-// extra to keep in step: containment inside the mapped/warped picture is
-// automatic (it's already correct by construction as long as
-// MARKER_RADIUS_MAX_UV stays under MARKER_INSET_FRAC below, since
-// vMarkerUV's domain is always exactly 0..1), not something a separate
-// pass has to reason about after the fact.
+// extra to keep in step: it never draws outside the mapped/warped picture
+// by construction (vMarkerUV's domain is always exactly 0..1), not
+// something a separate pass has to reason about after the fact.
+// MARKER_RADIUS_MAX_UV is bigger than MARKER_INSET_FRAC -- deliberately:
+// the disk is kept full-size rather than shrunk to fit inside the inset,
+// so near a corner it visibly bleeds off the edge of the picture instead
+// of always reading as a complete circle.
 const MARKER_INSET_FRAC = 0.04; // how far in from the UV edge, i.e. "4% in from the edges"
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
 const MARKER_ALPHA_MIN = 0.35;
 const MARKER_ALPHA_MAX = 1.0;
-// Quartered from the original 0.05/0.08 -- see MARKER_ASPECT_Y in MODEL_FS
-// below for the other half of why the marker used to read too big/stretched.
-const MARKER_RADIUS_MIN_UV = 0.0125;
-const MARKER_RADIUS_MAX_UV = 0.02; // stays under MARKER_INSET_FRAC -- see the comment above
-const MARKER_ASPECT_Y = 2.0;
+const MARKER_RADIUS_MIN_UV = 0.05;
+const MARKER_RADIUS_MAX_UV = 0.08;
 
 // ---------------------------------------------------------------- shaders
 
@@ -174,10 +173,16 @@ void main(){
     vec2 delta = vMarkerUV - uMarkerUV;
     delta.y /= MARKER_ASPECT_Y;
     float d = length(delta) / uMarkerRadius;
-    if (d < 1.0) {
-      float core = smoothstep(0.35, 0.0, d);
-      float glow = smoothstep(1.0, 0.0, d);
-      float g = (core * 0.9 + glow * 0.5) * uMarkerAlpha;
+    // d = 1.0 is the disk's own hard edge (uMarkerRadius, unshrunk). Past
+    // that, MARKER_GLOW_FRAC is how far the soft halo bleeds outward, as a
+    // fraction of the disk's own radius -- small on purpose (a quarter of
+    // a radius, not a whole one) so it reads as a slight glow around a
+    // hard-edged circle, not a soft blob with no edge at all.
+    const float MARKER_GLOW_FRAC = 0.25;
+    if (d < 1.0 + MARKER_GLOW_FRAC) {
+      float disk = 1.0 - smoothstep(0.9, 1.0, d);
+      float halo = smoothstep(1.0 + MARKER_GLOW_FRAC, 1.0, d) * 0.5;
+      float g = max(disk, halo) * uMarkerAlpha;
       c.rgb = mix(c.rgb, vec3(1.0), g);
     }
   }

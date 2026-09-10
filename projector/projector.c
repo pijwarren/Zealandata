@@ -1003,10 +1003,16 @@ static const char *FS_SRC =
     "    vec2 delta = vMarkerUV - uMarkerUV;\n"
     "    delta.y /= MARKER_ASPECT_Y;\n"
     "    float d = length(delta) / uMarkerRadius;\n"
-    "    if (d < 1.0) {\n"
-    "      float core = smoothstep(0.35, 0.0, d);\n"
-    "      float glow = smoothstep(1.0, 0.0, d);\n"
-    "      float g = (core * 0.9 + glow * 0.5) * uMarkerAlpha;\n"
+    /* d = 1.0 is the disk's own hard edge (uMarkerRadius, unshrunk). Past
+       that, MARKER_GLOW_FRAC is how far the soft halo bleeds outward, as
+       a fraction of the disk's own radius -- small on purpose (a quarter
+       of a radius, not a whole one) so it reads as a slight glow around
+       a hard-edged circle, not a soft blob with no edge at all. */
+    "    const float MARKER_GLOW_FRAC = 0.25;\n"
+    "    if (d < 1.0 + MARKER_GLOW_FRAC) {\n"
+    "      float disk = 1.0 - smoothstep(0.9, 1.0, d);\n"
+    "      float halo = smoothstep(1.0 + MARKER_GLOW_FRAC, 1.0, d) * 0.5;\n"
+    "      float g = max(disk, halo) * uMarkerAlpha;\n"
     "      c.rgb = mix(c.rgb, vec3(1.0), g);\n"
     "    }\n"
     "  }\n"
@@ -1076,17 +1082,19 @@ static const char *GIZMO_LABEL_VS_SRC =
  * own reference frame), rather than drawn as a separate screen-space pass
  * -- that means it rides through exactly the same model transform and
  * keystone warp the keystone fields are themselves defined against, with
- * nothing extra to keep in step, and it's contained inside the
+ * nothing extra to keep in step, and it never draws outside the
  * mapped/warped picture by construction (vMarkerUV's domain is always
- * exactly 0..1) rather than something to work out fresh each frame. */
+ * exactly 0..1) rather than something to work out fresh each frame.
+ * MARKER_RADIUS_MAX_UV is bigger than MARKER_INSET_FRAC -- deliberately:
+ * the disk is kept full-size rather than shrunk to fit inside the inset,
+ * so near a corner it visibly bleeds off the edge of the picture instead
+ * of always reading as a complete circle. */
 #define MARKER_INSET_FRAC 0.04f   /* how far in from the UV edge -- "4% in from the edges" */
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
 #define MARKER_ALPHA_MIN 0.35f
 #define MARKER_ALPHA_MAX 1.0f
-/* Quartered from the original 0.05/0.08 -- see MARKER_ASPECT_Y in FS_SRC
-   for the other half of why the marker used to read too big/stretched. */
-#define MARKER_RADIUS_MIN_UV 0.0125f
-#define MARKER_RADIUS_MAX_UV 0.02f   /* stays under MARKER_INSET_FRAC -- see the comment above */
+#define MARKER_RADIUS_MIN_UV 0.05f
+#define MARKER_RADIUS_MAX_UV 0.08f
 
 typedef struct { float x, y, z, r, g, b; } gizmo_vert;
 typedef struct { float x, y, r, g, b; } label_vert;
