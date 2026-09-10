@@ -1085,16 +1085,16 @@ static const char *GIZMO_LABEL_VS_SRC =
  * nothing extra to keep in step, and it never draws outside the
  * mapped/warped picture by construction (vMarkerUV's domain is always
  * exactly 0..1) rather than something to work out fresh each frame.
- * MARKER_RADIUS_MAX_UV is bigger than MARKER_INSET_FRAC -- deliberately:
- * the disk is kept full-size rather than shrunk to fit inside the inset,
- * so near a corner it visibly bleeds off the edge of the picture instead
- * of always reading as a complete circle. */
+ * MARKER_RADIUS_MAX_UV reaches MARKER_INSET_FRAC at its biggest breathe --
+ * the disk itself just fits inside the inset, but its halo (see
+ * MARKER_GLOW_FRAC in FS_SRC) still bleeds a little past the edge of the
+ * picture near a corner rather than always reading as a complete circle. */
 #define MARKER_INSET_FRAC 0.04f   /* how far in from the UV edge -- "4% in from the edges" */
 #define MARKER_PERIOD_SEC 2.4   /* full in-out cycle -- slow enough to read as breathing, not blinking */
 #define MARKER_ALPHA_MIN 0.35f
 #define MARKER_ALPHA_MAX 1.0f
-#define MARKER_RADIUS_MIN_UV 0.05f
-#define MARKER_RADIUS_MAX_UV 0.08f
+#define MARKER_RADIUS_MIN_UV 0.025f
+#define MARKER_RADIUS_MAX_UV 0.04f
 
 typedef struct { float x, y, z, r, g, b; } gizmo_vert;
 typedef struct { float x, y, r, g, b; } label_vert;

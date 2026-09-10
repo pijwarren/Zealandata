@@ -46,16 +46,16 @@ const CORNER_ST = { bl: [0, 0], br: [1, 0], tr: [1, 1], tl: [0, 1] };
 // extra to keep in step: it never draws outside the mapped/warped picture
 // by construction (vMarkerUV's domain is always exactly 0..1), not
 // something a separate pass has to reason about after the fact.
-// MARKER_RADIUS_MAX_UV is bigger than MARKER_INSET_FRAC -- deliberately:
-// the disk is kept full-size rather than shrunk to fit inside the inset,
-// so near a corner it visibly bleeds off the edge of the picture instead
-// of always reading as a complete circle.
+// MARKER_RADIUS_MAX_UV reaches MARKER_INSET_FRAC at its biggest breathe --
+// the disk itself just fits inside the inset, but its halo (see
+// MARKER_GLOW_FRAC in MODEL_FS) still bleeds a little past the edge of the
+// picture near a corner rather than always reading as a complete circle.
 const MARKER_INSET_FRAC = 0.04; // how far in from the UV edge, i.e. "4% in from the edges"
 const MARKER_PERIOD_MS = 2400; // full in-out cycle -- slow enough to read as breathing, not blinking
 const MARKER_ALPHA_MIN = 0.35;
 const MARKER_ALPHA_MAX = 1.0;
-const MARKER_RADIUS_MIN_UV = 0.05;
-const MARKER_RADIUS_MAX_UV = 0.08;
+const MARKER_RADIUS_MIN_UV = 0.025;
+const MARKER_RADIUS_MAX_UV = 0.04;
 
 // ---------------------------------------------------------------- shaders
 
