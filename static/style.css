@@ -133,6 +133,15 @@ html{
      can't create a page-level horizontal scrollbar. Doesn't affect the
      scroller's own overflow-x:auto, which is a separate element. */
   overflow-x:hidden;
+  /* Belt-and-suspenders alongside the overflow-x above: that stops the
+     page having anywhere to scroll to sideways, this stops the elastic
+     rubber-band some touch browsers still show at a scroll boundary even
+     when there's nothing past it to reveal. Doesn't touch vertical
+     overscroll (the pull-to-refresh-style bounce there is left alone) or
+     any scroll container's own axis -- see .row__scroller, .topbar__nav
+     and .dock__docs, which all keep their default overscroll-behavior so
+     their horizontal swipe isn't affected. */
+  overscroll-behavior-x:none;
   /* Keeps the scrollbar's space reserved even while the page is locked
      below, so opening the settings drawer doesn't shunt the whole page
      sideways by a scrollbar width as it disappears. */
@@ -158,7 +167,16 @@ html,body{
      browsers otherwise hold every tap for, waiting to see if a second one
      follows) -- this is a kiosk-style browse UI meant to be tapped
      quickly, not a document meant to be zoomed into. Pinch-zoom still
-     works: that's a separate gesture, untouched by this. */
+     works: that's a separate gesture, untouched by this.
+
+     Left as the full `manipulation` (pan-x included) rather than
+     restricted to pan-y: touch-action's ancestor/descendant intersection
+     can only ever narrow a gesture going down the tree, never reopen one
+     an ancestor has already forbidden, and .row__scroller, .topbar__nav
+     and .dock__docs all depend on a horizontal pan reaching them to
+     swipe-scroll. overflow-x:hidden below is what actually stops the page
+     itself panning sideways; touch-action here is only about the
+     double-tap. */
   touch-action:manipulation;
 }
 
@@ -264,6 +282,13 @@ button:focus-visible, .card:focus-visible{
 .topbar{
   position:fixed; top:0; left:0; right:0; z-index:30;
   display:flex; align-items:center; justify-content:space-between;
+  /* Forces this onto its own compositor layer instead of being repainted
+     in place on every scroll tick -- without it, mobile Safari in
+     particular can visibly wiggle a fixed element's fine detail (the E
+     monogram's mask, here) by a subpixel or two as the page scrolls under
+     it. translateZ(0) over the plainer `transform:none` promotion because
+     it's the one that reliably triggers GPU compositing across engines. */
+  transform:translateZ(0);
   /* Top AND left padding are both 2/5 of the logo's own height (52px here
      -- see .topbar__logo), rather than a fixed 16px/var(--page-inset) or
      the smaller --space-4 the bottom still uses -- keeps the same
@@ -387,11 +412,18 @@ body.admin-mode .topbar__settings-icon{
   -webkit-mask-image:url("/static/icons/unlocked.svg");
   mask-image:url("/static/icons/unlocked.svg");
 }
-/* Empty now -- see the template's comment -- and kept only as a spacer the
-   same width the settings button used to be, so the badges in
-   .topbar__nav beside it stay centred against the logo rather than
-   drifting into the space a button no longer occupies. */
-.topbar__controls{ width:55px; }
+/* Empty now -- see the template's comment -- and kept only as a spacer for
+   .topbar__nav beside it to centre its badges against. Sized to balance
+   the LOGO now, not the settings button that used to sit here: with
+   .topbar's own left padding (20.8px) plus the 197px logo on one side
+   summing to more than its right padding (--page-inset, 25.5px) plus a
+   spacer on the other, .topbar__nav's flex:1 box -- and "safe center"
+   inside it -- would land off-centre in the bar as a whole, shifted
+   toward whichever side had less fixed-width stuff before it. 192.3px is
+   what closes that gap: 25.5 + 192.3 = 20.8 + 197, so both sides tie and
+   the flexible middle the badges centre in is a true centre, not just a
+   centre of whatever was left over. */
+.topbar__controls{ width:192.3px; }
 /* The mission badges, pinned here permanently (see app.js, which builds
    them straight into this element -- there's no separate strip elsewhere
    any more). flex:1 takes whatever room .topbar__title and
