@@ -351,17 +351,23 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
    keeping two <svg> markups in the DOM and hiding one. background-color:
    currentColor is what lets it pick up .btn-icon's own colour (and its
    body.topbar-on-light flip) for free, same mechanism, no separate rule
-   needed here. Height fixed with width:auto for the same reason as the
-   logo: the two files aren't the same aspect ratio (24x24 locked, 18x24
-   unlocked, its shackle open and taller) and neither needs a width of its
-   own -- only unlocked shifts width when it swaps in. */
+   needed here.
+
+   Width is explicit, not auto: unlike an <img>, a mask gives the box no
+   intrinsic size of its own to size against, so width:auto here collapses
+   to nothing and the icon simply doesn't render -- a mask needs its box
+   sized the same way .topbar__logo's is. The two files aren't the same
+   aspect ratio (24x24 locked, 18x24 unlocked with its shackle open and
+   taller), so unlocked gets its own narrower width alongside the
+   mask-image swap below rather than sharing this one. */
 .topbar__settings-icon{
-  display:block; height:20px; width:auto;
+  display:block; width:20px; height:20px;
   background-color:currentColor;
   -webkit-mask:url("/static/icons/locked.svg") no-repeat center / contain;
   mask:url("/static/icons/locked.svg") no-repeat center / contain;
 }
 body.admin-mode .topbar__settings-icon{
+  width:15px;
   -webkit-mask-image:url("/static/icons/unlocked.svg");
   mask-image:url("/static/icons/unlocked.svg");
 }

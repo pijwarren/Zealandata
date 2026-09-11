@@ -721,7 +721,20 @@ function closeSettings() {
     document.documentElement.classList.remove("scroll-locked");
   });
 }
-settingsBtn.addEventListener("click", openSettings);
+// While locked, almost everything in the drawer is admin-gated and hidden
+// (see paintAdminMode) -- a locked visitor opening it would land on little
+// more than the "Unlock admin mode" button itself, so the topbar's icon
+// skips straight to the PIN pad instead (see unlockAdminMode, defined with
+// the rest of the PIN flow below). A correct PIN goes on into the
+// now-populated drawer, same as tapping Settings again would once
+// unlocked; cancelling just leaves things closed.
+settingsBtn.addEventListener("click", async () => {
+  if (!adminToken) {
+    if (await unlockAdminMode()) openSettings();
+    return;
+  }
+  openSettings();
+});
 settingsCloseBtn.addEventListener("click", closeSettings);
 settingsScrim.addEventListener("click", closeSettings);
 
@@ -950,19 +963,28 @@ async function restoreAdminSession() {
   }
 }
 
-adminModeBtn.addEventListener("click", async () => {
-  if (adminToken) {
-    relockAdminMode();
-    resetAdminIdleTimer();
-    return;
-  }
+// Shared by adminModeBtn (below) and settingsBtn's locked shortcut (see
+// openSettings). Resolves true only on a correct PIN, so callers can tell
+// a cancelled attempt from a successful one.
+async function unlockAdminMode() {
   const pin = await openPinPad("Enter Admin PIN", verifyAdminPin);
   if (pin && pendingAdminToken) {
     storeAdminToken(pendingAdminToken);
     pendingAdminToken = null;
     paintAdminMode();
     resetAdminIdleTimer();
+    return true;
   }
+  return false;
+}
+
+adminModeBtn.addEventListener("click", async () => {
+  if (adminToken) {
+    relockAdminMode();
+    resetAdminIdleTimer();
+    return;
+  }
+  await unlockAdminMode();
 });
 
 changePinBtn.addEventListener("click", async () => {
