@@ -562,14 +562,15 @@ body.admin-mode .topbar__settings-icon{
 }
 .category-nav__item:hover .category-nav__colour,
 .category-nav__item:focus-visible .category-nav__colour{ opacity:1; }
-/* The same motion a poster gets on hover -- scale and rise, on the same
-   curve and duration -- but without the accent stroke, which on artwork that
-   already carries its own plate would read as a second border. */
+/* Scale only, from centre -- no rise. A poster gets both (see .card), but
+   these sit in the pinned topbar strip, where the rise was tight against
+   .topbar__nav's own clipped headroom (see its padding); scaling in place
+   sidesteps that instead of just giving it more room. */
 .category-nav__item:hover, .category-nav__item:focus-visible{
-  transform:scale(1.08) translateY(-4px);
+  transform:scale(1.08);
   z-index:2;
 }
-.category-nav__item:active{ transform:scale(1.04) translateY(-2px); transition-duration:.08s; }
+.category-nav__item:active{ transform:scale(1.04); transition-duration:.08s; }
 .category-nav__item--empty{ opacity:.35; cursor:default; pointer-events:none; }
 .row__scroller{
   display:flex; gap:20px; overflow-x:auto;
