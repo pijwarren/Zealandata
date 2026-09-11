@@ -398,11 +398,10 @@ body.topbar-hidden .hero{
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
-  /* 16/20 before the strip started scrolling. overflow-x:auto clips the
-     other axis too, and a badge's hover lift (2px) plus its drop shadow
-     (14px blur, 6px down) needs 16 above and 18 below -- it was landing
-     exactly on the old top padding and losing the edge of the shadow. */
-  padding:20px var(--page-inset) 24px;
+  /* Back to the original 16/20 now the badge hover is a 2px lift with no
+     shadow behind it -- overflow-x:auto still clips the other axis, but
+     2px is all there is to clear. */
+  padding:16px var(--page-inset) 20px;
   overflow-x:auto;
   scrollbar-width:none;
 }
@@ -444,40 +443,21 @@ body.topbar-hidden .hero{
 }
 /* No colour change to make on fixed artwork, so hover is the lift alone plus
    a little separation from the hero behind it. */
-.category-nav__item:hover{ transform:translateY(-2px); filter:drop-shadow(0 6px 14px rgba(0,0,0,0.5)); }
+.category-nav__item:hover{ transform:translateY(-2px); }
 .category-nav__item:active{ transform:translateY(0); filter:none; transition-duration:.08s; }
 .category-nav__item--empty{ opacity:.35; cursor:default; pointer-events:none; }
 .row__scroller{
   display:flex; gap:20px; overflow-x:auto;
-  /* overflow-x:auto forces overflow-y to clip too (can't scroll one axis
-     and let the other escape), and a hovered card grows beyond its own
-     box via transform:scale()+translateY() plus its glow/drop-shadow's
-     own blur -- so this padding exists purely to give that room inside
-     the scroller's own box, rather than getting clipped at its edges
-     (top/bottom need more room than sides: the shadow's own 22px/40px
-     offset+blur reaches further below the card than above it).
-     Left/right padding is offset by a matching negative margin so the
-     scrollport gains bleed room without shifting where the first card
-     actually sits -- otherwise it'd land to the right of the row
-     heading above it instead of flush with it (and with the topbar/
-     category-nav, which all share the same var(--page-inset) inset). */
-  /* Room for a hovered card to grow INSIDE the scrollport, because
-     overflow-x:auto forces overflow-y to clip and a scaled card would
-     otherwise be sliced off. Sized from the actual numbers rather than by
-     eye: a 300x450 card at scale(1.08) gains 12px per side across and 18px
-     per side down, translateY(-4px) shifts that, and then the glow reaches
-     34px and the drop shadow 22+40px further. So 18+4+34=56 above,
-     18-4+62=76 below, 12+40=52 across -- rounded up here.
-
-     These were 36/64/32, which was correct when a card was 154px tall and
-     landscape: scale(1.08) only grew it 6px per side then. The 2:3 poster
-     change made the card 450px tall without anyone re-deriving the padding,
-     and it has been clipping the top of the glow ever since.
+  /* overflow-x:auto forces overflow-y to clip too, so this padding is the
+     only thing standing between a card's hover state and a sliced edge.
+     A 2px ring plus the 2px/2px focus outline needs 6; 10 and 14 leave the
+     row breathing without the dead band the old scale-and-glow demanded
+     (it was 60/80/56, and before the poster change 36/64/32).
 
      The negative margin cancels the side padding so the first card still
      lines up with the row heading and the page inset; html's overflow-x
      hidden absorbs the bleed. */
-  padding:60px 56px 80px; margin:0 -56px;
+  padding:10px 10px 14px; margin:0 -10px;
   /* Scrollbar hidden, scrolling itself untouched -- a bar sitting under
      every row competed with the cards for attention, and the row's own
      arrow buttons (.row__arrow) already say the row scrolls. Same pair
@@ -512,12 +492,15 @@ body.topbar-hidden .hero{
   background:var(--color-neutral-200);
   position:relative;
   aspect-ratio:2/3;
-  transition:transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease;
+  transition:box-shadow .18s ease;
 }
 .card__frame{ position:relative; width:100%; height:100%; }
 .card:hover, .card:focus-visible{
-  transform:scale(1.08) translateY(-4px);
-  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(6,45,81,0.20), 0 0 34px rgba(26,107,174,0.30);
+  /* Stroke only. The glow and drop shadow are gone, and so is the
+     scale: all three existed outside the card box, and the padding
+     that kept the scrollport from slicing them off was what pushed
+     the rows apart. A 2px accent ring costs 2px. */
+  box-shadow:0 0 0 2px var(--color-accent);
   z-index:2;
 }
 .card:focus-visible{ outline:none; }
@@ -525,12 +508,13 @@ body.topbar-hidden .hero{
    that can afford to glide, but a tap needs to register the instant it
    lands, not 220ms later. */
 .card:active{
-  transform:scale(1.04) translateY(-2px);
+  /* The press used to be a smaller scale; with the lift gone it reads as a
+     heavier ring instead, so a tap still registers instantly. */
+  box-shadow:0 0 0 3px var(--color-accent-900);
   transition-duration:.08s;
 }
 .card--selected{
-  transform:scale(1.08) translateY(-4px);
-  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(6,45,81,0.20), 0 0 34px rgba(26,107,174,0.30);
+  box-shadow:0 0 0 2px var(--color-accent);
   z-index:2;
 }
 
@@ -1185,7 +1169,7 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
-  .category-nav{ padding:18px 16px 22px; }
+  .category-nav{ padding:14px 16px 18px; }
   /* Smaller on a phone, where the strip is scrolling anyway (see the base
      rule) -- 44px still carries the wording legibly and fits more of the
      six on screen at once. */
