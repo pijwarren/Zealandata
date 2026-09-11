@@ -956,7 +956,7 @@ async function restoreAdminSession() {
 // openSettings). Resolves true only on a correct PIN, so callers can tell
 // a cancelled attempt from a successful one.
 async function unlockAdminMode() {
-  const pin = await openPinPad("Enter Admin PIN", verifyAdminPin);
+  const pin = await openPinPad("Enter admin PIN", verifyAdminPin);
   if (pin && pendingAdminToken) {
     storeAdminToken(pendingAdminToken);
     pendingAdminToken = null;
@@ -979,9 +979,9 @@ adminModeBtn.addEventListener("click", async () => {
 changePinBtn.addEventListener("click", async () => {
   if (!adminToken) return;
   changePinStatus.textContent = "";
-  const newPin = await openPinPad("Enter New PIN", async () => ({ ok: true }));
+  const newPin = await openPinPad("Enter new PIN", async () => ({ ok: true }));
   if (!newPin) return;
-  const confirmPin = await openPinPad("Confirm New PIN", async (candidate) => (
+  const confirmPin = await openPinPad("Confirm new PIN", async (candidate) => (
     candidate === newPin ? { ok: true } : { ok: false, message: "Doesn't match — try again" }
   ));
   if (!confirmPin) return;
@@ -1035,7 +1035,7 @@ let popularRowVisible = false;
 
 function paintPopularVisibilityToggle(enabled) {
   popularRowVisible = enabled;
-  popularVisibilityBtn.textContent = enabled ? "Hide Most Popular row" : "Show Most Popular row";
+  popularVisibilityBtn.textContent = enabled ? "Hide most popular row" : "Show most popular row";
 }
 async function loadPopularVisibilityState() {
   const res = await fetch("/api/popular-visibility");

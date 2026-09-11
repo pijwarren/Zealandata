@@ -319,10 +319,12 @@ body.topbar-on-light .topbar::before{
 /* A mask, not an image: with the plate gone the logo has to read on a dark
    poster and on the light page ground, and under a mask its colour is
    background-color, which a class can flip. Width is explicit because a
-   mask has no intrinsic size -- 207px is the 470x125 lockup at 55px tall.
+   mask has no intrinsic size -- 197px is the 470x125 lockup at 52px tall
+   (5% down from the 55px that still sizes the badges and icon buttons
+   beside it, so the logo reads slightly smaller than its neighbours).
    Light by default, for the poster; body.topbar-on-light flips it. */
 .topbar__logo{
-  display:block; width:207px; height:55px;
+  display:block; width:197px; height:52px;
   background-color:var(--color-on-media);
   -webkit-mask:url("/static/icons/esnz-logo-horizontal.svg") no-repeat center / contain;
   mask:url("/static/icons/esnz-logo-horizontal.svg") no-repeat center / contain;
@@ -410,14 +412,17 @@ body.admin-mode .topbar__settings-icon{
    light ink regardless of the theme -- see --color-on-media. The page ground
    went light; an arbitrary photograph did not. */
 .hero__content{
-  position:absolute; left:var(--page-inset); right:var(--page-inset); bottom:56px;
+  position:absolute; left:var(--page-inset); right:var(--page-inset); bottom:var(--page-inset);
   max-width:620px;
   color:var(--color-on-media);
 }
 /* The category and the Play button share a row at the foot of the hero.
    The badge used to head the stack, above the title. */
 .hero__actions{ display:flex; align-items:center; gap:16px; }
-.hero__actions .tag{ margin-bottom:0; }
+/* .tag's own 11px/5px-11px at 70% -- shrunk alongside .hero__play, the
+   only other place scoped this way, rather than the shared .tag rule
+   itself: nothing else on the page uses .tag. */
+.hero__actions .tag{ margin-bottom:0; font-size:8px; padding:4px 8px; }
 /* The category reads as its mission badge here rather than an outline tag,
    in the -on-media (white) colourway -- see app.js's paintHeroCategory. The
    outline tag is still styled above because a category with no badge of its
@@ -425,15 +430,16 @@ body.admin-mode .topbar__settings-icon{
    to it. Smaller than the nav's 55px: this one is a label, not a control, and
    sitting it at the nav's size would read as the same button twice. */
 .hero__badge{ display:block; }
-.hero__badge img{ display:block; height:44px; width:auto; }
+.hero__badge img{ display:block; height:31px; width:auto; }
 /* Icon only, so the button is a circle: with the label gone there is no
    line of text to set a pill's width, and a 56px disc sits level with the
    44px badge beside it. The glyph goes up from 14px, which was sized to
    sit beside a word rather than to carry the button on its own. */
 .hero__play{
   /* Matches .hero__badge img exactly, so the disc and the badge beside it
-     sit on one line rather than the button overhanging it. */
-  width:44px; height:44px; flex-shrink:0;
+     sit on one line rather than the button overhanging it. 31px is 44px
+     (the button's own original size) at 70% -- both shrank together. */
+  width:31px; height:31px; flex-shrink:0;
   padding:0; border-radius:50%;
   justify-content:center;
 }
@@ -562,7 +568,7 @@ body.admin-mode .topbar__settings-icon{
   scrollbar-width:none;
 }
 .row__scroller::-webkit-scrollbar{ display:none; }
-.row__scroller .card{ flex:0 0 300px; }
+.row__scroller .card{ flex:0 0 210px; }
 
 .row__viewport{ position:relative; }
 .row__arrow{
