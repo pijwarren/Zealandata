@@ -1477,7 +1477,12 @@ body.tablet-topbar .category-nav__item img{ height:32px; }
       "frame";
   }
   .dock__preview{ display:none; }
-  .dock__title{ justify-content:center; text-align:center; }
+  /* min-height drops from the base rule's 38px -- that height is there to
+     keep .dock__preview's own 3-row span looking proportionate when the
+     time/frame rows it also spans collapse to nothing, and the preview is
+     gone at this width (just above), so nothing needs the title row held
+     open past what its own text actually takes. */
+  .dock__title{ justify-content:center; text-align:center; min-height:0; }
   /* wrap, not nowrap, stays as the ultimate backstop: nowrap plus the
      buttons' own flex-shrink:0 below was a hard floor with nothing to give
      if the row's buttons at their minimum size plus gaps ever added up to
