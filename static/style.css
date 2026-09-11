@@ -154,6 +154,12 @@ html,body{
   background:var(--color-bg);
   color:var(--color-text);
   font-family:var(--font-body);
+  /* Kills the double-tap-to-zoom gesture (and the ~300ms delay mobile
+     browsers otherwise hold every tap for, waiting to see if a second one
+     follows) -- this is a kiosk-style browse UI meant to be tapped
+     quickly, not a document meant to be zoomed into. Pinch-zoom still
+     works: that's a separate gesture, untouched by this. */
+  touch-action:manipulation;
 }
 
 .hidden{ display:none !important; }
