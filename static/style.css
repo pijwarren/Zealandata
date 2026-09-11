@@ -426,24 +426,31 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
    (not the viewport) -- see the left/right padding below -- so when they do
    fit, they sit centred in the gap between the logo and the buttons rather
    than the screen, which the logo and buttons don't share equally. */
-/* Pinned to the very top of the screen on its own -- not parked below the
-   topbar, behind it. It sticks flush at top:0, same as the topbar itself
-   (z-index below the topbar, above everything else). A direct child of
+/* Pinned to the top of the screen on its own, flush under the topbar --
+   not at top:0 itself, which would tuck it behind the topbar's box. The
+   topbar has no visible plate over most of its area, but the box is still
+   there and still fixed on top, so a nav stuck at top:0 would sit inside
+   it and lose clicks/rollover under the empty-looking parts. Sticking at
+   top:var(--topbar-h) instead means it locks in flush below that box --
+   zero overlap -- once scrolled up to meet it, while its normal in-flow
+   position (right under the hero, before that scroll happens) is
+   untouched: `top` only decides where a stuck element locks, not how it
+   lays out before it's stuck, so this doesn't push the badges down the
+   page the way padding would have.
+
+   z-index below the topbar, above everything else. A direct child of
    <body>, not nested in .hero, because position:sticky only pins within
    its own parent's box -- sitting inside the (short, non-sticky) hero
    would have let it scroll away with it; body is tall enough that it
    stays put for the whole page. */
 .category-nav{
-  position:sticky; top:0; flex-shrink:0; z-index:20;
+  position:sticky; top:var(--topbar-h); flex-shrink:0; z-index:20;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
-  /* Top padding clears the topbar's own measured height (--topbar-h) plus
-     the same 20px gap the badges keep below themselves, so they sit an
-     even distance from the logo/buttons above and whatever's below --
-     rather than sitting inside the topbar's box, which is fixed on top and
-     would otherwise swallow their clicks and rollover even where the
-     topbar itself paints nothing. The bottom 20px is also just enough to
-     clear the badges' own 2px hover lift without overflow-x:auto clipping
-     it on the other axis.
+  /* Top and bottom padding match (20px) so the badges sit an even distance
+     from the topbar above (now that it's not overlapping them, see `top`
+     above) as from whatever's below -- 20px is also just enough to clear
+     the badges' own 2px hover lift without overflow-x:auto clipping it on
+     the other axis.
 
      Left/right padding is the page inset plus the logo's/controls' own
      measured width (--topbar-logo-w/--topbar-controls-w, from app.js's
@@ -453,7 +460,7 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
      center" above then centres the badges within that box, which is what
      puts them an even distance from the logo as from the buttons, not just
      the screen edges (the two aren't the same width). */
-  padding:calc(var(--topbar-h) + 20px) calc(var(--page-inset) + var(--topbar-controls-w)) 20px calc(var(--page-inset) + var(--topbar-logo-w));
+  padding:20px calc(var(--page-inset) + var(--topbar-controls-w)) 20px calc(var(--page-inset) + var(--topbar-logo-w));
   overflow-x:auto;
   scrollbar-width:none;
 }
@@ -1302,10 +1309,10 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
-  /* Same topbar-clearing top padding and logo-/controls-width left/right
-     padding as the base rule (see there), just paired with the smaller
-     18px and 16px this breakpoint already uses below and to the sides. */
-  .category-nav{ padding:calc(var(--topbar-h) + 18px) calc(16px + var(--topbar-controls-w)) 18px calc(16px + var(--topbar-logo-w)); }
+  /* Same even top/bottom and logo-/controls-width left/right padding
+     logic as the base rule (see there), just the smaller 18px/16px this
+     breakpoint already uses. */
+  .category-nav{ padding:18px calc(16px + var(--topbar-controls-w)) 18px calc(16px + var(--topbar-logo-w)); }
   /* Smaller on a phone, where the strip is scrolling anyway (see the base
      rule) -- 44px still carries the wording legibly and fits more of the
      six on screen at once. */
