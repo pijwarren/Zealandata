@@ -413,6 +413,15 @@ body.admin-mode .topbar__settings-icon{
      and buttons beside them. */
   padding:8px 0;
   overflow-x:auto; scrollbar-width:none;
+  /* A static fade at both edges rather than one that only appears once the
+     strip actually overflows (which would need JS to track scroll
+     position) -- harmless when everything fits, since "safe center" then
+     leaves the outer badges sitting in from the edges anyway, clear of
+     where the fade is; it only becomes visible where it's needed, once a
+     badge is flush against an edge with more of the strip scrolled off
+     behind it. */
+  mask-image:linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
+  -webkit-mask-image:linear-gradient(to right, transparent, black 24px, black calc(100% - 24px), transparent);
 }
 .topbar__nav::-webkit-scrollbar{ display:none; }
 
