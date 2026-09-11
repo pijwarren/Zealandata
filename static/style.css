@@ -398,7 +398,11 @@ body.topbar-hidden .hero{
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
-  padding:16px var(--page-inset) 20px;
+  /* 16/20 before the strip started scrolling. overflow-x:auto clips the
+     other axis too, and a badge's hover lift (2px) plus its drop shadow
+     (14px blur, 6px down) needs 16 above and 18 below -- it was landing
+     exactly on the old top padding and losing the edge of the shadow. */
+  padding:20px var(--page-inset) 24px;
   overflow-x:auto;
   scrollbar-width:none;
 }
@@ -457,7 +461,23 @@ body.topbar-hidden .hero{
      actually sits -- otherwise it'd land to the right of the row
      heading above it instead of flush with it (and with the topbar/
      category-nav, which all share the same var(--page-inset) inset). */
-  padding:36px 32px 64px; margin:0 -32px;
+  /* Room for a hovered card to grow INSIDE the scrollport, because
+     overflow-x:auto forces overflow-y to clip and a scaled card would
+     otherwise be sliced off. Sized from the actual numbers rather than by
+     eye: a 300x450 card at scale(1.08) gains 12px per side across and 18px
+     per side down, translateY(-4px) shifts that, and then the glow reaches
+     34px and the drop shadow 22+40px further. So 18+4+34=56 above,
+     18-4+62=76 below, 12+40=52 across -- rounded up here.
+
+     These were 36/64/32, which was correct when a card was 154px tall and
+     landscape: scale(1.08) only grew it 6px per side then. The 2:3 poster
+     change made the card 450px tall without anyone re-deriving the padding,
+     and it has been clipping the top of the glow ever since.
+
+     The negative margin cancels the side padding so the first card still
+     lines up with the row heading and the page inset; html's overflow-x
+     hidden absorbs the bleed. */
+  padding:60px 56px 80px; margin:0 -56px;
   /* Scrollbar hidden, scrolling itself untouched -- a bar sitting under
      every row competed with the cards for attention, and the row's own
      arrow buttons (.row__arrow) already say the row scrolls. Same pair
@@ -1074,6 +1094,8 @@ body.admin-mode .settings-grid{
 }
 .dock__docs{
   display:flex; align-items:flex-start; justify-content:safe center; gap:16px;
+  /* Same story, smaller: the chips lift 2px on hover and this scrolls. */
+  padding:4px 0; margin:-4px 0;
   overflow-x:auto; scrollbar-width:none;
 }
 .dock__docs::-webkit-scrollbar{ display:none; }
@@ -1163,7 +1185,7 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
-  .category-nav{ padding:14px 16px 18px; }
+  .category-nav{ padding:18px 16px 22px; }
   /* Smaller on a phone, where the strip is scrolling anyway (see the base
      rule) -- 44px still carries the wording legibly and fits more of the
      six on screen at once. */
