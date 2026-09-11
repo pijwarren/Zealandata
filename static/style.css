@@ -403,7 +403,15 @@ body.admin-mode .topbar__settings-icon{
 .topbar__nav{
   flex:1 1 auto; min-width:0;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
-  margin:0 16px; padding:4px 0;
+  margin:0 16px;
+  /* Up from 4px: the hover lift below (scale(1.08) translateY(-4px) on a
+     55px badge) needs ~6px of headroom above it, and 4 wasn't quite enough
+     -- the top of the badge clipped against overflow-x:auto's forced
+     y-clip, the same mechanism .row__scroller's own padding works around
+     below. Kept symmetric (not just added above) so the extra padding
+     doesn't nudge the badges' vertical centre down off-line with the logo
+     and buttons beside them. */
+  padding:8px 0;
   overflow-x:auto; scrollbar-width:none;
 }
 .topbar__nav::-webkit-scrollbar{ display:none; }
