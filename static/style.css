@@ -1,21 +1,25 @@
 /* Design tokens ported from the Claude Design import ("Zealandata AppleTV").
-   The import originally pulled "Inter" from Google Fonts CDN, which doesn't
-   work here -- this Pi never has internet access (ad-hoc wifi hotspot) --
-   so the actual font files are hosted locally instead (static/fonts/,
-   variable-weight, covering the 100-900 range Inter ships in one file).
+   Fonts are hosted locally rather than pulled from a CDN -- this Pi never has
+   internet access (ad-hoc wifi hotspot), so a Google Fonts <link> would simply
+   never resolve and every surface would fall back to Segoe UI.
    Everything else (colors, spacing, radii, shadows) is ported as specified. */
 
+/* Host Grotesk, variable weight. Its axis is 300-800, NOT the 100-900 Inter
+   shipped -- declaring a range wider than the font carries would let the
+   browser synthesise faux-bold past 800 instead of clamping to the real
+   masters. Nothing in this sheet asks for a weight outside 400-600, so the
+   narrower axis costs nothing; keep new rules inside 300-800. */
 @font-face{
-  font-family:"Inter";
-  src:url("/static/fonts/Inter-Variable.ttf") format("truetype");
-  font-weight:100 900;
+  font-family:"Host Grotesk";
+  src:url("/static/fonts/HostGrotesk-Variable.ttf") format("truetype");
+  font-weight:300 800;
   font-style:normal;
   font-display:swap;
 }
 @font-face{
-  font-family:"Inter";
-  src:url("/static/fonts/Inter-Italic-Variable.ttf") format("truetype");
-  font-weight:100 900;
+  font-family:"Host Grotesk";
+  src:url("/static/fonts/HostGrotesk-Italic-Variable.ttf") format("truetype");
+  font-weight:300 800;
   font-style:italic;
   font-display:swap;
 }
@@ -43,8 +47,8 @@
   --color-divider:   rgba(233,233,237,0.16);
   --color-danger:    #ff6b6b;
 
-  --font-heading: "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --font-body:    "Inter", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-heading: "Host Grotesk", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --font-body:    "Host Grotesk", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
 
   --space-4: 11px;
   --space-6: 17px;
