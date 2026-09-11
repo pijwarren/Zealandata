@@ -101,18 +101,16 @@
   --shadow-md: 0 0 0 1px rgba(6,45,81,0.08), 0 6px 18px rgba(6,45,81,0.10);
   --shadow-lg: 0 0 0 1px rgba(6,45,81,0.08), 0 16px 40px rgba(6,45,81,0.16);
 
-  /* The Apple "liquid glass" recipe the drawer, PIN pad, dock and Related
-     Files panel all share. It was copy-pasted into all four (and the same
-     values again into the category chips), which meant re-tuning the look
-     was a six-place find-and-replace -- so it is tokens now, defined once.
-     On a light ground the fill inverts to a white frost and the rim flips
-     with it: a white hairline is invisible on white, so the edge comes from
-     a faint navy line, and the bright top rim stays white to read as a
-     highlight rather than a border. */
+  /* The frosted-panel recipe the drawer, PIN pad, dock and Related Files
+     panel all share, tokenised so re-tuning it is one place rather than the
+     six-place find-and-replace it used to be.
+     The bevel is deliberately absent: this carried an inset white top rim
+     and inner ring (Apple's "liquid glass") which read as embossed. What
+     defines the panel now is the frost, a faint navy hairline, and the
+     shadow it casts -- not a raised edge. */
   --glass-fill:   rgba(255,255,255,0.62);
   --glass-blur:   blur(28px) saturate(180%);
   --glass-rim:    rgba(6,45,81,0.10);
-  --glass-inset:  inset 0 1px 0 rgba(255,255,255,0.9), inset 0 0 0 1px rgba(255,255,255,0.45);
   --glass-sheen:  linear-gradient(165deg, rgba(255,255,255,0.75), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.35));
 }
 
@@ -450,14 +448,16 @@ body.topbar-hidden .hero{
   display:flex; gap:20px; overflow-x:auto;
   /* overflow-x:auto forces overflow-y to clip too, so this padding is the
      only thing standing between a card's hover state and a sliced edge.
-     A 2px ring plus the 2px/2px focus outline needs 6; 10 and 14 leave the
-     row breathing without the dead band the old scale-and-glow demanded
-     (it was 60/80/56, and before the poster change 36/64/32).
+     With the lift back, a 300x450 card at scale(1.08) gains 12px per side
+     across and 18px down, translateY(-4px) shifts that, and the 4px ring
+     sits outside all of it: 18+4+4=26 above, 18-4+4=18 below, 12+4=16
+     across. Nothing like the 60/80/56 the glow and drop shadow needed --
+     those reached 34px and 62px past the card, and were most of the gap.
 
      The negative margin cancels the side padding so the first card still
      lines up with the row heading and the page inset; html's overflow-x
      hidden absorbs the bleed. */
-  padding:10px 10px 14px; margin:0 -10px;
+  padding:28px 18px 22px; margin:0 -18px;
   /* Scrollbar hidden, scrolling itself untouched -- a bar sitting under
      every row competed with the cards for attention, and the row's own
      arrow buttons (.row__arrow) already say the row scrolls. Same pair
@@ -492,15 +492,15 @@ body.topbar-hidden .hero{
   background:var(--color-neutral-200);
   position:relative;
   aspect-ratio:2/3;
-  transition:box-shadow .18s ease;
+  transition:transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease;
 }
 .card__frame{ position:relative; width:100%; height:100%; }
 .card:hover, .card:focus-visible{
-  /* Stroke only. The glow and drop shadow are gone, and so is the
-     scale: all three existed outside the card box, and the padding
-     that kept the scrollport from slicing them off was what pushed
-     the rows apart. A 2px accent ring costs 2px. */
-  box-shadow:0 0 0 2px var(--color-accent);
+  /* Lift plus a 4px ring. No glow and no drop shadow -- those were the
+     expensive part, reaching 34px and 62px past the card into padding the
+     scrollport had to reserve. The lift costs 18px per side and the ring 4. */
+  transform:scale(1.08) translateY(-4px);
+  box-shadow:0 0 0 4px var(--color-accent);
   z-index:2;
 }
 .card:focus-visible{ outline:none; }
@@ -508,13 +508,13 @@ body.topbar-hidden .hero{
    that can afford to glide, but a tap needs to register the instant it
    lands, not 220ms later. */
 .card:active{
-  /* The press used to be a smaller scale; with the lift gone it reads as a
-     heavier ring instead, so a tap still registers instantly. */
-  box-shadow:0 0 0 3px var(--color-accent-900);
+  transform:scale(1.04) translateY(-2px);
+  box-shadow:0 0 0 4px var(--color-accent-900);
   transition-duration:.08s;
 }
 .card--selected{
-  box-shadow:0 0 0 2px var(--color-accent);
+  transform:scale(1.08) translateY(-4px);
+  box-shadow:0 0 0 4px var(--color-accent);
   z-index:2;
 }
 
@@ -619,7 +619,6 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
      curved glass surface -- the ::before below adds the sheen gradient
      itself, this just frames it with light instead of a flat border. */
   box-shadow:
-    var(--glass-inset),
     var(--shadow-lg);
   padding:var(--space-8);
   display:flex; flex-direction:column; gap:var(--space-6);
@@ -941,7 +940,6 @@ body.admin-mode .settings-grid{
   border:1px solid var(--glass-rim);
   border-radius:var(--radius-lg);
   box-shadow:
-    var(--glass-inset),
     var(--shadow-lg);
   padding:var(--space-8) var(--space-6);
   width:min(280px, 88vw);
@@ -1014,7 +1012,6 @@ body.admin-mode .settings-grid{
   border:1px solid var(--glass-rim);
   border-radius:var(--radius-lg);
   box-shadow:
-    var(--glass-inset),
     var(--shadow-lg);
 }
 .dock::before{
@@ -1060,8 +1057,9 @@ body.admin-mode .settings-grid{
   -webkit-backdrop-filter:var(--glass-blur);
   border:1px solid var(--glass-rim);
   border-radius:var(--radius-lg);
-  box-shadow:
-    var(--glass-inset);
+  /* No drop shadow here by design -- it sits directly on top of the dock,
+     which casts the one shadow for the pair. With the bevel gone the rim
+     border is what separates it from the page. */
 }
 .dock__docs-panel::before{
   content:"";
