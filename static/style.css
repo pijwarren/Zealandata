@@ -259,7 +259,10 @@ button:focus-visible, .card:focus-visible{
 .topbar{
   position:fixed; top:0; left:0; right:0; z-index:30;
   display:flex; align-items:center; justify-content:space-between;
-  padding:var(--space-4) var(--page-inset);
+  /* Top padding matches the category badges' own (16px) rather than the
+     smaller --space-4 the bottom still uses, so the two pinned strips read
+     as one family. */
+  padding:16px var(--page-inset) var(--space-4);
 }
 /* No plate. The bar sits straight on the poster, and its contents recolour
    for what is behind them instead -- see .topbar__logo and app.js's
@@ -275,24 +278,24 @@ button:focus-visible, .card:focus-visible{
    slack under the logo and throw the bar's measured height off by a pixel
    or two. */
 .topbar__title picture{ display:block; }
-/* Height pinned to the icon buttons opposite, for the same two reasons as
-   the category badges: it keeps the bar one 36px line tall so nothing about
-   its height changes, and an <img> has no intrinsic size until its SVG
-   arrives -- app.js measures this bar into --topbar-h for the hero's sticky
-   offset, so a box that starts at zero would park the hero wrong for a
-   frame. Both variants are transparent single-colour marks, no plate, so
-   they sit straight on the bar's blur.
+/* Height pinned to the icon buttons opposite, and both now sized to match
+   the category badges (55px) rather than the old 36px line -- the two
+   pinned strips read as one family. An <img> has no intrinsic size until
+   its SVG arrives, so a box that started at zero would park things wrong
+   for a frame. Both logo variants are transparent single-colour marks, no
+   plate, so they sit straight on the bar's blur.
 
    width:auto is what lets this one rule serve both: the horizontal lockup
-   is 470x125 and lands at 135px wide, the E-only monogram 105x123 and lands
-   at 31px, and neither needs a width of its own. */
+   is 470x125 and lands at 207px wide, the E-only monogram 105x123 and lands
+   at 38px (see the 640px breakpoint), and neither needs a width of its
+   own. */
 /* A mask, not an image: with the plate gone the logo has to read on a dark
    poster and on the light page ground, and under a mask its colour is
    background-color, which a class can flip. Width is explicit because a
-   mask has no intrinsic size -- 136px is the 470x125 lockup at 36px tall.
+   mask has no intrinsic size -- 207px is the 470x125 lockup at 55px tall.
    Light by default, for the poster; body.topbar-on-light flips it. */
 .topbar__logo{
-  display:block; width:136px; height:36px;
+  display:block; width:207px; height:55px;
   background-color:var(--color-on-media);
   -webkit-mask:url("/static/icons/esnz-logo-horizontal.svg") no-repeat center / contain;
   mask:url("/static/icons/esnz-logo-horizontal.svg") no-repeat center / contain;
@@ -300,8 +303,10 @@ button:focus-visible, .card:focus-visible{
 }
 body.topbar-on-light .topbar__logo{ background-color:var(--color-accent-900); }
 /* The bar's own buttons take the same treatment -- they were light-theme
-   chips, invisible against a dark poster once the plate went. */
+   chips, invisible against a dark poster once the plate went. Sized to
+   match the category badges too (see .topbar__logo above). */
 .topbar .btn-icon{
+  width:55px; height:55px;
   background:rgba(255,255,255,0.16);
   border-color:rgba(255,255,255,0.45);
   color:var(--color-on-media);
@@ -1249,13 +1254,15 @@ body.admin-mode #setHeroBtn{ display:flex; }
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
   /* The monogram below 640, as the <picture> source used to do -- now in the
-     stylesheet with every other breakpoint. 31px is the 105x123 mark at 36px
-     tall. */
+     stylesheet with every other breakpoint. Sized to the category badges'
+     own mobile height (see .category-nav__item img below) -- 38px is the
+     105x123 mark at 44px tall. */
   .topbar__logo{
-    width:31px;
+    width:38px; height:44px;
     -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
     mask-image:url("/static/icons/esnz-logo-e.svg");
   }
+  .topbar .btn-icon{ width:44px; height:44px; }
   html,body{ --hero-h: clamp(250px, 38vh, 640px); }
   /* bottom must clear #browseMain's -40px overlap (below) or the hero's
      own content -- particularly the Play button, last in the stack --
