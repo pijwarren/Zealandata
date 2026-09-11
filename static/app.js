@@ -603,34 +603,6 @@ setHeroBtn.addEventListener("click", async () => {
   paintHeroFromPick(lastContinueItems, allMediaItems);
 });
 
-// ------------------------------------------------------- auto-hiding topbar
-
-// Slides the top bar out of view on scroll-down, back in on scroll-up --
-// ignores tiny jitter (a few px either way) and never hides near the very
-// top of the page, so it doesn't flicker away right as you start scrolling.
-let lastScrollY = window.scrollY;
-
-// The hero pins its category strip below the top bar, so it needs to know
-// when that bar is there -- mirrored onto <body> because the strip is
-// styled from a rule that can't reach across to .topbar's own class.
-function setTopbarHidden(hidden) {
-  topbar.classList.toggle("topbar--hidden", hidden);
-  document.body.classList.toggle("topbar-hidden", hidden);
-}
-
-window.addEventListener("scroll", () => {
-  const y = window.scrollY;
-  const delta = y - lastScrollY;
-  if (y < 80) {
-    setTopbarHidden(false);
-  } else if (delta > 8) {
-    setTopbarHidden(true);
-  } else if (delta < -8) {
-    setTopbarHidden(false);
-  }
-  lastScrollY = y;
-}, { passive: true });
-
 // Both offsets the hero's sticky position is built from (see style.css's
 // .hero) depend on how their own content wraps -- the category labels
 // shrink and rewrap with the viewport, and the bar's height follows its

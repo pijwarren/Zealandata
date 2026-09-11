@@ -260,13 +260,14 @@ button:focus-visible, .card:focus-visible{
   position:fixed; top:0; left:0; right:0; z-index:30;
   display:flex; align-items:center; justify-content:space-between;
   padding:var(--space-4) var(--page-inset);
-  transform:translateY(0);
-  transition:transform .25s ease;
 }
 /* No plate. The bar sits straight on the poster, and its contents recolour
    for what is behind them instead -- see .topbar__logo and app.js's
-   syncTopbarContrast. */
-.topbar--hidden{ transform:translateY(-100%); }
+   syncTopbarContrast. Pinned here always -- like the category badges below
+   it, it never scrolls off screen, so it no longer slides away on
+   scroll-down (that used to also pop the hero's bottom strip back into view
+   on the smallest scroll-up, ahead of where the page would naturally have
+   revealed it). */
 .topbar__title{
   display:flex; align-items:center;
 }
@@ -337,12 +338,6 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
   z-index:2;
   display:flex; flex-direction:column;
   height:var(--hero-h);
-}
-/* The top bar hides itself on scroll-down (see app.js), so when it's gone
-   the strip takes its place rather than leaving a gap above itself with
-   the page scrolling through it. */
-body.topbar-hidden .hero{
-  top:calc(var(--category-nav-h) - var(--hero-h));
 }
 .hero__media{ position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
 .hero__bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
