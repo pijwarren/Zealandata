@@ -197,23 +197,23 @@ the wifi hotspot fine). That's not a problem for Zealandata — everything
 it needs is local — but matters if you SSH in for maintenance while it's
 running this way.
 
-## Continue Watching
+## Resuming in-progress videos
 
 While a video plays, the server checks in with mpv every 5 seconds and
-saves the playback position to `progress.json` (next to `server.py`). When
-you open Zealandata again, anything more than 10 seconds in — and not within
-the last 5% of the runtime — shows up in a **Continue Watching** row at the
-top, with a "time left" badge and a progress sliver on the poster. Tapping
-it resumes ~3 seconds before where you left off. Once you cross that last
-5%, it's dropped from the row automatically (counted as watched).
+saves the playback position to `progress.json` (next to `server.py`).
+Anything more than 10 seconds in — and not within the last 5% of the
+runtime — carries that progress back to the browse page: a "time left"
+badge and a progress sliver appear right on that video's regular poster,
+wherever it sits in its category row. Once you cross that last 5%, the
+saved progress is dropped automatically (counted as watched).
 
-Resuming only ever happens from that row. Selecting the same video anywhere
-else — the regular browse grid, or the hero banner's Play button, even if
-it happens to be showing your in-progress pick — always starts it from the
-beginning instead, without touching the saved progress (so it's still
-there in Continue Watching afterward). The row also has its own explicit
-↺ "start over" button, which *does* clear the saved progress, for when you
-actually want to forget where you were.
+There's no separate row for these any more. Selecting an in-progress
+video — its poster in the regular browse grid, or the hero banner's Play
+button if it happens to be showing your in-progress pick — asks whether
+to resume (~3 seconds before where you left off) or start over from the
+beginning; starting over clears the saved progress, same as it always
+did. Selecting a video with no saved progress skips the prompt and just
+plays it.
 
 Progress is tracked per file path, shared by everyone on the network (this
 is a single shared Pi + projector, not a multi-user login system).
@@ -221,7 +221,7 @@ is a single shared Pi + projector, not a multi-user login system).
 ## Pinning a hero video
 
 The banner at the top of the browse page normally picks itself — the most
-recent Continue Watching item, or the first item of the first category if
+recently in-progress item, or the first item of the first category if
 nothing's in progress. The ★ button in the now-playing dock lets you
 override that: while something's playing, tap it to pin that item as the
 hero permanently (tap again to unpin and go back to the automatic pick).
@@ -542,9 +542,8 @@ New Zealand's core science mission areas:
 
 Matching folder names under `MEDIA_DIR`: `Geological Hazards/`,
 `Weather and Climate Hazards/`, `Atmosphere and Climate/`, `Land and Water/`,
-`Oceans and Fisheries/`, `Energy/`. The category row-icon strip above
-Continue Watching (see below) jumps straight to whichever of these has
-content.
+`Oceans and Fisheries/`, `Energy/`. The mission-badge strip pinned in the
+topbar jumps straight to whichever of these has content.
 
 ## Notes & tweaks
 

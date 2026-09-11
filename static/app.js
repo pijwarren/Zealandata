@@ -42,6 +42,12 @@ const pinDots = document.getElementById("pinDots");
 const pinError = document.getElementById("pinError");
 const pinCancelBtn = document.getElementById("pinCancelBtn");
 const pinBackBtn = document.getElementById("pinBackBtn");
+const resumeScrim = document.getElementById("resumeScrim");
+const resumeModal = document.getElementById("resumeModal");
+const resumeTitle = document.getElementById("resumeTitle");
+const resumeHint = document.getElementById("resumeHint");
+const resumeChoiceBtn = document.getElementById("resumeChoiceBtn");
+const restartChoiceBtn = document.getElementById("restartChoiceBtn");
 
 const heroSection = document.getElementById("heroSection");
 const heroImg = document.getElementById("heroImg");
@@ -52,8 +58,6 @@ const heroDesc = document.getElementById("heroDesc");
 const heroPlayBtn = document.getElementById("heroPlayBtn");
 
 const emptyEl = document.getElementById("empty");
-const continueRow = document.getElementById("continueRow");
-const continueGrid = document.getElementById("continueGrid");
 const popularRow = document.getElementById("popularRow");
 const popularGrid = document.getElementById("popularGrid");
 const categoryRows = document.getElementById("categoryRows");
@@ -149,7 +153,6 @@ function wrapScroller(scroller) {
   return update;
 }
 
-const continueScrollUpdate = wrapScroller(continueGrid);
 const popularScrollUpdate = wrapScroller(popularGrid);
 
 // A card must be clicked once to select it (arms the play glyph and takes
@@ -214,7 +217,7 @@ function buildComingSoonCard() {
   return card;
 }
 
-function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
+function buildCard(item, { badge } = {}) {
   const card = document.createElement("div");
   card.className = "card";
   card.tabIndex = 0;
@@ -267,26 +270,13 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
   topRight.appendChild(rename);
   thumbWrap.appendChild(topRight);
 
-  if (showRestart) {
-    const r = document.createElement("button");
-    r.className = "card__restart";
-    r.title = "Start over from the beginning";
-    r.setAttribute("aria-label", `Restart ${item.title} from the beginning`);
-    r.textContent = "↺";
-    r.addEventListener("click", (e) => {
-      e.stopPropagation();
-      playItem(item, { restart: true });
-    });
-    thumbWrap.appendChild(r);
-  }
-
   // Title, remaining-time and progress bar are one bottom-anchored stack
-  // rather than three separately positioned pieces. All four combinations
-  // occur -- a Continue Watching card has badge and bar, a Most Popular card
-  // has a play-count badge and no bar, an ordinary card has neither -- and a
-  // flex column absorbs that for free. Positioning them individually meant a
-  // bottom offset per combination, which is what the has-progress marker
-  // this replaces was for.
+  // rather than three separately positioned pieces. All three combinations
+  // occur -- an in-progress card has both a remaining-time badge and the
+  // bar below, a Most Popular card has a play-count badge and no bar, an
+  // ordinary card has neither -- and a flex column absorbs that for free.
+  // Positioning them individually meant a bottom offset per combination,
+  // which is what the has-progress marker this replaces was for.
   const meta = document.createElement("div");
   meta.className = "card__meta";
 
@@ -325,12 +315,10 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
 
   const activate = () => {
     if (selectedCard === card) {
-      // Resuming is only for the Continue Watching row -- every other
-      // selection (regular browse grid, hero) starts from the beginning,
-      // even if the video happens to have saved progress (but without
-      // touching that saved progress -- see the explicit ↺ restart
-      // button below for the "forget where I was" action).
-      playItem(item, { resume: isContinueRow }); // clears the armed selection itself
+      // Asks resume-or-start-over first when there's saved progress worth
+      // asking about; plays straight from the beginning otherwise. See
+      // playChosenItem.
+      playChosenItem(item); // clears the armed selection itself, once a choice actually plays
       return;
     }
     if (selectedCard) paintCardUnselected(selectedCard); // switching -- no hero flash in between
@@ -433,6 +421,17 @@ for (const name of CATEGORY_NAV_NAMES) {
   topbarNav.appendChild(btn);
 }
 
+// "12 min left" / "Almost done" -- shared by every card that carries
+// progress (the category rows now, previously just Continue Watching) and
+// by the resume-or-start-over prompt (see playChosenItem). null when
+// there's nothing worth badging, so callers can use it as a truthiness
+// check too.
+function remainingBadge(item) {
+  if (!item.progress || !item.progress.duration) return null;
+  const remaining = item.progress.duration - item.progress.position;
+  return remaining > 60 ? `${fmtTime(remaining)} left` : "Almost done";
+}
+
 function renderCategories(items) {
   selectedCard = null; // about to be torn down along with the old cards
   previewedItem = null; // loadMedia() repaints the hero right after this anyway
@@ -465,7 +464,7 @@ function renderCategories(items) {
 
     const scroller = document.createElement("div");
     scroller.className = "row__scroller";
-    for (const item of byCategory.get(name)) scroller.appendChild(buildCard(item));
+    for (const item of byCategory.get(name)) scroller.appendChild(buildCard(item, { badge: remainingBadge(item) }));
     scroller.appendChild(buildComingSoonCard());
     section.appendChild(scroller);
     wrapScroller(scroller);
@@ -476,18 +475,6 @@ function renderCategories(items) {
   for (const btn of topbarNav.children) {
     btn.classList.toggle("category-nav__item--empty", !sortedNames.includes(btn.dataset.categoryName));
   }
-}
-
-function renderContinueRow(items) {
-  continueGrid.innerHTML = "";
-  continueRow.classList.toggle("hidden", items.length === 0);
-  for (const item of items) {
-    const remaining = item.progress.duration - item.progress.position;
-    const badge = remaining > 60 ? `${fmtTime(remaining)} left` : "Almost done";
-    continueGrid.appendChild(buildCard(item, { badge, showRestart: true, isContinueRow: true }));
-  }
-  continueScrollUpdate();
-  return items;
 }
 
 function renderPopularRow(items) {
@@ -515,12 +502,10 @@ function paintHero(item, heroThumbnail) {
   heroTitle.textContent = item.title;
   heroDesc.textContent = item.description || "";
   heroDesc.classList.toggle("hidden", !item.description);
-  // The hero is a browsing spotlight, not the Continue Watching row itself
-  // -- even when it happens to be showing your top in-progress pick --
-  // so its Play button always starts from the beginning, same as any
-  // other non-Continue-Watching selection (without resume, saved
-  // progress for it is simply left alone rather than cleared).
-  heroPlayBtn.onclick = () => playItem(item);
+  // Same resume-or-start-over prompt every other selection gets now (see
+  // playChosenItem) -- the hero has no special-cased behaviour of its own
+  // here, even when it happens to be showing your top in-progress pick.
+  heroPlayBtn.onclick = () => playChosenItem(item);
   // Content just changed height (the description can toggle on/off), which
   // shifts where its top edge actually is -- recompute the fade against
   // that rather than whatever the last scroll tick left it at.
@@ -550,6 +535,11 @@ function paintHeroFromPick(continueItems, items) {
 }
 
 async function loadMedia() {
+  // continue-watching no longer has a row of its own (its badge/progress
+  // bar moved onto each item's regular category card, and playChosenItem
+  // now asks resume-or-start-over for any of them) -- the endpoint is
+  // still fetched purely to feed the hero pick below, which still
+  // prioritises picking up where you left off.
   const [mediaRes, continueRes, popularRes] = await Promise.all([
     fetch("/api/media"),
     fetch("/api/continue-watching"),
@@ -563,7 +553,6 @@ async function loadMedia() {
   lastContinueItems = continueItems;
   emptyEl.classList.toggle("hidden", items.length > 0);
   renderCategories(items);
-  renderContinueRow(continueItems);
   renderPopularRow(popularItems);
   paintHeroFromPick(continueItems, items);
   paintSetHeroBtn();
@@ -1986,6 +1975,50 @@ function paintDockIdle(screensaverTitle) {
   paintLoopBtn(false);
   paintSetHeroBtn();
   dockPlaybackBtns.forEach((btn) => { btn.disabled = true; });
+}
+
+// ---------------------------------------------------------------------
+// Resume-or-start-over prompt (used by any card's second click and the
+// hero's own Play button -- see buildCard's activate() and paintHero)
+
+let resumeChoiceResolve = null;
+
+// Resolves "resume", "restart", or null (scrim click -- same cancel
+// affordance the PIN pad's own scrim has). Doesn't itself decide whether
+// to ask -- see playChosenItem.
+function openResumeChoice(item) {
+  return new Promise((resolve) => {
+    resumeChoiceResolve = resolve;
+    resumeTitle.textContent = item.title;
+    resumeHint.textContent = remainingBadge(item);
+    openOverlay(resumeScrim, resumeModal);
+  });
+}
+function closeResumeChoice(result) {
+  closeOverlay(resumeScrim, resumeModal, () => {
+    const resolve = resumeChoiceResolve;
+    resumeChoiceResolve = null;
+    if (resolve) resolve(result);
+  });
+}
+resumeChoiceBtn.addEventListener("click", () => closeResumeChoice("resume"));
+restartChoiceBtn.addEventListener("click", () => closeResumeChoice("restart"));
+resumeScrim.addEventListener("click", () => closeResumeChoice(null));
+
+// The one entry point every selection (any row's card, the hero's Play
+// button) now plays through: asks resume-or-start-over when there's saved
+// progress worth asking about, otherwise just plays from the beginning
+// the way a fresh selection always has. Cancelling the prompt plays
+// nothing at all -- the selection stays armed, same as if this had never
+// been clicked.
+async function playChosenItem(item) {
+  if (!remainingBadge(item)) {
+    playItem(item);
+    return;
+  }
+  const choice = await openResumeChoice(item);
+  if (choice === "resume") playItem(item, { resume: true });
+  else if (choice === "restart") playItem(item, { restart: true });
 }
 
 async function playItem(item, { resume = false, restart = false } = {}) {

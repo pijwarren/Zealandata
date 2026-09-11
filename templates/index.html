@@ -62,11 +62,6 @@
     <p class="empty__sub">Drop video files into the media folder, then Rescan from Settings.</p>
   </div>
 
-  <section class="row hidden" id="continueRow" aria-label="Continue watching">
-    <h2 class="row__heading">Continue Watching</h2>
-    <div class="row__scroller" id="continueGrid"></div>
-  </section>
-
   <section class="row hidden" id="popularRow" aria-label="Most popular">
     <h2 class="row__heading">Most Popular</h2>
     <div class="row__scroller" id="popularGrid"></div>
@@ -352,6 +347,19 @@
     <button type="button" class="pinpad__key pinpad__key--ghost" id="pinCancelBtn">Cancel</button>
     <button type="button" class="pinpad__key" data-digit="0">0</button>
     <button type="button" class="pinpad__key pinpad__key--ghost" id="pinBackBtn" aria-label="Backspace">⌫</button>
+  </div>
+</div>
+
+<!-- Asked whenever a selection (any row, the hero) has saved progress --
+     see app.js's playChosenItem. Cancelling (the scrim, or neither button)
+     just leaves the selection where it was, without playing anything. -->
+<div class="scrim hidden" id="resumeScrim"></div>
+<div class="confirm-modal hidden" id="resumeModal" role="dialog" aria-modal="true" aria-label="Resume or start over">
+  <div class="confirm-modal__title" id="resumeTitle"></div>
+  <p class="confirm-modal__hint" id="resumeHint"></p>
+  <div class="confirm-modal__actions">
+    <button type="button" class="btn btn-primary btn-block" id="resumeChoiceBtn">Resume</button>
+    <button type="button" class="btn btn-secondary btn-block" id="restartChoiceBtn">Start Over</button>
   </div>
 </div>
 

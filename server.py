@@ -2254,13 +2254,13 @@ def api_play(media_id):
         increment_play_count(media_id)
 
     body = request.get_json(silent=True) or {}
-    # resume=True is only sent for a normal click in the Continue Watching
-    # row -- every other selection (browse grid, hero) starts from the
-    # beginning, even if there's saved progress for it. restart=True is
-    # the row's own explicit "start over" button: also from the
-    # beginning, but additionally clears the saved progress, since that's
-    # a deliberate "forget where I was" action rather than just "don't
-    # resume this time".
+    # resume=True/restart=True come from the client's own resume-or-start-over
+    # prompt (see app.js's playChosenItem), asked whenever a selection has
+    # saved progress worth asking about -- any row's card or the hero, not
+    # just a particular one. restart additionally clears the saved progress,
+    # since that's a deliberate "forget where I was" rather than just "don't
+    # resume this time" (resume=False, restart=False: a selection with no
+    # saved progress at all skips the prompt and plays straight through).
     resume = bool(body.get("resume"))
     restart_from_beginning = bool(body.get("restart"))
 

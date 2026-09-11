@@ -690,16 +690,6 @@ body.admin-mode .card__rename{ display:flex; }
 body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .card__rename, body.admin-mode .card--selected .card__rename{ opacity:1; }
 .card__rename:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
 .card__rename:active{ border-color:var(--color-accent); background:var(--color-accent-900); }
-.card__restart{
-  position:absolute; top:9px; left:9px; width:28px; height:28px; border-radius:50%;
-  border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
-  color:var(--color-on-media); font-size:13px; line-height:1; cursor:pointer;
-  display:flex; align-items:center; justify-content:center;
-  opacity:0; transition:opacity .15s, border-color .15s, background .15s;
-}
-.card:hover .card__restart, .card:focus-within .card__restart, .card--selected .card__restart{ opacity:1; }
-.card__restart:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
-.card__restart:active{ border-color:var(--color-accent); background:var(--color-accent-900); }
 /* Floats clear of the card's bottom edge instead of being welded to it,
    inset to the same 13px the title uses so the two line up. Both ends are
    rounded, which also means a barely-started item shows as a dot rather
@@ -1130,6 +1120,42 @@ body.admin-mode .settings-grid{
 .pinpad__key--ghost{ background:none; border:none; font-size:12px; color:var(--color-neutral-600); }
 .pinpad__key--ghost:hover{ background:rgba(6,45,81,0.09); border:none; }
 
+/* Same glass-panel treatment as .pinpad (materialize scale-in, sheen,
+   centred fixed position) for the resume-or-start-over prompt -- a
+   simpler shape (title, hint, two full-width actions) rather than
+   .pinpad's own digit grid, so it's its own class rather than reusing
+   .pinpad's. */
+.confirm-modal{
+  position:fixed; top:50%; left:50%; z-index:71;
+  --materialize-scale:.96;
+  transform:translate(-50%,-50%) scale(var(--materialize-scale));
+  opacity:0;
+  transition:opacity .2s ease, transform .2s ease;
+  background:var(--glass-fill);
+  backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-rim);
+  border-radius:var(--radius-panel);
+  box-shadow:var(--shadow-lg);
+  padding:var(--space-8) var(--space-6);
+  width:min(320px, 88vw);
+  display:flex; flex-direction:column; align-items:center; gap:var(--space-6);
+  text-align:center;
+}
+.confirm-modal.is-open{ opacity:1; --materialize-scale:1; }
+.confirm-modal::before{
+  content:"";
+  position:absolute; inset:0; z-index:-1;
+  border-radius:inherit; pointer-events:none;
+  background:var(--glass-sheen);
+}
+.confirm-modal__title{
+  font-family:var(--font-heading); font-weight:500; font-size:16px;
+  overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:100%;
+}
+.confirm-modal__hint{ margin:-8px 0 0; font-size:13px; color:var(--color-neutral-600); }
+.confirm-modal__actions{ display:flex; flex-direction:column; gap:var(--space-6); width:100%; }
+
 /* -------------------------------------------------------------- dock */
 
 .dock-wrap{
@@ -1350,7 +1376,7 @@ body.admin-mode #setHeroBtn{ display:flex; }
 /* The overlays' materialize scale is dropped, not the whole transition --
    opacity still fades, just without the settle-from-scale motion. */
 @media (prefers-reduced-motion: reduce){
-  .drawer, .pinpad, .doc-viewer{ --materialize-scale:1; }
+  .drawer, .pinpad, .doc-viewer, .confirm-modal{ --materialize-scale:1; }
   /* The section reveal opts in under no-preference rather than being
      cancelled here -- see the section-reveal keyframes. */
 }
