@@ -1358,16 +1358,31 @@ body.admin-mode #setHeroBtn{ display:flex; }
    every topbar item down to the same smaller height the badges themselves
    drop to buys back the room -- the badges shrinking is what actually
    narrows their combined 986px strip; .topbar__nav's own overflow-x:auto
-   is still there underneath as a fallback if six of them still don't fit. */
+   is still there underneath as a fallback if six of them still don't fit.
+
+   32px (down from the 44px this tier started at) is what the six badges'
+   986px strip, at this height, needs to clear the logo/button/padding/gap
+   overhead within 800px with room to spare -- worked back from that combined
+   width rather than picked by eye. Narrower than 800 the badges' own
+   986px-of-artwork doesn't shrink any further with the viewport (only this
+   height does, and it's already fixed for the whole tier), so the closer
+   the bar gets to 640 the more likely the strip needs its scroll fallback
+   again -- unavoidable without shrinking past legible. */
 @media (max-width:800px){
   .topbar{ padding:12px var(--page-inset) var(--space-4); }
   .topbar__logo{
-    width:38px; height:44px;
+    width:27px; height:32px;
     -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
     mask-image:url("/static/icons/esnz-logo-e.svg");
   }
-  .topbar .btn-icon{ width:44px; height:44px; }
-  .category-nav__item img{ height:44px; }
+  .topbar .btn-icon{ width:32px; height:32px; }
+  /* Same 20:55 (locked) and 15:55 (unlocked) ratio the icon keeps against
+     its button at every other size -- left at the base 20/15px here it
+     would swallow more than half of a 32px button instead of the ~36%/27%
+     it reads at everywhere else. */
+  .topbar__settings-icon{ width:12px; height:12px; }
+  body.admin-mode .topbar__settings-icon{ width:9px; }
+  .category-nav__item img{ height:32px; }
 }
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
