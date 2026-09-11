@@ -24,28 +24,53 @@
   font-display:swap;
 }
 
+/* Light theme on an ESNZ palette. Two brand values are exact and should stay
+   that way -- #062D51 navy and #AEDBFF sky, the same pair the mission badges
+   and the logo are drawn in. --color-accent is NOT one of them: navy is the
+   ink colour here, so using it for accents too would make "interactive" and
+   "text" the same colour. The accent is a mid-lightness blue on the brand's
+   own hue (~210deg) sitting between the two, so it reads as active against
+   both the ground and the ink.
+
+   The ramps keep their usual meaning -- 100 lightest, 900 darkest. What
+   changed with the theme is which end things reach for: secondary text now
+   pulls from the 600-700 range rather than 200-300, surfaces from 100-200
+   rather than 800-900. The numbers did not invert, the usages did. */
 :root{
-  --color-bg:        #161826;
-  --color-surface:   #232532;
-  --color-text:      #e9e9ed;
-  --color-accent:    #9184d9;
-  --color-accent-100:#f5f4ff;
-  --color-accent-300:#d2cefd;
-  --color-accent-400:#b5abfc;
-  --color-accent-800:#423a6a;
-  --color-accent-900:#2b2741;
+  --color-bg:        #F3F4F6;
+  --color-surface:   #FFFFFF;
+  --color-text:      #062D51;   /* ESNZ navy -- brand exact */
+  --color-accent:    #1A6BAE;
+  --color-accent-100:#EAF3FB;
+  --color-accent-300:#AEDBFF;   /* ESNZ sky -- brand exact */
+  --color-accent-400:#6BA8DA;
+  --color-accent-800:#0A4478;
+  --color-accent-900:#062D51;
 
-  --color-neutral-100:#f3f5fe;
-  --color-neutral-200:#e4e7f5;
-  --color-neutral-300:#cfd3e5;
-  --color-neutral-400:#b2b6ca;
-  --color-neutral-600:#75798c;
-  --color-neutral-700:#595d6c;
-  --color-neutral-800:#3f424d;
-  --color-neutral-900:#292b31;
+  --color-neutral-100:#F7F9FB;
+  --color-neutral-200:#EBEFF3;
+  --color-neutral-300:#D6DEE6;
+  --color-neutral-400:#A8B6C4;
+  /* Darkened from a first pass at #6B7E90, which measured 3.81:1 on the
+     ground -- fine for large text, short of AA for the 12px field hints and
+     section summaries that actually use it. This clears 4.5 on both the
+     ground and white. */
+  --color-neutral-600:#5E7183;
+  --color-neutral-700:#4A5C6D;
+  --color-neutral-800:#2C3E4F;
+  --color-neutral-900:#12202E;
 
-  --color-divider:   rgba(233,233,237,0.16);
-  --color-danger:    #ff6b6b;
+  --color-divider:   rgba(6,45,81,0.14);
+  --color-danger:    #C42B2B;
+
+  /* Ink for the surfaces that sit ON TOP OF PHOTOGRAPHY rather than on the
+     UI ground -- the hero's copy, a card's title over its thumbnail, the
+     document lightbox's chrome. Those keep a dark scrim and light text
+     whatever the theme does, because the thing behind them is an arbitrary
+     image and nothing else reads over it. Without a token for this the rule
+     is invisible and the next person "fixes" them to --color-text. */
+  --color-on-media:      #FFFFFF;
+  --color-on-media-dim:  #E4E9EF;
 
   --font-heading: "Host Grotesk", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
   --font-body:    "Host Grotesk", -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -63,9 +88,27 @@
   --radius-md: 8px;
   --radius-lg: 14px;
 
-  --shadow-sm: 0 0 0 1px var(--color-neutral-800);
-  --shadow-md: 0 0 0 1px var(--color-neutral-700), 0 6px 18px rgba(0,0,0,0.55);
-  --shadow-lg: 0 0 0 1px var(--color-neutral-600), 0 16px 40px rgba(0,0,0,0.65);
+  /* Tinted navy rather than neutral black, and much lighter than the dark
+     theme's: a shadow works by darkening the ground, and there is far less
+     headroom below #F3F4F6 than there was below #161826. The old 0.55/0.65
+     blacks read as soot on a light ground. */
+  --shadow-sm: 0 0 0 1px rgba(6,45,81,0.10);
+  --shadow-md: 0 0 0 1px rgba(6,45,81,0.08), 0 6px 18px rgba(6,45,81,0.10);
+  --shadow-lg: 0 0 0 1px rgba(6,45,81,0.08), 0 16px 40px rgba(6,45,81,0.16);
+
+  /* The Apple "liquid glass" recipe the drawer, PIN pad, dock and Related
+     Files panel all share. It was copy-pasted into all four (and the same
+     values again into the category chips), which meant re-tuning the look
+     was a six-place find-and-replace -- so it is tokens now, defined once.
+     On a light ground the fill inverts to a white frost and the rim flips
+     with it: a white hairline is invisible on white, so the edge comes from
+     a faint navy line, and the bright top rim stays white to read as a
+     highlight rather than a border. */
+  --glass-fill:   rgba(255,255,255,0.62);
+  --glass-blur:   blur(28px) saturate(180%);
+  --glass-rim:    rgba(6,45,81,0.10);
+  --glass-inset:  inset 0 1px 0 rgba(255,255,255,0.9), inset 0 0 0 1px rgba(255,255,255,0.45);
+  --glass-sheen:  linear-gradient(165deg, rgba(255,255,255,0.75), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.35));
 }
 
 *{ box-sizing:border-box; }
@@ -139,30 +182,30 @@ button.tag:active{ opacity:.65; }
 }
 .btn svg{ display:block; }
 .btn-primary{ background:var(--color-text); color:var(--color-bg); border-color:var(--color-text); }
-.btn-primary:hover{ background:var(--color-neutral-200); }
-.btn-primary:active{ background:var(--color-neutral-300); }
+.btn-primary:hover{ background:var(--color-accent-800); }
+.btn-primary:active{ background:var(--color-accent-900); }
 .btn-secondary{ border-color:var(--color-divider); }
-.btn-secondary:hover{ background:rgba(233,233,237,0.07); }
-.btn-secondary:active{ background:rgba(233,233,237,0.14); border-color:var(--color-accent); }
+.btn-secondary:hover{ background:rgba(6,45,81,0.05); }
+.btn-secondary:active{ background:rgba(6,45,81,0.09); border-color:var(--color-accent); }
 .btn-block{ width:100%; justify-content:center; }
 
 .btn-icon{
   width:36px; height:36px; padding:0;
   border-radius:50%;
   border:1px solid var(--color-divider);
-  background:rgba(35,37,50,0.7);
+  background:rgba(255,255,255,0.75);
   color:var(--color-text);
   font-family:var(--font-body);
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
   transition:background .15s ease, border-color .15s ease;
 }
-.btn-icon:hover{ background:rgba(233,233,237,0.1); border-color:var(--color-accent); }
-.btn-icon:active{ background:rgba(233,233,237,0.18); border-color:var(--color-accent); }
+.btn-icon:hover{ background:rgba(6,45,81,0.06); border-color:var(--color-accent); }
+.btn-icon:active{ background:rgba(6,45,81,0.11); border-color:var(--color-accent); }
 .btn-icon:disabled{ opacity:.35; cursor:default; pointer-events:none; }
 .btn-icon-lg{ width:68px; height:68px; }
-.btn-icon-lg:hover{ background:var(--color-neutral-200); }
-.btn-icon-lg:active{ background:var(--color-neutral-300); }
+.btn-icon-lg:hover{ background:var(--color-accent-800); }
+.btn-icon-lg:active{ background:var(--color-accent-900); }
 .btn-icon-text{ font-size:11px; font-weight:600; letter-spacing:-0.02em; }
 
 /* Right-angle chevron -- the same two-arms-at-90-degrees mark the projector
@@ -211,7 +254,7 @@ button:focus-visible, .card:focus-visible{
    fade the actual content sitting on top of it. */
 .topbar::before{
   content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(22,24,38,0.28) 0%, rgba(22,24,38,0) 100%);
+  background:linear-gradient(180deg, rgba(243,244,246,0.85) 0%, rgba(243,244,246,0) 100%);
   backdrop-filter:blur(14px);
   -webkit-backdrop-filter:blur(14px);
   mask-image:linear-gradient(180deg, black 0%, black 55%, transparent 100%);
@@ -278,11 +321,24 @@ body.topbar-hidden .hero{
   background:linear-gradient(90deg, rgba(22,24,38,0.92) 0%, rgba(22,24,38,0.25) 55%, rgba(22,24,38,0) 78%),
              linear-gradient(0deg, rgba(22,24,38,0.95) 0%, rgba(22,24,38,0) 30%);
 }
+/* Everything in here sits on the hero IMAGE under a dark scrim, so it keeps
+   light ink regardless of the theme -- see --color-on-media. The page ground
+   went light; an arbitrary photograph did not. */
 .hero__content{
   position:absolute; left:var(--page-inset); right:var(--page-inset); bottom:56px;
   max-width:620px;
+  color:var(--color-on-media);
 }
 .hero__content .tag{ margin-bottom:14px; }
+/* The category tag and Play button both default to accent/navy fills, which
+   are near-invisible against the scrim. Over media they invert: the button
+   becomes the light surface and the navy becomes its label. */
+.hero__content .tag-outline{ border-color:var(--color-on-media); color:var(--color-on-media); }
+.hero__content .btn-primary{
+  background:var(--color-on-media); color:var(--color-accent-900); border-color:var(--color-on-media);
+}
+.hero__content .btn-primary:hover{ background:var(--color-on-media-dim); border-color:var(--color-on-media-dim); }
+.hero__content .btn-primary:active{ background:var(--color-neutral-300); border-color:var(--color-neutral-300); }
 .hero__content h1{
   font-family:var(--font-heading); font-weight:500;
   font-size:clamp(28px, 4.5vw, 46px);
@@ -292,7 +348,7 @@ body.topbar-hidden .hero{
 }
 .hero__content p{
   font-size:15px; line-height:1.55;
-  color:var(--color-neutral-200);
+  color:var(--color-on-media-dim);
   margin:0 0 24px;
   max-width:56ch;
 }
@@ -305,7 +361,7 @@ body.topbar-hidden .hero{
   font-family:var(--font-heading);
   font-size:15px; font-weight:500;
   text-transform:uppercase; letter-spacing:.6px;
-  color:var(--color-neutral-300);
+  color:var(--color-neutral-700);
   margin:0 0 4px;
 }
 /* Offset by the full sticky hero+nav height (not just a nominal header
@@ -339,7 +395,7 @@ body.topbar-hidden .hero{
    the sticky hero would otherwise show through the gaps around them. */
 .category-nav::before{
   content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(22,24,38,1) 0%, rgba(22,24,38,0.25) 100%);
+  background:linear-gradient(180deg, rgba(243,244,246,1) 0%, rgba(243,244,246,0.25) 100%);
   backdrop-filter:blur(16px);
   -webkit-backdrop-filter:blur(16px);
   mask-image:linear-gradient(180deg, black 60%, transparent 100%);
@@ -420,7 +476,7 @@ body.topbar-hidden .hero{
   cursor:pointer;
   border-radius:var(--radius-md);
   overflow:hidden;
-  background:var(--color-neutral-800);
+  background:var(--color-neutral-200);
   position:relative;
   aspect-ratio:2/3;
   transition:transform .22s cubic-bezier(.2,.8,.2,1), box-shadow .22s ease;
@@ -428,7 +484,7 @@ body.topbar-hidden .hero{
 .card__frame{ position:relative; width:100%; height:100%; }
 .card:hover, .card:focus-visible{
   transform:scale(1.08) translateY(-4px);
-  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(0,0,0,0.55), 0 0 34px rgba(145,132,217,0.35);
+  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(6,45,81,0.20), 0 0 34px rgba(26,107,174,0.30);
   z-index:2;
 }
 .card:focus-visible{ outline:none; }
@@ -441,7 +497,7 @@ body.topbar-hidden .hero{
 }
 .card--selected{
   transform:scale(1.08) translateY(-4px);
-  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(0,0,0,0.55), 0 0 34px rgba(145,132,217,0.35);
+  box-shadow:0 0 0 2px var(--color-accent), 0 22px 40px rgba(6,45,81,0.20), 0 0 34px rgba(26,107,174,0.30);
   z-index:2;
 }
 
@@ -455,7 +511,7 @@ body.topbar-hidden .hero{
   border-radius:50%; background:rgba(233,233,237,0.14); backdrop-filter:blur(6px);
   border:1px solid rgba(233,233,237,0.25);
   display:flex; align-items:center; justify-content:center;
-  color:var(--color-text); font-size:15px; opacity:0;
+  color:var(--color-on-media); font-size:15px; opacity:0;
   transition:opacity .15s ease, transform .15s ease;
   pointer-events:none;
 }
@@ -474,19 +530,20 @@ body.topbar-hidden .hero{
   font-family:var(--font-heading); font-weight:500;
   font-size:12px; text-transform:uppercase; letter-spacing:.5px;
 }
-.card__title{ position:absolute; left:13px; right:13px; bottom:13px; font-size:13px; font-weight:500; color:var(--color-text); }
+/* Over the thumbnail, under .card__scrim -- light ink whatever the theme. */
+.card__title{ position:absolute; left:13px; right:13px; bottom:13px; font-size:13px; font-weight:500; color:var(--color-on-media); }
 .card__top-right{
   position:absolute; top:9px; right:9px;
   display:flex; align-items:center; gap:6px;
 }
 .card__resume-badge{
   background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
-  color:var(--color-text); font-size:10px; font-weight:500; padding:4px 9px; border-radius:980px;
+  color:var(--color-on-media); font-size:10px; font-weight:500; padding:4px 9px; border-radius:980px;
 }
 .card__rename{
   display:none; width:28px; height:28px; border-radius:50%; flex-shrink:0;
   border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
-  color:var(--color-text); font-size:12px; line-height:1; cursor:pointer;
+  color:var(--color-on-media); font-size:12px; line-height:1; cursor:pointer;
   align-items:center; justify-content:center;
   opacity:0; transition:opacity .15s, border-color .15s, background .15s;
 }
@@ -497,7 +554,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 .card__restart{
   position:absolute; top:9px; left:9px; width:28px; height:28px; border-radius:50%;
   border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
-  color:var(--color-text); font-size:13px; line-height:1; cursor:pointer;
+  color:var(--color-on-media); font-size:13px; line-height:1; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
   opacity:0; transition:opacity .15s, border-color .15s, background .15s;
 }
@@ -507,7 +564,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 .card__progress{ position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(233,233,237,0.15); z-index:1; }
 .card__progress-fill{ height:100%; background:var(--color-accent); }
 
-.empty{ padding:90px 0; text-align:center; color:var(--color-neutral-400); }
+.empty{ padding:90px 0; text-align:center; color:var(--color-neutral-600); }
 .empty__sub{ font-size:13px; opacity:.8; }
 
 /* --------------------------------------------------------- settings */
@@ -519,7 +576,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
    (fades + settles from a slight scale) instead of popping. Reduced
    motion below keeps the fade but drops the scale. */
 .scrim{
-  position:fixed; inset:0; z-index:60; background:rgba(10,11,18,0.55); backdrop-filter:blur(2px);
+  position:fixed; inset:0; z-index:60; background:rgba(6,45,81,0.40); backdrop-filter:blur(2px);
   opacity:0; transition:opacity .2s ease;
 }
 .scrim.is-open{ opacity:1; }
@@ -535,18 +592,17 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   width:min(560px, 94vw);
   transition:width .2s ease, opacity .2s ease, transform .2s ease;
   max-height:96vh;
-  background:rgba(43,39,65,0.5);
-  backdrop-filter:blur(28px) saturate(180%);
-  -webkit-backdrop-filter:blur(28px) saturate(180%);
-  border:1px solid rgba(255,255,255,0.16);
+  background:var(--glass-fill);
+  backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-rim);
   border-radius:var(--radius-lg);
   /* Apple "liquid glass": a bright top rim plus a soft inner sheen on top
      of the usual drop shadow, standing in for specular highlight on a
      curved glass surface -- the ::before below adds the sheen gradient
      itself, this just frames it with light instead of a flat border. */
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.35),
-    inset 0 0 0 1px rgba(255,255,255,0.05),
+    var(--glass-inset),
     var(--shadow-lg);
   padding:var(--space-8);
   display:flex; flex-direction:column; gap:var(--space-6);
@@ -559,7 +615,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   content:"";
   position:absolute; inset:0; z-index:-1;
   border-radius:inherit; pointer-events:none;
-  background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
+  background:var(--glass-sheen);
 }
 body.admin-mode .drawer{ width:min(1100px, 94vw); }
 .drawer.is-open{ opacity:1; --materialize-scale:1; }
@@ -586,14 +642,14 @@ body.admin-mode .settings-grid{
   body.admin-mode .settings-grid{ grid-template-columns:1fr; grid-template-rows:none; grid-auto-flow:row; }
 }
 .field{ width:100%; max-width:480px; margin:0 auto; }
-.field label{ display:block; font-size:12px; font-weight:500; color:var(--color-neutral-300); margin-bottom:9px; }
-.field__hint{ font-size:12px; color:var(--color-neutral-400); margin:9px 2px 0; line-height:1.5; }
+.field label{ display:block; font-size:12px; font-weight:500; color:var(--color-neutral-700); margin-bottom:9px; }
+.field__hint{ font-size:12px; color:var(--color-neutral-600); margin:9px 2px 0; line-height:1.5; }
 #uploadField{ display:flex; flex-direction:column; gap:9px; }
 #uploadField label{ margin-bottom:0; }
 #uploadField .field__hint{ margin-top:0; }
 .select-block, .field input[type="text"]{
   width:100%; box-sizing:border-box;
-  background:var(--color-neutral-900); color:var(--color-text);
+  background:#FFFFFF; color:var(--color-text);
   border:1px solid var(--color-divider); border-radius:980px;
   padding:11px 16px; font:inherit;
 }
@@ -629,7 +685,7 @@ body.admin-mode .settings-grid{
   cursor:pointer; list-style:none;
   display:flex; align-items:center; gap:8px;
   font-size:11px; font-weight:600; text-transform:uppercase;
-  letter-spacing:.5px; color:var(--color-neutral-400);
+  letter-spacing:.5px; color:var(--color-neutral-600);
 }
 .mapping-section__summary::-webkit-details-marker{ display:none; }
 /* Own triangle, so it can sit before the label and turn with the section
@@ -690,7 +746,7 @@ body.admin-mode .settings-grid{
 
 .mapping-subheading{
   display:block; font-size:11px; font-weight:600; text-transform:uppercase;
-  letter-spacing:.5px; color:var(--color-neutral-400);
+  letter-spacing:.5px; color:var(--color-neutral-600);
   margin-top:6px; padding-top:14px; border-top:1px solid var(--color-divider);
 }
 /* Stacked rather than one horizontal line: label, then the slider full
@@ -720,15 +776,15 @@ body.admin-mode .settings-grid{
 }
 .keystone__corner{
   padding:9px 10px; border-radius:var(--radius-sm);
-  border:1px solid var(--color-divider); background:rgba(233,233,237,0.05);
-  color:var(--color-neutral-300); font-family:inherit; font-size:12px;
+  border:1px solid var(--color-divider); background:rgba(6,45,81,0.035);
+  color:var(--color-neutral-700); font-family:inherit; font-size:12px;
   cursor:pointer; transition:background-color .1s ease, border-color .1s ease, color .1s ease;
 }
 .keystone__corner:hover{ border-color:var(--color-accent); color:var(--color-accent); }
-.keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(233,233,237,0.18); }
+.keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.11); }
 .keystone__corner.is-selected{
   border-color:var(--color-accent); color:var(--color-accent);
-  background:rgba(233,233,237,0.12);
+  background:rgba(26,107,174,0.10);
 }
 /* Arrows live on the axis they drive -- left/right along the top, up/down
    down the left side -- so the pad sits in the corner of an L of them and
@@ -762,7 +818,7 @@ body.admin-mode .settings-grid{
   grid-column:2; grid-row:2;
   position:relative; aspect-ratio:1 / 1;
   border:1px solid var(--color-divider); border-radius:var(--radius-sm);
-  background:rgba(0,0,0,0.25);
+  background:rgba(6,45,81,0.04);
   cursor:crosshair; touch-action:none;   /* or a drag would scroll the drawer */
 }
 .keystone__pad:focus-visible{ outline:2px solid var(--color-accent); outline-offset:2px; }
@@ -779,12 +835,12 @@ body.admin-mode .settings-grid{
      hanging below and right of it. */
   transform:translate(-50%, -50%);
   background:var(--color-accent); border:2px solid var(--color-bg);
-  box-shadow:0 2px 8px rgba(0,0,0,0.6);
+  box-shadow:0 2px 8px rgba(6,45,81,0.30);
   pointer-events:none;
 }
 /* No fixed width now it has a line of its own -- it was 80px to keep the
    sliders aligned with each other across rows. */
-.mapping-row__label{ font-size:13px; color:var(--color-neutral-300); }
+.mapping-row__label{ font-size:13px; color:var(--color-neutral-700); }
 /* Centred under its slider, and roomier: these are aimed at with a finger
    on the admin tablet. */
 .mapping-row__stepper{
@@ -792,17 +848,17 @@ body.admin-mode .settings-grid{
 }
 .mapping-row__step{
   width:40px; height:40px; flex:0 0 auto; border-radius:50%;
-  border:1px solid var(--color-divider); background:rgba(233,233,237,0.05);
+  border:1px solid var(--color-divider); background:rgba(6,45,81,0.035);
   color:var(--color-text); font-size:18px; line-height:1; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
   transition:background-color .1s ease, border-color .1s ease;
 }
 .mapping-row__step:hover{ border-color:var(--color-accent); color:var(--color-accent); }
-.mapping-row__step:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(233,233,237,0.18); }
+.mapping-row__step:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.11); }
 .mapping-row__number{
   width:84px; flex:0 0 auto; box-sizing:border-box; text-align:center;
   font:inherit; font-size:15px; font-variant-numeric:tabular-nums;
-  background:var(--color-neutral-900); color:var(--color-text);
+  background:#FFFFFF; color:var(--color-text);
   border:1px solid var(--color-divider); border-radius:980px; padding:9px 6px;
   appearance:textfield; -moz-appearance:textfield;
 }
@@ -818,7 +874,7 @@ body.admin-mode .settings-grid{
      slider -- and the thumb has room instead of being clipped by an
      element shorter than itself. */
   height:34px;
-  background-image:linear-gradient(var(--color-neutral-700), var(--color-neutral-700));
+  background-image:linear-gradient(var(--color-neutral-300), var(--color-neutral-300));
   background-size:100% 8px;
   background-position:center;
   background-repeat:no-repeat;
@@ -835,11 +891,11 @@ body.admin-mode .settings-grid{
   appearance:none; -webkit-appearance:none;
   width:26px; height:26px; border-radius:50%;
   background:var(--color-accent); cursor:pointer;
-  border:3px solid var(--color-neutral-900);
+  border:3px solid #FFFFFF;
   box-shadow:0 0 0 1px var(--color-accent);
 }
 .mapping-row input[type="range"]::-moz-range-thumb{
-  width:26px; height:26px; border-radius:50%; border:3px solid var(--color-neutral-900);
+  width:26px; height:26px; border-radius:50%; border:3px solid #FFFFFF;
   background:var(--color-accent); cursor:pointer;
   box-shadow:0 0 0 1px var(--color-accent);
 }
@@ -862,14 +918,13 @@ body.admin-mode .settings-grid{
   transform:translate(-50%,-50%) scale(var(--materialize-scale));
   opacity:0;
   transition:opacity .2s ease, transform .2s ease;
-  background:rgba(43,39,65,0.5);
-  backdrop-filter:blur(28px) saturate(180%);
-  -webkit-backdrop-filter:blur(28px) saturate(180%);
-  border:1px solid rgba(255,255,255,0.16);
+  background:var(--glass-fill);
+  backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-rim);
   border-radius:var(--radius-lg);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.35),
-    inset 0 0 0 1px rgba(255,255,255,0.05),
+    var(--glass-inset),
     var(--shadow-lg);
   padding:var(--space-8) var(--space-6);
   width:min(280px, 88vw);
@@ -880,7 +935,7 @@ body.admin-mode .settings-grid{
   content:"";
   position:absolute; inset:0; z-index:-1;
   border-radius:inherit; pointer-events:none;
-  background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
+  background:var(--glass-sheen);
 }
 .pinpad--shake{ animation:pinpad-shake .4s ease; }
 @keyframes pinpad-shake{
@@ -902,7 +957,7 @@ body.admin-mode .settings-grid{
 .pinpad__key{
   aspect-ratio:1; border-radius:50%;
   border:1px solid var(--color-divider);
-  background:rgba(233,233,237,0.05);
+  background:rgba(6,45,81,0.035);
   color:var(--color-text);
   font-family:var(--font-body);
   font-size:18px; font-weight:500;
@@ -910,10 +965,10 @@ body.admin-mode .settings-grid{
   display:flex; align-items:center; justify-content:center;
   transition:background-color .1s ease, border-color .1s ease;
 }
-.pinpad__key:hover{ background:rgba(233,233,237,0.1); border-color:var(--color-accent); }
+.pinpad__key:hover{ background:rgba(6,45,81,0.06); border-color:var(--color-accent); }
 .pinpad__key:active{ background:var(--color-accent-800); }
-.pinpad__key--ghost{ background:none; border:none; font-size:12px; color:var(--color-neutral-400); }
-.pinpad__key--ghost:hover{ background:rgba(233,233,237,0.06); border:none; }
+.pinpad__key--ghost{ background:none; border:none; font-size:12px; color:var(--color-neutral-600); }
+.pinpad__key--ghost:hover{ background:rgba(6,45,81,0.04); border:none; }
 
 /* -------------------------------------------------------------- dock */
 
@@ -936,21 +991,20 @@ body.admin-mode .settings-grid{
   align-items:center;
   column-gap:18px;
   padding:14px 22px;
-  background:rgba(43,39,65,0.5);
-  backdrop-filter:blur(28px) saturate(180%);
-  -webkit-backdrop-filter:blur(28px) saturate(180%);
-  border:1px solid rgba(255,255,255,0.16);
+  background:var(--glass-fill);
+  backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-rim);
   border-radius:var(--radius-lg);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.35),
-    inset 0 0 0 1px rgba(255,255,255,0.05),
+    var(--glass-inset),
     var(--shadow-lg);
 }
 .dock::before{
   content:"";
   position:absolute; inset:0; z-index:-1;
   border-radius:inherit; pointer-events:none;
-  background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
+  background:var(--glass-sheen);
 }
 
 .dock__preview{
@@ -970,39 +1024,38 @@ body.admin-mode .settings-grid{
   font-family:var(--font-heading); font-weight:500; font-size:14px; line-height:1.2;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
-.dock__time{ grid-area:time; display:flex; align-items:center; gap:12px; font-size:11px; color:var(--color-neutral-300); font-variant-numeric:tabular-nums; margin-top:8px; }
+.dock__time{ grid-area:time; display:flex; align-items:center; gap:12px; font-size:11px; color:var(--color-neutral-700); font-variant-numeric:tabular-nums; margin-top:8px; }
 .dock__bar{ flex:1; height:16px; display:flex; align-items:center; cursor:pointer; touch-action:none; }
-.dock__bar-track{ position:relative; width:100%; height:4px; background:rgba(233,233,237,0.15); border-radius:2px; }
+.dock__bar-track{ position:relative; width:100%; height:4px; background:rgba(6,45,81,0.12); border-radius:2px; }
 .dock__bar-fill{ height:100%; width:0%; background:var(--color-accent); border-radius:2px; }
 .dock__bar-handle{
   position:absolute; top:50%; left:0%; width:12px; height:12px; border-radius:50%;
   background:var(--color-accent); transform:translate(-50%,-50%); box-shadow:var(--shadow-sm);
 }
-.dock__frame-counter{ grid-area:frame; font-variant-numeric:tabular-nums; font-size:12px; color:var(--color-neutral-300); margin-top:8px; }
+.dock__frame-counter{ grid-area:frame; font-variant-numeric:tabular-nums; font-size:12px; color:var(--color-neutral-700); margin-top:8px; }
 
 .dock__docs-panel.hidden{ display:none; }
 .dock__docs-panel{
   position:relative; isolation:isolate;
   padding:12px 16px 14px;
-  background:rgba(43,39,65,0.5);
-  backdrop-filter:blur(28px) saturate(180%);
-  -webkit-backdrop-filter:blur(28px) saturate(180%);
-  border:1px solid rgba(255,255,255,0.16);
+  background:var(--glass-fill);
+  backdrop-filter:var(--glass-blur);
+  -webkit-backdrop-filter:var(--glass-blur);
+  border:1px solid var(--glass-rim);
   border-radius:var(--radius-lg);
   box-shadow:
-    inset 0 1px 0 rgba(255,255,255,0.35),
-    inset 0 0 0 1px rgba(255,255,255,0.05);
+    var(--glass-inset);
 }
 .dock__docs-panel::before{
   content:"";
   position:absolute; inset:0; z-index:-1;
   border-radius:inherit; pointer-events:none;
-  background:linear-gradient(165deg, rgba(255,255,255,0.16), rgba(255,255,255,0) 35%, rgba(255,255,255,0) 70%, rgba(255,255,255,0.06));
+  background:var(--glass-sheen);
 }
 .dock__docs-label{
   font-family:var(--font-heading); font-size:11px; font-weight:500;
   text-transform:uppercase; letter-spacing:.6px;
-  color:var(--color-neutral-300);
+  color:var(--color-neutral-700);
   text-align:center;
   margin:0 0 10px;
 }
@@ -1042,11 +1095,11 @@ body.admin-mode .settings-grid{
 .doc-viewer__content img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); }
 .doc-viewer__content iframe{
   width:100%; height:100%; border:none; border-radius:var(--radius-sm);
-  background:var(--color-text); box-shadow:var(--shadow-lg);
+  background:#FFFFFF; box-shadow:var(--shadow-lg);
 }
 .doc-viewer__close{
   position:absolute; top:20px; right:20px;
-  background:rgba(43,39,65,0.5);
+  background:rgba(6,45,81,0.55);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
   border-color:rgba(255,255,255,0.16);
@@ -1054,7 +1107,7 @@ body.admin-mode .settings-grid{
 .doc-viewer__nav{
   position:absolute; top:50%; transform:translateY(-50%);
   width:44px; height:44px;
-  background:rgba(43,39,65,0.5);
+  background:rgba(6,45,81,0.55);
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
   border-color:rgba(255,255,255,0.16);
@@ -1065,8 +1118,8 @@ body.admin-mode .settings-grid{
 .doc-viewer__nav--next{ right:20px; }
 .doc-viewer__counter{
   position:absolute; bottom:20px; left:50%; transform:translateX(-50%);
-  font-size:12px; color:var(--color-neutral-300);
-  background:rgba(35,37,50,0.85); border:1px solid var(--color-divider);
+  font-size:12px; color:var(--color-on-media-dim);
+  background:rgba(6,45,81,0.80); border:1px solid var(--color-divider);
   border-radius:980px; padding:5px 14px;
 }
 
