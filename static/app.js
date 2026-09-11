@@ -91,6 +91,13 @@ const iconPause = document.getElementById("iconPause");
 
 // ------------------------------------------------------------- utilities
 
+// First letter up, the rest down -- for display text pulled from folder/
+// category names, which arrive Title Cased ("Weather and Climate Hazards").
+// Not used on video titles, which keep whatever case someone gave them.
+function sentenceCase(str) {
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
 function fmtTime(s) {
   if (s == null || isNaN(s)) return "0:00";
   s = Math.max(0, Math.floor(s));
@@ -397,8 +404,10 @@ for (const name of CATEGORY_NAV_NAMES) {
   img.src = `/static/icons/categories/${slug}.svg`;
   // The badge carries the wording as artwork, so the alt text is what gives
   // the button its accessible name -- and is what shows if the file is ever
-  // missing, which is the whole fallback. Ampersand to match the row
-  // headings, which do the same substitution.
+  // missing, which is the whole fallback. Ampersand to match how the artwork
+  // itself spells it out, tight on space -- unlike the row headings (see
+  // renderCategories), which have a full line to themselves and spell "and"
+  // out in full.
   img.alt = name.replace(/\band\b/gi, "&");
   btn.appendChild(img);
   // Each mission has its own brand colour, which the nav shows on rollover.
@@ -459,7 +468,7 @@ function renderCategories(items) {
 
     const heading = document.createElement("h2");
     heading.className = "row__heading";
-    heading.textContent = onlyFlat ? "Library" : name.replace(/\band\b/gi, "&");
+    heading.textContent = onlyFlat ? "Library" : sentenceCase(name);
     section.appendChild(heading);
 
     const scroller = document.createElement("div");
