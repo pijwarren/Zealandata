@@ -271,11 +271,12 @@ button:focus-visible, .card:focus-visible{
      tablet breakpoint below. Right stays on --page-inset, same as the rest
      of the page's content, since only the left edge sits against the logo.
 
-     Left stops following this height-based formula below 850px, though --
-     that tier switches to the mark-only logo, which reads as a much
-     tighter glyph with none of the horizontal lockup's own built-in
-     whitespace, so 2/5 of ITS height sat it right on the edge. See the
-     850px and 640px breakpoints for the fixed value it uses instead. */
+     Left stops following this height-based formula in the tablet tier
+     (body.tablet-topbar, below) and below 640px, though -- both switch to
+     the mark-only logo, which reads as a much tighter glyph with none of
+     the horizontal lockup's own built-in whitespace, so 2/5 of ITS height
+     sat it right on the edge. See there for the fixed value it uses
+     instead. */
   padding:20.8px var(--page-inset) var(--space-4) 20.8px;
 }
 /* Pinned here always -- it never scrolls off screen, so it no longer
@@ -1370,36 +1371,48 @@ body.admin-mode #setHeroBtn{ display:flex; }
    986px-of-artwork doesn't shrink any further with the viewport (only this
    height does, and it's already fixed for the whole tier), so the closer
    the bar gets to 640 the more likely the strip needs its scroll fallback
-   again -- unavoidable without shrinking past legible. */
-@media (max-width:850px){
-  /* Top still follows the base rule's 2/5-of-logo-height -- left doesn't:
-     the mark-only logo below reads as a much tighter glyph than the
-     horizontal lockup it replaces, with none of the lockup's own built-in
-     whitespace, so the same proportion that worked for the full wordmark
-     sat it right on top of the edge. Fixed at 24px instead, closer to
-     --page-inset (what the rest of the page's content aligns to) than to
-     2/5 of a 32px logo (12.8px). */
-  .topbar{ padding:12.8px var(--page-inset) var(--space-4) 24px; }
-  .topbar__logo{
-    width:27px; height:32px;
-    -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
-    mask-image:url("/static/icons/esnz-logo-e.svg");
-  }
-  /* Matches the spacer's old width from when this held the settings
-     button itself (see .topbar__controls) -- keeps the same gap the
-     badges beside it centre in, now that the button's moved to the dock. */
-  .topbar__controls{ width:32px; }
-  .category-nav__item img{ height:32px; }
+   again -- unavoidable without shrinking past legible.
+
+   A class, not a max-width:850px media query -- see app.js's
+   syncTabletTopbar. iPad Pros need this tier too regardless of their own
+   viewport width, which in landscape (1194/1366px) is well past 850 and
+   would otherwise get the full desktop bar; JS decides body.tablet-topbar
+   from viewport width OR device, one flag either way finds this rule. */
+/* Top still follows the base rule's 2/5-of-logo-height -- left doesn't:
+   the mark-only logo below reads as a much tighter glyph than the
+   horizontal lockup it replaces, with none of the lockup's own built-in
+   whitespace, so the same proportion that worked for the full wordmark
+   sat it right on top of the edge. Fixed at 24px instead, closer to
+   --page-inset (what the rest of the page's content aligns to) than to
+   2/5 of a 32px logo (12.8px). */
+body.tablet-topbar .topbar{ padding:12.8px var(--page-inset) var(--space-4) 24px; }
+body.tablet-topbar .topbar__logo{
+  width:27px; height:32px;
+  -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
+  mask-image:url("/static/icons/esnz-logo-e.svg");
 }
+/* Matches the spacer's old width from when this held the settings button
+   itself (see .topbar__controls) -- keeps the same gap the badges beside
+   it centre in, now that the button's moved to the dock. */
+body.tablet-topbar .topbar__controls{ width:32px; }
+body.tablet-topbar .category-nav__item img{ height:32px; }
 @media (max-width:640px){
+  /* body.tablet-topbar rather than plain .topbar here (and below, for
+     .topbar__logo and .category-nav__item img) -- width<=640 always
+     implies width<=850, so body.tablet-topbar (see app.js's
+     syncTabletTopbar) is already set by the time this media query fires,
+     and its own rules for these same properties carry a class's worth
+     more specificity than a bare element/class selector would. Matching
+     that selector, not just the property, is what lets this actually win
+     the cascade instead of losing to it. */
   /* Top still follows the base rule's 2/5-of-logo-height; left is fixed at
      24px like the 850px tier just above, for the same reason -- see there. */
-  .topbar{ padding:17.6px 16px 14px 24px; }
+  body.tablet-topbar .topbar{ padding:17.6px 16px 14px 24px; }
   /* The monogram below 640, as the <picture> source used to do -- now in the
      stylesheet with every other breakpoint. Sized to the category badges'
      own mobile height (see .category-nav__item img below) -- 38px is the
      105x123 mark at 44px tall. */
-  .topbar__logo{
+  body.tablet-topbar .topbar__logo{
     width:38px; height:44px;
     -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
     mask-image:url("/static/icons/esnz-logo-e.svg");
@@ -1432,8 +1445,10 @@ body.admin-mode #setHeroBtn{ display:flex; }
   .row__arrow{ display:none !important; }
   /* Smaller on a phone, where the strip is scrolling anyway (see the base
      rule) -- 44px still carries the wording legibly and fits more of the
-     six on screen at once. */
-  .category-nav__item img{ height:44px; }
+     six on screen at once. Moot while .topbar__nav is display:none just
+     above, but kept correct (and at matching specificity -- see this
+     block's opening comment) rather than dead-but-wrong. */
+  body.tablet-topbar .category-nav__item img{ height:44px; }
   /* max-width as a hard backstop on top of the left/right insets: the
      insets alone rely on `width:auto` resolving correctly against a
      position:fixed element's containing block, and if that ever comes out

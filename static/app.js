@@ -620,6 +620,27 @@ if (typeof ResizeObserver !== "undefined") {
 }
 window.addEventListener("resize", syncStickyOffsets, { passive: true });
 
+// --------------------------------------------------- tablet topbar ---
+// The compact tablet topbar (see style.css's body.tablet-topbar rules --
+// mark-only logo, everything sized down so the badges fit) used to be a
+// plain max-width:850px media query. iPad Pros need it too regardless of
+// their own viewport width, which can run well past that in landscape
+// (1194/1366px) -- so this is decided in JS instead, combining the width
+// check with a device flag, and applied as a class rather than left to
+// CSS alone.
+//
+// iPadOS has reported a desktop-class "Macintosh" UA (not "iPad") since
+// iPadOS 13, so navigator.userAgent alone no longer catches one -- the
+// platform+touch check is the standard workaround: no real Mac reports
+// more than one touch point.
+const isIPad = /iPad/.test(navigator.userAgent) ||
+  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+function syncTabletTopbar() {
+  document.body.classList.toggle("tablet-topbar", isIPad || window.innerWidth <= 850);
+}
+syncTabletTopbar();
+window.addEventListener("resize", syncTabletTopbar, { passive: true });
+
 // ------------------------------------------------- top bar contrast ---
 // The bar has no plate behind it, so it sits directly on whatever is under
 // it: the hero poster at the top of the page, the light page ground once you
