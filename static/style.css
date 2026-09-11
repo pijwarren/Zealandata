@@ -263,12 +263,35 @@ button:focus-visible, .card:focus-visible{
      as one family. */
   padding:16px var(--page-inset) var(--space-4);
 }
-/* No plate. The bar sits straight on the poster, and its contents recolour
-   for what is behind them instead -- see .topbar__logo and app.js's
-   syncTopbarContrast. Pinned here always -- it never scrolls off screen, so
-   it no longer slides away on scroll-down (that used to also pop the
-   hero's bottom strip back into view on the smallest scroll-up, ahead of
-   where the page would naturally have revealed it). */
+/* Pinned here always -- it never scrolls off screen, so it no longer
+   slides away on scroll-down (that used to also pop the hero's bottom
+   strip back into view on the smallest scroll-up, ahead of where the page
+   would naturally have revealed it).
+
+   The logo and buttons themselves still recolour for what's behind them
+   rather than relying on a plate for their own legibility (see
+   .topbar__logo and app.js's syncTopbarContrast) -- but the scrim below
+   is still needed, full-bleed across the whole bar, to hide page content
+   scrolling up behind the badges in the gaps between them once those are
+   pinned here too (see .topbar__nav): the same reason any pinned nav strip
+   needs one. `position:fixed` is already enough to anchor the pseudo's
+   `inset:0` to the bar's own box, edge to edge. Two-toned like the
+   logo/buttons (see body.topbar-on-light below): dark by default, since
+   the bar sits over the hero poster from page load, then swaps light once
+   scrolled past it onto the page ground -- unlike the logo/buttons this
+   isn't just a colour flip, since the two grounds need different-toned
+   scrims, not just different-toned ink. */
+.topbar::before{
+  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background:linear-gradient(180deg, rgba(22,24,38,0.55) 0%, rgba(22,24,38,0.15) 100%);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  mask-image:linear-gradient(180deg, black 60%, transparent 100%);
+  -webkit-mask-image:linear-gradient(180deg, black 60%, transparent 100%);
+}
+body.topbar-on-light .topbar::before{
+  background:linear-gradient(180deg, rgba(243,244,246,1) 0%, rgba(243,244,246,0.25) 100%);
+}
 .topbar__title{
   display:flex; align-items:center;
 }
@@ -327,34 +350,12 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
    2px hover lift (see .category-nav__item:active) room without
    overflow-x:auto clipping it on the other axis. */
 .topbar__nav{
-  position:relative; z-index:1;
   flex:1 1 auto; min-width:0;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
   margin:0 16px; padding:4px 0;
   overflow-x:auto; scrollbar-width:none;
 }
 .topbar__nav::-webkit-scrollbar{ display:none; }
-/* A scrim behind the badges, since (unlike the rest of the topbar, which
-   is deliberately plate-less) this needs to hide page content scrolling
-   up behind it in the gaps between them, the same reason a pinned nav
-   strip always has -- the badges' own artwork is legible either way, but
-   the gaps around them aren't. Two-toned like the logo/buttons beside it
-   (see .topbar__logo, body.topbar-on-light): dark by default, since this
-   sits over the hero poster from page load, then swaps light once
-   scrolled past it onto the page ground -- unlike the logo/buttons this
-   isn't just a colour flip, since the two grounds need different-toned
-   scrims, not just different-toned ink. */
-.topbar__nav::before{
-  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(22,24,38,0.55) 0%, rgba(22,24,38,0.15) 100%);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  mask-image:linear-gradient(180deg, black 60%, transparent 100%);
-  -webkit-mask-image:linear-gradient(180deg, black 60%, transparent 100%);
-}
-body.topbar-on-light .topbar__nav::before{
-  background:linear-gradient(180deg, rgba(243,244,246,1) 0%, rgba(243,244,246,0.25) 100%);
-}
 
 /* -------------------------------------------------------------- hero */
 
