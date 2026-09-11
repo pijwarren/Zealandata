@@ -645,51 +645,23 @@ if (typeof ResizeObserver !== "undefined") {
 window.addEventListener("resize", syncStickyOffsets, { passive: true });
 
 // ------------------------------------------------- top bar contrast ---
-// The bar has no plate behind it any more, so it sits directly on whatever
-// is underneath: the hero poster at the top of the page, the light page
-// ground once you have scrolled past it. Its logo and buttons default to
-// light ink for the poster and flip to dark when what is behind them is
-// light -- either because the page scrolled, or because this particular
-// poster happens to be a bright one.
-let heroTopIsLight = false;
-
+// The bar has no plate behind it, so it sits directly on whatever is under
+// it: the hero poster at the top of the page, the light page ground once you
+// have scrolled past. Light ink over the poster, dark ink over the ground.
+//
+// This used to also sample the poster's own brightness and go dark over a
+// pale one. Dropped: the posters are projections of a lit 3D model on black,
+// so the strip under the bar reads bright often enough that the logo kept
+// flipping to navy on images that were plainly dark enough to carry white --
+// and a logo that changes colour between one hero and the next is worse than
+// one that is occasionally on a light patch. Scroll position is the only
+// input now.
 function syncTopbarContrast() {
-  // Past the hero, the bar is over the page ground, which is always light.
   const heroBottom = heroSection.classList.contains("hidden") ? 0 : heroSection.offsetHeight;
   const pastHero = window.scrollY > Math.max(0, heroBottom - topbar.offsetHeight);
-  document.body.classList.toggle("topbar-on-light", pastHero || heroTopIsLight);
+  document.body.classList.toggle("topbar-on-light", pastHero);
 }
 
-// Mean luminance of the strip of the poster the bar actually covers -- not
-// the whole image, which averages out a bright sky over a dark seabed and
-// tells you nothing about the corner the logo sits in. Same-origin, so the
-// canvas stays untainted; wrapped anyway because a decode failure here must
-// not take the page down, and a wrong guess only costs contrast.
-function measureHeroTop() {
-  heroTopIsLight = false;
-  try {
-    if (!heroImg.naturalWidth) return;
-    const barFraction = topbar.offsetHeight / Math.max(1, heroSection.offsetHeight);
-    const stripH = Math.max(1, Math.round(heroImg.naturalHeight * barFraction));
-    const c = document.createElement("canvas");
-    c.width = 32; c.height = 8;
-    const ctx = c.getContext("2d", { willReadFrequently: true });
-    ctx.drawImage(heroImg, 0, 0, heroImg.naturalWidth, stripH, 0, 0, 32, 8);
-    const d = ctx.getImageData(0, 0, 32, 8).data;
-    let sum = 0;
-    for (let i = 0; i < d.length; i += 4) {
-      sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
-    }
-    // 0-255. 150 sits above a typical overcast sky and well above anything
-    // the hero scrim darkens, so only a genuinely bright top flips it.
-    heroTopIsLight = sum / (d.length / 4) > 150;
-  } catch (err) {
-    heroTopIsLight = false;
-  }
-  syncTopbarContrast();
-}
-
-heroImg.addEventListener("load", measureHeroTop);
 window.addEventListener("scroll", syncTopbarContrast, { passive: true });
 window.addEventListener("resize", syncTopbarContrast, { passive: true });
 
