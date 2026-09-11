@@ -274,23 +274,29 @@ button:focus-visible, .card:focus-visible{
    is still needed, full-bleed across the whole bar, to hide page content
    scrolling up behind the badges in the gaps between them once those are
    pinned here too (see .topbar__nav): the same reason any pinned nav strip
-   needs one. `position:fixed` is already enough to anchor the pseudo's
-   `inset:0` to the bar's own box, edge to edge. Two-toned like the
-   logo/buttons (see body.topbar-on-light below): dark by default, since
-   the bar sits over the hero poster from page load, then swaps light once
-   scrolled past it onto the page ground -- unlike the logo/buttons this
-   isn't just a colour flip, since the two grounds need different-toned
-   scrims, not just different-toned ink. */
+   needs one. Two-toned like the logo/buttons (see body.topbar-on-light
+   below): dark by default, since the bar sits over the hero poster from
+   page load, then swaps light once scrolled past it onto the page ground
+   -- unlike the logo/buttons this isn't just a colour flip, since the two
+   grounds need different-toned scrims, not just different-toned ink.
+
+   Solid all the way through the bar's own height, not fading within it --
+   the pseudo is deliberately taller than .topbar itself (height:calc(100%
+   + 40px), overhanging the bottom rather than `inset:0`) so the fade
+   happens entirely in that extra 40px below the real bar, against
+   whatever's scrolling past underneath, instead of thinning out the scrim
+   while it's still behind visible bar content. */
 .topbar::before{
-  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(22,24,38,0.55) 0%, rgba(22,24,38,0.15) 100%);
+  content:""; position:absolute; top:0; left:0; right:0; height:calc(100% + 40px);
+  z-index:-1; pointer-events:none;
+  background:rgba(22,24,38,0.55);
   backdrop-filter:blur(16px);
   -webkit-backdrop-filter:blur(16px);
-  mask-image:linear-gradient(180deg, black 60%, transparent 100%);
-  -webkit-mask-image:linear-gradient(180deg, black 60%, transparent 100%);
+  mask-image:linear-gradient(180deg, black calc(100% - 40px), transparent 100%);
+  -webkit-mask-image:linear-gradient(180deg, black calc(100% - 40px), transparent 100%);
 }
 body.topbar-on-light .topbar::before{
-  background:linear-gradient(180deg, rgba(243,244,246,1) 0%, rgba(243,244,246,0.25) 100%);
+  background:rgba(243,244,246,1);
 }
 .topbar__title{
   display:flex; align-items:center;
