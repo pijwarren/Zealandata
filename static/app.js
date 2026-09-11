@@ -1,5 +1,7 @@
 // ---------------------------------------------------------------- DOM refs
 const topbar = document.getElementById("topbar");
+const topbarTitle = topbar.querySelector(".topbar__title");
+const topbarControls = topbar.querySelector(".topbar__controls");
 const startScreensaverBtn = document.getElementById("startScreensaverBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
@@ -605,22 +607,30 @@ setHeroBtn.addEventListener("click", async () => {
   paintHeroFromPick(lastContinueItems, allMediaItems);
 });
 
-// Both feed a category jump's scroll-margin-top (see style.css's .row),
-// which needs to clear the topbar+nav pair pinned above it, and depend on
-// how their own content wraps -- the category labels shrink and rewrap
-// with the viewport, and the bar's height follows its buttons -- so
-// they're measured rather than guessed. Without this a jump lands a few
-// pixels short, with the row heading tucked under the pinned strip.
+// All feed layout that can't be pinned down in CSS alone -- a category
+// jump's scroll-margin-top (see style.css's .row), which needs to clear
+// the topbar+nav pair pinned above it, and the badges' own left/right
+// padding, which centres them in the gap between the logo and the topbar
+// buttons rather than the viewport (see .category-nav) -- and all depend
+// on how their own content wraps or sizes, so they're measured rather than
+// guessed. Without this a jump lands a few pixels short, or the badges
+// drift out of true with the logo/buttons as either one resizes.
 function syncStickyOffsets() {
   const nav = categoryNav.offsetHeight;
   const bar = topbar.offsetHeight;
+  const logo = topbarTitle.offsetWidth;
+  const controls = topbarControls.offsetWidth;
   if (nav) document.documentElement.style.setProperty("--category-nav-h", nav + "px");
   if (bar) document.documentElement.style.setProperty("--topbar-h", bar + "px");
+  if (logo) document.documentElement.style.setProperty("--topbar-logo-w", logo + "px");
+  if (controls) document.documentElement.style.setProperty("--topbar-controls-w", controls + "px");
 }
 if (typeof ResizeObserver !== "undefined") {
   const stickyObserver = new ResizeObserver(syncStickyOffsets);
   stickyObserver.observe(categoryNav);
   stickyObserver.observe(topbar);
+  stickyObserver.observe(topbarTitle);
+  stickyObserver.observe(topbarControls);
 }
 window.addEventListener("resize", syncStickyOffsets, { passive: true });
 

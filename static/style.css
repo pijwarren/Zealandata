@@ -145,11 +145,13 @@ html{
 html.scroll-locked{ overflow-y:hidden; }
 html,body{
   --hero-h: clamp(380px, 64vh, 640px);
-  /* Both measured into these by app.js, since each depends on how its own
-     content wraps -- the category labels especially. The values here are
-     only a first-paint fallback for before that runs. */
+  /* All four measured into these by app.js, since each depends on how its
+     own content wraps or sizes -- the category labels especially. The
+     values here are only a first-paint fallback for before that runs. */
   --category-nav-h: 92px;
   --topbar-h: 60px;
+  --topbar-logo-w: 207px;
+  --topbar-controls-w: 120px;
   margin:0;
   min-height:100vh;
   background:var(--color-bg);
@@ -420,7 +422,10 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
    before it went small enough -- the strip scrolls instead, the same
    scrollbar-less pattern .row__scroller and .dock__docs use. "safe center"
    keeps them centred while they fit and stops the first badge being pushed
-   off the left edge once they don't. */
+   off the left edge once they don't. Centred in the padding box specifically
+   (not the viewport) -- see the left/right padding below -- so when they do
+   fit, they sit centred in the gap between the logo and the buttons rather
+   than the screen, which the logo and buttons don't share equally. */
 /* Pinned to the very top of the screen on its own -- not parked below the
    topbar, behind it. It sticks flush at top:0, same as the topbar itself
    (z-index below the topbar, above everything else). A direct child of
@@ -438,8 +443,17 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
      would otherwise swallow their clicks and rollover even where the
      topbar itself paints nothing. The bottom 20px is also just enough to
      clear the badges' own 2px hover lift without overflow-x:auto clipping
-     it on the other axis. */
-  padding:calc(var(--topbar-h) + 20px) var(--page-inset) 20px;
+     it on the other axis.
+
+     Left/right padding is the page inset plus the logo's/controls' own
+     measured width (--topbar-logo-w/--topbar-controls-w, from app.js's
+     syncStickyOffsets) -- the same inset the logo and buttons themselves
+     sit at, but carried in from each side so the padding box's edges land
+     exactly under the logo's right edge and the buttons' left edge. "safe
+     center" above then centres the badges within that box, which is what
+     puts them an even distance from the logo as from the buttons, not just
+     the screen edges (the two aren't the same width). */
+  padding:calc(var(--topbar-h) + 20px) calc(var(--page-inset) + var(--topbar-controls-w)) 20px calc(var(--page-inset) + var(--topbar-logo-w));
   overflow-x:auto;
   scrollbar-width:none;
 }
@@ -1288,9 +1302,10 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
-  /* Same topbar-clearing top padding as the base rule, just paired with the
-     smaller 18px this breakpoint already uses below the badges. */
-  .category-nav{ padding:calc(var(--topbar-h) + 18px) 16px 18px; }
+  /* Same topbar-clearing top padding and logo-/controls-width left/right
+     padding as the base rule (see there), just paired with the smaller
+     18px and 16px this breakpoint already uses below and to the sides. */
+  .category-nav{ padding:calc(var(--topbar-h) + 18px) calc(16px + var(--topbar-controls-w)) 18px calc(16px + var(--topbar-logo-w)); }
   /* Smaller on a phone, where the strip is scrolling anyway (see the base
      rule) -- 44px still carries the wording legibly and fits more of the
      six on screen at once. */
