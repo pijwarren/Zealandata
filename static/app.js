@@ -1,7 +1,6 @@
 // ---------------------------------------------------------------- DOM refs
 const topbar = document.getElementById("topbar");
-const topbarTitle = topbar.querySelector(".topbar__title");
-const topbarControls = topbar.querySelector(".topbar__controls");
+const topbarNav = document.getElementById("topbarNav");
 const startScreensaverBtn = document.getElementById("startScreensaverBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
@@ -398,38 +397,71 @@ function paintHeroCategory(category) {
     heroCategory.textContent = category;
   }
 }
-for (const name of CATEGORY_NAV_NAMES) {
-  const btn = document.createElement("button");
-  btn.type = "button";
-  btn.className = "category-nav__item";
-  const slug = categoryIconSlug(name);
-  const img = document.createElement("img");
-  img.className = "category-nav__mono";
-  img.src = `/static/icons/categories/${slug}.svg`;
-  // The badge carries the wording as artwork, so the alt text is what gives
-  // the button its accessible name -- and is what shows if the file is ever
-  // missing, which is the whole fallback. Ampersand to match the row
-  // headings, which do the same substitution.
-  img.alt = name.replace(/\band\b/gi, "&");
-  btn.appendChild(img);
-  // Each mission has its own brand colour, which the nav shows on rollover.
-  // A second layer cross-faded over the first rather than a src swap: the
-  // coloured artwork sits on a slightly wider plate than the monochrome one,
-  // so swapping would jog the button width, and the first hover would wait
-  // on a network fetch. Decorative -- the mono layer already names the
-  // button, so this one is hidden from assistive tech.
-  const colour = document.createElement("img");
-  colour.className = "category-nav__colour";
-  colour.src = `/static/icons/categories/${slug}-colour.svg`;
-  colour.alt = "";
-  colour.setAttribute("aria-hidden", "true");
-  btn.appendChild(colour);
-  btn.dataset.categoryName = name;
-  btn.addEventListener("click", () => {
-    const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
-    if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
-  });
-  categoryNav.appendChild(btn);
+// Builds one full set of mission badges into `container` -- called once for
+// the large below-hero nav and again for the compact one that docks into
+// the topbar once the first has scrolled out of view (see
+// setupNavDockObserver). Two independent button sets rather than one moved
+// between parents: moving a sticky element between containers on scroll
+// would either jump the page (removing ~95px from the flow) or need a
+// matching spacer kept in sync, where two fixed sets driven by simple
+// show/hide have no layout to reconcile.
+function buildCategoryBadges(container) {
+  for (const name of CATEGORY_NAV_NAMES) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "category-nav__item";
+    const slug = categoryIconSlug(name);
+    const img = document.createElement("img");
+    img.className = "category-nav__mono";
+    img.src = `/static/icons/categories/${slug}.svg`;
+    // The badge carries the wording as artwork, so the alt text is what gives
+    // the button its accessible name -- and is what shows if the file is ever
+    // missing, which is the whole fallback. Ampersand to match the row
+    // headings, which do the same substitution.
+    img.alt = name.replace(/\band\b/gi, "&");
+    btn.appendChild(img);
+    // Each mission has its own brand colour, which the nav shows on rollover.
+    // A second layer cross-faded over the first rather than a src swap: the
+    // coloured artwork sits on a slightly wider plate than the monochrome one,
+    // so swapping would jog the button width, and the first hover would wait
+    // on a network fetch. Decorative -- the mono layer already names the
+    // button, so this one is hidden from assistive tech.
+    const colour = document.createElement("img");
+    colour.className = "category-nav__colour";
+    colour.src = `/static/icons/categories/${slug}-colour.svg`;
+    colour.alt = "";
+    colour.setAttribute("aria-hidden", "true");
+    btn.appendChild(colour);
+    btn.dataset.categoryName = name;
+    btn.addEventListener("click", () => {
+      const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
+      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    container.appendChild(btn);
+  }
+}
+buildCategoryBadges(categoryNav);
+buildCategoryBadges(topbarNav);
+
+// The compact badge set starts hidden (see the "hidden" class in the
+// template) and only appears once the large nav below the hero has
+// scrolled fully out from under the topbar -- rootMargin shrinks the
+// observer's notion of the viewport by the topbar's own height, so
+// "intersecting" already accounts for the topbar sitting on top of
+// whatever's beneath it. Rebuilt whenever the topbar's height changes
+// (see syncStickyOffsets) since rootMargin can't be updated in place.
+let navDockObserver = null;
+function setupNavDockObserver() {
+  if (typeof IntersectionObserver === "undefined") return;
+  if (navDockObserver) navDockObserver.disconnect();
+  navDockObserver = new IntersectionObserver(
+    ([entry]) => {
+      const docked = !entry.isIntersecting;
+      topbarNav.classList.toggle("hidden", !docked);
+    },
+    { rootMargin: `-${topbar.offsetHeight}px 0px 0px 0px` }
+  );
+  navDockObserver.observe(categoryNav);
 }
 
 function renderCategories(items) {
@@ -607,30 +639,21 @@ setHeroBtn.addEventListener("click", async () => {
   paintHeroFromPick(lastContinueItems, allMediaItems);
 });
 
-// All feed layout that can't be pinned down in CSS alone -- a category
-// jump's scroll-margin-top (see style.css's .row), which needs to clear
-// the topbar+nav pair pinned above it, and the badges' own left/right
-// padding, which centres them in the gap between the logo and the topbar
-// buttons rather than the viewport (see .category-nav) -- and all depend
-// on how their own content wraps or sizes, so they're measured rather than
-// guessed. Without this a jump lands a few pixels short, or the badges
-// drift out of true with the logo/buttons as either one resizes.
+// Feeds a category jump's scroll-margin-top (see style.css's .row), which
+// needs to clear the topbar pinned above it, and depends on the bar's own
+// height following its buttons -- so it's measured rather than guessed.
+// Without this a jump lands a few pixels short, with the row heading
+// tucked under the topbar. Also re-pins setupNavDockObserver (above),
+// since its rootMargin is keyed to this same height and can't be updated
+// in place once set.
 function syncStickyOffsets() {
-  const nav = categoryNav.offsetHeight;
   const bar = topbar.offsetHeight;
-  const logo = topbarTitle.offsetWidth;
-  const controls = topbarControls.offsetWidth;
-  if (nav) document.documentElement.style.setProperty("--category-nav-h", nav + "px");
   if (bar) document.documentElement.style.setProperty("--topbar-h", bar + "px");
-  if (logo) document.documentElement.style.setProperty("--topbar-logo-w", logo + "px");
-  if (controls) document.documentElement.style.setProperty("--topbar-controls-w", controls + "px");
+  setupNavDockObserver();
 }
 if (typeof ResizeObserver !== "undefined") {
   const stickyObserver = new ResizeObserver(syncStickyOffsets);
-  stickyObserver.observe(categoryNav);
   stickyObserver.observe(topbar);
-  stickyObserver.observe(topbarTitle);
-  stickyObserver.observe(topbarControls);
 }
 window.addEventListener("resize", syncStickyOffsets, { passive: true });
 
