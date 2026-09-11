@@ -92,13 +92,17 @@
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 14px;
-  /* Poster corners: double the 8px the cards used to take, with the bottom
-     left held square. That is the ESNZ mission badge's own silhouette --
-     three rounded corners and one sharp -- so a poster in a row and a badge
-     in the nav read as the same family rather than two unrelated shapes.
-     Written as a four-corner shorthand (TL TR BR BL) because the asymmetry
-     is the point; anything using it must not re-round BL. */
-  --radius-poster: 16px 16px 16px 0;
+  /* The ESNZ silhouette -- three rounded corners and a square bottom left --
+     carried across every rectangular surface. Three sizes rather than one,
+     because a 16px corner that reads right on a 300x450 poster is coarse on
+     a 68px chip; the shape is the constant, the radius scales with the box.
+     All three are four-corner shorthands (TL TR BR BL) because the sharp
+     corner IS the motif: anything adopting them must not re-round BL.
+     Pills and circles are deliberately exempt -- a 980px pill and a round
+     icon button have no corner to square off. */
+  --radius-poster: 16px 16px 16px 0;   /* browse cards */
+  --radius-panel:  14px 14px 14px 0;   /* drawer, PIN pad, dock, docs panel */
+  --radius-chip:   12px 12px 12px 0;   /* dock preview, doc chips, documents */
 
   /* Tinted navy rather than neutral black, and much lighter than the dark
      theme's: a shadow works by darkening the ground, and there is far less
@@ -339,15 +343,27 @@ body.topbar-hidden .hero{
   max-width:620px;
   color:var(--color-on-media);
 }
-.hero__content .tag{ margin-bottom:14px; }
+/* The category and the Play button share a row at the foot of the hero.
+   The badge used to head the stack, above the title. */
+.hero__actions{ display:flex; align-items:center; gap:16px; }
+.hero__actions .tag{ margin-bottom:0; }
 /* The category reads as its mission badge here rather than an outline tag,
    in the -on-media (white) colourway -- see app.js's paintHeroCategory. The
    outline tag is still styled above because a category with no badge of its
    own (anything outside the fixed six, "Uncategorized" included) falls back
    to it. Smaller than the nav's 55px: this one is a label, not a control, and
    sitting it at the nav's size would read as the same button twice. */
-.hero__badge{ display:block; margin-bottom:14px; }
+.hero__badge{ display:block; }
 .hero__badge img{ display:block; height:44px; width:auto; }
+/* Icon only, so the button is a circle: with the label gone there is no
+   line of text to set a pill's width, and a 56px disc sits level with the
+   44px badge beside it. The glyph goes up from 14px, which was sized to
+   sit beside a word rather than to carry the button on its own. */
+.hero__play{
+  width:56px; height:56px; flex-shrink:0;
+  padding:0; border-radius:50%;
+  justify-content:center;
+}
 /* The category tag and Play button both default to accent/navy fills, which
    are near-invisible against the scrim. Over media they invert: the button
    becomes the light surface and the navy becomes its label. */
@@ -555,17 +571,27 @@ body.topbar-hidden .hero{
   font-size:12px; text-transform:uppercase; letter-spacing:.5px;
 }
 /* Over the thumbnail, under .card__scrim -- light ink whatever the theme. */
-.card__title{ position:absolute; left:13px; right:13px; bottom:13px; font-size:13px; font-weight:500; color:var(--color-on-media); }
-/* Lifted to clear the bar, and only on cards that have one -- app.js adds
-   the class alongside the bar itself. */
-.card__frame.has-progress .card__title{ bottom:24px; }
+/* One bottom-anchored stack for title, remaining time and progress bar, in
+   that order top to bottom. A flex column rather than three absolutely
+   positioned pieces because all four combinations of badge and bar occur and
+   each would otherwise need its own bottom offset. */
+.card__meta{
+  position:absolute; left:13px; right:13px; bottom:11px;
+  display:flex; flex-direction:column; gap:6px;
+  z-index:1;
+}
+.card__title{ font-size:13px; font-weight:500; color:var(--color-on-media); }
 .card__top-right{
   position:absolute; top:9px; right:9px;
   display:flex; align-items:center; gap:6px;
 }
+/* A caption now rather than a pill. It used to float at the top right over
+   an arbitrary part of the thumbnail, where it needed its own dark plate to
+   stay readable; sitting in the bottom stack it is already on the card
+   scrim, and the plate would just be a blob over a dark gradient. */
 .card__resume-badge{
-  background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
-  color:var(--color-on-media); font-size:10px; font-weight:500; padding:4px 9px; border-radius:980px;
+  font-size:10px; font-weight:500; letter-spacing:.2px;
+  color:var(--color-on-media-dim);
 }
 .card__rename{
   display:none; width:28px; height:28px; border-radius:50%; flex-shrink:0;
@@ -599,10 +625,8 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
    against the frame it only had to read as a hairline, floating it has to
    read as an object, and the card scrim is near-black by this point. */
 .card__progress{
-  position:absolute; left:13px; right:13px; bottom:11px;
   height:4px; border-radius:980px;
   background:rgba(233,233,237,0.28);
-  z-index:1;
 }
 .card__progress-fill{ height:100%; border-radius:980px; background:var(--color-accent); }
 
@@ -638,7 +662,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   backdrop-filter:var(--glass-blur);
   -webkit-backdrop-filter:var(--glass-blur);
   border:1px solid var(--glass-rim);
-  border-radius:var(--radius-lg);
+  border-radius:var(--radius-panel);
   /* Apple "liquid glass": a bright top rim plus a soft inner sheen on top
      of the usual drop shadow, standing in for specular highlight on a
      curved glass surface -- the ::before below adds the sheen gradient
@@ -963,7 +987,7 @@ body.admin-mode .settings-grid{
   backdrop-filter:var(--glass-blur);
   -webkit-backdrop-filter:var(--glass-blur);
   border:1px solid var(--glass-rim);
-  border-radius:var(--radius-lg);
+  border-radius:var(--radius-panel);
   box-shadow:
     var(--shadow-lg);
   padding:var(--space-8) var(--space-6);
@@ -1035,7 +1059,7 @@ body.admin-mode .settings-grid{
   backdrop-filter:var(--glass-blur);
   -webkit-backdrop-filter:var(--glass-blur);
   border:1px solid var(--glass-rim);
-  border-radius:var(--radius-lg);
+  border-radius:var(--radius-panel);
   box-shadow:
     var(--shadow-lg);
 }
@@ -1051,7 +1075,7 @@ body.admin-mode .settings-grid{
   flex-shrink:0;
   width:96px;
   aspect-ratio:16/9;
-  border-radius:var(--radius-sm);
+  border-radius:var(--radius-chip);
   overflow:hidden;
   background:var(--color-surface);
   border:1px solid var(--color-divider);
@@ -1081,7 +1105,7 @@ body.admin-mode .settings-grid{
   backdrop-filter:var(--glass-blur);
   -webkit-backdrop-filter:var(--glass-blur);
   border:1px solid var(--glass-rim);
-  border-radius:var(--radius-lg);
+  border-radius:var(--radius-panel);
   /* No drop shadow here by design -- it sits directly on top of the dock,
      which casts the one shadow for the pair. With the bevel gone the rim
      border is what separates it from the page. */
@@ -1113,7 +1137,7 @@ body.admin-mode .settings-grid{
 .dock__doc-chip:hover{ transform:translateY(-2px); }
 .dock__doc-chip:active{ transform:translateY(0) scale(.96); }
 .dock__doc-chip__thumb{
-  display:block; width:68px; height:68px; border-radius:12px; object-fit:cover;
+  display:block; width:68px; height:68px; border-radius:var(--radius-chip); object-fit:cover;
   background:var(--color-surface); border:1px solid var(--color-divider);
   transition:border-color .15s ease;
 }
@@ -1134,9 +1158,9 @@ body.admin-mode .settings-grid{
   width:100%; height:100%;
   display:flex; align-items:center; justify-content:center;
 }
-.doc-viewer__content img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:var(--radius-sm); box-shadow:var(--shadow-lg); }
+.doc-viewer__content img{ max-width:100%; max-height:100%; object-fit:contain; border-radius:var(--radius-chip); box-shadow:var(--shadow-lg); }
 .doc-viewer__content iframe{
-  width:100%; height:100%; border:none; border-radius:var(--radius-sm);
+  width:100%; height:100%; border:none; border-radius:var(--radius-chip);
   background:#FFFFFF; box-shadow:var(--shadow-lg);
 }
 .doc-viewer__close{

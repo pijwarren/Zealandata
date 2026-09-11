@@ -248,12 +248,6 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
 
   const topRight = document.createElement("div");
   topRight.className = "card__top-right";
-  if (badge) {
-    const b = document.createElement("div");
-    b.className = "card__resume-badge";
-    b.textContent = badge;
-    topRight.appendChild(b);
-  }
   const rename = document.createElement("button");
   rename.className = "card__rename";
   rename.title = "Rename";
@@ -279,6 +273,28 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
     thumbWrap.appendChild(r);
   }
 
+  // Title, remaining-time and progress bar are one bottom-anchored stack
+  // rather than three separately positioned pieces. All four combinations
+  // occur -- a Continue Watching card has badge and bar, a Most Popular card
+  // has a play-count badge and no bar, an ordinary card has neither -- and a
+  // flex column absorbs that for free. Positioning them individually meant a
+  // bottom offset per combination, which is what the has-progress marker
+  // this replaces was for.
+  const meta = document.createElement("div");
+  meta.className = "card__meta";
+
+  const title = document.createElement("div");
+  title.className = "card__title";
+  title.textContent = item.title;
+  meta.appendChild(title);
+
+  if (badge) {
+    const b = document.createElement("div");
+    b.className = "card__resume-badge";
+    b.textContent = badge;
+    meta.appendChild(b);
+  }
+
   if (item.progress && item.progress.duration) {
     const bar = document.createElement("div");
     bar.className = "card__progress";
@@ -286,18 +302,10 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
     fill.className = "card__progress-fill";
     fill.style.width = `${Math.min(100, (item.progress.position / item.progress.duration) * 100)}%`;
     bar.appendChild(fill);
-    thumbWrap.appendChild(bar);
-    // The bar floats above the card's bottom edge rather than sitting on it,
-    // so the title has to lift to clear it -- but only on cards that
-    // actually have one. Marked here rather than matched with :has() in CSS,
-    // which the Pi's Firefox build predates.
-    thumbWrap.classList.add("has-progress");
+    meta.appendChild(bar);
   }
 
-  const title = document.createElement("div");
-  title.className = "card__title";
-  title.textContent = item.title;
-  thumbWrap.appendChild(title);
+  thumbWrap.appendChild(meta);
 
   card.appendChild(thumbWrap);
 
