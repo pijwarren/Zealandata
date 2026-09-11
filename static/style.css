@@ -1351,6 +1351,24 @@ body.admin-mode #setHeroBtn{ display:flex; }
 #setHeroBtn.active{ color:var(--color-accent); border-color:var(--color-accent); }
 #loopBtn.active{ color:var(--color-accent); border-color:var(--color-accent); }
 
+/* Tablet width: the badges stay (unlike below 640, where they're dropped
+   entirely -- see .topbar__nav below) but the full horizontal lockup, at
+   its full 55px-family height, is tight against six badges plus the
+   settings button in ~800px. Switching to the mark-only logo and bringing
+   every topbar item down to the same smaller height the badges themselves
+   drop to buys back the room -- the badges shrinking is what actually
+   narrows their combined 986px strip; .topbar__nav's own overflow-x:auto
+   is still there underneath as a fallback if six of them still don't fit. */
+@media (max-width:800px){
+  .topbar{ padding:12px var(--page-inset) var(--space-4); }
+  .topbar__logo{
+    width:38px; height:44px;
+    -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
+    mask-image:url("/static/icons/esnz-logo-e.svg");
+  }
+  .topbar .btn-icon{ width:44px; height:44px; }
+  .category-nav__item img{ height:44px; }
+}
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
   /* The monogram below 640, as the <picture> source used to do -- now in the
