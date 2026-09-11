@@ -1490,8 +1490,13 @@ body.tablet-topbar .category-nav__item img{ height:32px; }
      settings button (last in source, so first to run out of room) was
      dropping to its own second row at everyday widths, not just the
      narrow ones wrapping is actually meant for. */
-  .dock__controls{ justify-content:center; flex-wrap:wrap; row-gap:8px; gap:clamp(3px, 1.4vw, 7px); margin-top:10px; }
-  .dock__controls .btn-icon{ width:clamp(34px, 10vw, 44px); height:clamp(34px, 10vw, 44px); flex-shrink:0; }
+  /* Negative side margins matching .dock's own 16px padding -- bleeds this
+     row out to the dock's full edge-to-edge width instead of sitting
+     inset with the title/time/frame rows above and below it, so the
+     buttons below have that 32px back to grow into rather than sharing
+     the same margin every other row keeps. */
+  .dock__controls{ justify-content:center; flex-wrap:wrap; row-gap:8px; gap:clamp(3px, 1.4vw, 7px); margin:10px -16px 0; }
+  .dock__controls .btn-icon{ width:clamp(38px, 11vw, 48px); height:clamp(38px, 11vw, 48px); flex-shrink:0; }
   .dock__time{ margin-top:16px; }
   .dock__frame-counter{ margin-top:16px; }
 }
