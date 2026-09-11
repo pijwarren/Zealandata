@@ -1348,6 +1348,15 @@ body.admin-mode #setHeroBtn{ display:flex; }
     mask-image:url("/static/icons/esnz-logo-e.svg");
   }
   .topbar .btn-icon{ width:44px; height:44px; }
+  /* The six mission badges don't fit a phone-width bar between the logo and
+     the settings button -- they'd either overflow it or squeeze down to
+     illegible artwork (the wording is baked into the SVG, so it can't
+     reflow). Dropped here rather than shrunk further; a category is still
+     reachable via its row further down the page. .topbar__title and
+     .topbar__controls sit at .topbar's own justify-content:space-between
+     ends regardless, so removing the middle flex item just leaves the gap
+     between them. */
+  .topbar__nav{ display:none; }
   html,body{ --hero-h: clamp(250px, 38vh, 640px); }
   .hero__content{ left:16px; right:16px; bottom:44px; }
   /* the content stack is anchored from the bottom with nothing above it,
@@ -1360,13 +1369,22 @@ body.admin-mode #setHeroBtn{ display:flex; }
     overflow:hidden; margin-bottom:14px;
   }
   #browseMain{ padding:26px 16px 160px; }
-  .row__scroller .card{ flex:0 0 225px; }
+  /* 75% of the base 210px, the same ratio this held against the base size
+     before it shrank -- left unscaled here it had drifted above the
+     desktop size instead of below it. */
+  .row__scroller .card{ flex:0 0 158px; }
   .row__arrow{ display:none !important; }
   /* Smaller on a phone, where the strip is scrolling anyway (see the base
      rule) -- 44px still carries the wording legibly and fits more of the
      six on screen at once. */
   .category-nav__item img{ height:44px; }
-  .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; }
+  /* max-width as a hard backstop on top of the left/right insets: the
+     insets alone rely on `width:auto` resolving correctly against a
+     position:fixed element's containing block, and if that ever comes out
+     even a little wide, html's overflow-x:hidden (see near the top of this
+     file) clips the excess at the viewport edge instead of wrapping or
+     scrolling it into view -- which reads as the dock being cut off. */
+  .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; max-width:calc(100vw - 20px); }
   /* row-gap isn't used here (rather than margin on each row) because a
      hidden (display:none) row still consumes its row-gap in a CSS grid --
      with time/frame hidden while idle, that leftover gap-without-content
@@ -1384,7 +1402,14 @@ body.admin-mode #setHeroBtn{ display:flex; }
   }
   .dock__preview{ display:none; }
   .dock__title{ justify-content:center; text-align:center; }
-  .dock__controls{ justify-content:center; flex-wrap:nowrap; gap:clamp(3px, 1.6vw, 8px); margin-top:10px; }
+  /* wrap, not nowrap: nowrap plus the buttons' own flex-shrink:0 below was
+     a hard floor with nothing to give if five (or six, with admin mode's
+     setHeroBtn) buttons at their 38px minimum plus gaps ever added up to
+     more than a narrow phone's width -- the row would rather run past the
+     dock's edge than shrink further, and get clipped there by html's
+     overflow-x:hidden. Wrapping to a second centered line is the fallback
+     that can't overflow, whatever the screen or however many buttons. */
+  .dock__controls{ justify-content:center; flex-wrap:wrap; row-gap:8px; gap:clamp(3px, 1.6vw, 8px); margin-top:10px; }
   .dock__controls .btn-icon{ width:clamp(38px, 12vw, 50px); height:clamp(38px, 12vw, 50px); flex-shrink:0; }
   .dock__time{ margin-top:16px; }
   .dock__frame-counter{ margin-top:16px; }
