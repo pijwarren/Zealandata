@@ -1478,15 +1478,20 @@ body.tablet-topbar .category-nav__item img{ height:32px; }
   }
   .dock__preview{ display:none; }
   .dock__title{ justify-content:center; text-align:center; }
-  /* wrap, not nowrap: nowrap plus the buttons' own flex-shrink:0 below was
-     a hard floor with nothing to give if five (or six, with admin mode's
-     setHeroBtn) buttons at their 38px minimum plus gaps ever added up to
-     more than a narrow phone's width -- the row would rather run past the
+  /* wrap, not nowrap, stays as the ultimate backstop: nowrap plus the
+     buttons' own flex-shrink:0 below was a hard floor with nothing to give
+     if the row's buttons at their minimum size plus gaps ever added up to
+     more than a narrow phone's width -- it would rather run past the
      dock's edge than shrink further, and get clipped there by html's
-     overflow-x:hidden. Wrapping to a second centered line is the fallback
-     that can't overflow, whatever the screen or however many buttons. */
-  .dock__controls{ justify-content:center; flex-wrap:wrap; row-gap:8px; gap:clamp(3px, 1.6vw, 8px); margin-top:10px; }
-  .dock__controls .btn-icon{ width:clamp(38px, 12vw, 50px); height:clamp(38px, 12vw, 50px); flex-shrink:0; }
+     overflow-x:hidden. But sized to actually fit six buttons (five
+     playback controls plus the settings button, always visible -- seven
+     with admin mode's setHeroBtn too) on one line at ordinary phone
+     widths first, down from a size tuned for five: left as it was, the
+     settings button (last in source, so first to run out of room) was
+     dropping to its own second row at everyday widths, not just the
+     narrow ones wrapping is actually meant for. */
+  .dock__controls{ justify-content:center; flex-wrap:wrap; row-gap:8px; gap:clamp(3px, 1.4vw, 7px); margin-top:10px; }
+  .dock__controls .btn-icon{ width:clamp(34px, 10vw, 44px); height:clamp(34px, 10vw, 44px); flex-shrink:0; }
   .dock__time{ margin-top:16px; }
   .dock__frame-counter{ margin-top:16px; }
 }
