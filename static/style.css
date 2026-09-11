@@ -1353,21 +1353,21 @@ body.admin-mode #setHeroBtn{ display:flex; }
 /* Tablet width: the badges stay (unlike below 640, where they're dropped
    entirely -- see .topbar__nav below) but the full horizontal lockup, at
    its full 55px-family height, is tight against six badges plus the
-   settings button in ~800px. Switching to the mark-only logo and bringing
+   controls spacer in ~850px. Switching to the mark-only logo and bringing
    every topbar item down to the same smaller height the badges themselves
    drop to buys back the room -- the badges shrinking is what actually
    narrows their combined 986px strip; .topbar__nav's own overflow-x:auto
    is still there underneath as a fallback if six of them still don't fit.
 
    32px (down from the 44px this tier started at) is what the six badges'
-   986px strip, at this height, needs to clear the logo/button/padding/gap
-   overhead within 800px with room to spare -- worked back from that combined
-   width rather than picked by eye. Narrower than 800 the badges' own
+   986px strip, at this height, needs to clear the logo/spacer/padding/gap
+   overhead within 850px with room to spare -- worked back from that combined
+   width rather than picked by eye. Narrower than 850 the badges' own
    986px-of-artwork doesn't shrink any further with the viewport (only this
    height does, and it's already fixed for the whole tier), so the closer
    the bar gets to 640 the more likely the strip needs its scroll fallback
    again -- unavoidable without shrinking past legible. */
-@media (max-width:800px){
+@media (max-width:850px){
   /* Top and left both 2/5 of this tier's 32px logo -- see the base
      .topbar rule. */
   .topbar{ padding:12.8px var(--page-inset) var(--space-4) 12.8px; }
