@@ -190,14 +190,10 @@ button.tag:active{ opacity:.65; }
   display:inline-flex;
   align-items:center;
   gap:8px;
-  transition:background .15s ease, border-color .15s ease, transform .15s ease;
+  transition:background .15s ease, border-color .15s ease;
   background:transparent;
   color:var(--color-text);
 }
-/* Hover lifts, the same 2px the category badges use, so every pressable
-   thing in the UI answers the pointer the same way. */
-.btn:hover{ transform:translateY(-2px); }
-.btn:active{ transform:translateY(0); transition-duration:.08s; }
 .btn svg{ display:block; }
 .btn-primary{ background:var(--color-text); color:var(--color-bg); border-color:var(--color-text); }
 .btn-primary:hover{ background:var(--color-accent-800); }
@@ -216,10 +212,8 @@ button.tag:active{ opacity:.65; }
   font-family:var(--font-body);
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
-  transition:background .15s ease, border-color .15s ease, transform .15s ease;
+  transition:background .15s ease, border-color .15s ease;
 }
-.btn-icon:hover{ transform:translateY(-2px); }
-.btn-icon:active{ transform:translateY(0); transition-duration:.08s; }
 .btn-icon:hover{ background:rgba(6,45,81,0.12); border-color:var(--color-accent); }
 .btn-icon:active{ background:rgba(6,45,81,0.17); border-color:var(--color-accent); }
 .btn-icon:disabled{ opacity:.35; cursor:default; pointer-events:none; }
@@ -473,7 +467,7 @@ body.topbar-hidden .hero{
   padding:0; border:none; background:none; box-shadow:none;
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
-  transition:transform .15s ease, filter .15s ease;
+  transition:transform .22s cubic-bezier(.2,.8,.2,1);
 }
 /* Height fixed rather than derived from the file, and it is the height that
    matters: app.js measures this strip into --category-nav-h for the hero's
@@ -499,10 +493,14 @@ body.topbar-hidden .hero{
 }
 .category-nav__item:hover .category-nav__colour,
 .category-nav__item:focus-visible .category-nav__colour{ opacity:1; }
-/* No colour change to make on fixed artwork, so hover is the lift alone plus
-   a little separation from the hero behind it. */
-.category-nav__item:hover{ transform:translateY(-2px); }
-.category-nav__item:active{ transform:translateY(0); filter:none; transition-duration:.08s; }
+/* The same motion a poster gets on hover -- scale and rise, on the same
+   curve and duration -- but without the accent stroke, which on artwork that
+   already carries its own plate would read as a second border. */
+.category-nav__item:hover, .category-nav__item:focus-visible{
+  transform:scale(1.08) translateY(-4px);
+  z-index:2;
+}
+.category-nav__item:active{ transform:scale(1.04) translateY(-2px); transition-duration:.08s; }
 .category-nav__item--empty{ opacity:.35; cursor:default; pointer-events:none; }
 .row__scroller{
   display:flex; gap:20px; overflow-x:auto;
@@ -888,10 +886,8 @@ body.admin-mode .settings-grid{
   padding:9px 10px; border-radius:var(--radius-sm);
   border:1px solid var(--color-divider); background:rgba(6,45,81,0.07);
   color:var(--color-neutral-700); font-family:inherit; font-size:12px;
-  cursor:pointer; transition:background-color .1s ease, border-color .1s ease, color .1s ease, transform .1s ease;
+  cursor:pointer; transition:background-color .1s ease, border-color .1s ease, color .1s ease;
 }
-.keystone__corner:hover{ transform:translateY(-2px); }
-.keystone__corner:active{ transform:translateY(0); }
 .keystone__corner:hover{ border-color:var(--color-accent); color:var(--color-accent); }
 .keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.17); }
 .keystone__corner.is-selected{
@@ -963,10 +959,8 @@ body.admin-mode .settings-grid{
   border:1px solid var(--color-divider); background:rgba(6,45,81,0.07);
   color:var(--color-text); font-size:18px; line-height:1; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
-  transition:background-color .1s ease, border-color .1s ease, transform .1s ease;
+  transition:background-color .1s ease, border-color .1s ease;
 }
-.mapping-row__step:hover{ transform:translateY(-2px); }
-.mapping-row__step:active{ transform:translateY(0); }
 .mapping-row__step:hover{ border-color:var(--color-accent); color:var(--color-accent); }
 .mapping-row__step:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.17); }
 .mapping-row__number{
@@ -1086,10 +1080,8 @@ body.admin-mode .settings-grid{
   font-size:18px; font-weight:500;
   cursor:pointer;
   display:flex; align-items:center; justify-content:center;
-  transition:background-color .1s ease, border-color .1s ease, transform .1s ease;
+  transition:background-color .1s ease, border-color .1s ease;
 }
-.pinpad__key:hover{ transform:translateY(-2px); }
-.pinpad__key:active{ transform:translateY(0); }
 .pinpad__key:hover{ background:rgba(6,45,81,0.12); border-color:var(--color-accent); }
 .pinpad__key:active{ background:var(--color-accent-800); }
 .pinpad__key--ghost{ background:none; border:none; font-size:12px; color:var(--color-neutral-600); }
