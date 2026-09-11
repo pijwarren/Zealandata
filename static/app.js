@@ -321,11 +321,17 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
 
 let allMediaItems = [];
 
-// Wordmark placeholders for this library's fixed 6 categories (real icons
-// TBD) -- jumps to that category's row when clicked, regardless of scroll
-// position. Built once; renderCategories() below just toggles which ones
-// currently have any content, since not every category necessarily has
-// videos in it yet.
+// The ESNZ mission badges for this library's fixed 6 categories -- jumps to
+// that category's row when clicked, regardless of scroll position. Built
+// once; renderCategories() below just toggles which ones currently have any
+// content, since not every category necessarily has videos in it yet.
+//
+// Each badge is a whole lockup -- plate, mission mark AND the wording -- so
+// it replaces the chip rather than sitting inside one, and the button itself
+// is left unstyled (see .category-nav__item). That also means the widths
+// differ per name (Energy 127px, Weather and Climate Hazards 203px, all 55
+// tall), which is why the strip centres them rather than stretching six
+// equal cells.
 const CATEGORY_NAV_NAMES = [
   "Geological Hazards",
   "Weather and Climate Hazards",
@@ -334,11 +340,22 @@ const CATEGORY_NAV_NAMES = [
   "Oceans and Fisheries",
   "Energy",
 ];
+// Derived, not a lookup table: static/icons/categories/ is named to match
+// this exact transform, so a file and its category cannot drift apart
+// without the image simply 404ing (and falling back to the alt text below).
+const categoryIconSlug = (name) => name.toLowerCase().replace(/\s+/g, "-");
 for (const name of CATEGORY_NAV_NAMES) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "category-nav__item";
-  btn.textContent = name.replace(/\band\b/gi, "&");
+  const img = document.createElement("img");
+  img.src = `/static/icons/categories/${categoryIconSlug(name)}.svg`;
+  // The badge carries the wording as artwork, so the alt text is what gives
+  // the button its accessible name -- and is what shows if the file is ever
+  // missing, which is the whole fallback. Ampersand to match the row
+  // headings, which do the same substitution.
+  img.alt = name.replace(/\band\b/gi, "&");
+  btn.appendChild(img);
   btn.dataset.categoryName = name;
   btn.addEventListener("click", () => {
     const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);

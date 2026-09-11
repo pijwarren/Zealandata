@@ -311,11 +311,21 @@ body.topbar-hidden .hero{
   scroll-margin-top:calc(var(--category-nav-h) + var(--topbar-h) + 20px);
 }
 
+/* The six badges come to 986px of fixed-width artwork, which fits a 1440
+   viewport with room to spare but not a narrow one. Since they can no longer
+   shrink -- the wording is part of the artwork and would go unreadable long
+   before it went small enough -- the strip scrolls instead, the same
+   scrollbar-less pattern .row__scroller and .dock__docs use. "safe center"
+   keeps them centred while they fit and stops the first badge being pushed
+   off the left edge once they don't. */
 .category-nav{
   position:relative; flex-shrink:0; z-index:1;
-  display:flex; flex-wrap:nowrap; justify-content:center; gap:clamp(4px, 1vw, 12px);
+  display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
   padding:16px var(--page-inset) 20px;
+  overflow-x:auto;
+  scrollbar-width:none;
 }
+.category-nav::-webkit-scrollbar{ display:none; }
 /* Blur+fade behind the buttons rather than on .category-nav itself, so it
    doesn't also mute the button labels -- content sliding up from beneath
    the sticky hero would otherwise show through the gaps around them. */
@@ -327,24 +337,34 @@ body.topbar-hidden .hero{
   mask-image:linear-gradient(180deg, black 60%, transparent 100%);
   -webkit-mask-image:linear-gradient(180deg, black 60%, transparent 100%);
 }
+/* The ESNZ mission badge IS the chip -- it brings its own plate, mark and
+   wording as one piece of artwork (see app.js's CATEGORY_NAV_NAMES), so the
+   button is stripped back to a transparent holder. Everything the old glass
+   chip painted here (fill, rim, blur, radius, uppercase type) now lives
+   inside the SVG, and repainting any of it behind the badge would just show
+   as a halo around its square-bottom-left corner. */
 .category-nav__item{
-  flex:1 1 0; min-width:0; width:auto;
-  min-height:56px; padding:clamp(6px, 1.2vw, 14px) clamp(4px, 1vw, 18px);
+  flex:0 0 auto; min-width:0;
+  padding:0; border:none; background:none; box-shadow:none;
   display:flex; align-items:center; justify-content:center;
-  text-align:center;
-  background:rgba(43,39,65,0.5);
-  backdrop-filter:blur(20px) saturate(180%);
-  -webkit-backdrop-filter:blur(20px) saturate(180%);
-  border:1px solid rgba(255,255,255,0.16);
-  border-radius:var(--radius-md);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,0.35), inset 0 0 0 1px rgba(255,255,255,0.05);
-  color:var(--color-text); font-family:var(--font-heading); font-weight:600;
-  font-size:clamp(8px, 1.6vw, 12px); text-transform:uppercase; letter-spacing:.3px; line-height:1.3;
   cursor:pointer;
-  transition:background .15s ease, border-color .15s ease, transform .15s ease;
+  transition:transform .15s ease, filter .15s ease;
 }
-.category-nav__item:hover{ background:rgba(43,39,65,0.68); border-color:var(--color-accent); transform:translateY(-2px); }
-.category-nav__item:active{ background:rgba(43,39,65,0.85); border-color:var(--color-accent); transform:translateY(0); transition-duration:.08s; }
+/* Height fixed rather than derived from the file, and it is the height that
+   matters: app.js measures this strip into --category-nav-h for the hero's
+   sticky offset, and an <img> has no intrinsic size until its SVG arrives.
+   Left to `height:auto` the nav measures padding-only on first paint, parks
+   the hero ~55px wrong, and only corrects when the ResizeObserver catches
+   the images loading. Pinning the height reserves the right box immediately;
+   width fills in when the file lands. 55px is the artwork's own height, so
+   the badges render 1:1 with no resampling. */
+.category-nav__item img{
+  display:block; height:55px; width:auto;
+}
+/* No colour change to make on fixed artwork, so hover is the lift alone plus
+   a little separation from the hero behind it. */
+.category-nav__item:hover{ transform:translateY(-2px); filter:drop-shadow(0 6px 14px rgba(0,0,0,0.5)); }
+.category-nav__item:active{ transform:translateY(0); filter:none; transition-duration:.08s; }
 .category-nav__item--empty{ opacity:.35; cursor:default; pointer-events:none; }
 .row__scroller{
   display:flex; gap:20px; overflow-x:auto;
@@ -1070,6 +1090,10 @@ body.admin-mode #setHeroBtn{ display:flex; }
   .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
   .category-nav{ padding:14px 16px 18px; }
+  /* Smaller on a phone, where the strip is scrolling anyway (see the base
+     rule) -- 44px still carries the wording legibly and fits more of the
+     six on screen at once. */
+  .category-nav__item img{ height:44px; }
   .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; }
   /* row-gap isn't used here (rather than margin on each row) because a
      hidden (display:none) row still consumes its row-gap in a CSS grid --
