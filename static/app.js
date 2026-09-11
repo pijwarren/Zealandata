@@ -1,4 +1,11 @@
 // ---------------------------------------------------------------- DOM refs
+// The page's one real scroll container -- html/body no longer scroll (see
+// style.css) so mobile Safari's own address bar stops collapsing in
+// response to the document scrolling, which is what was making the
+// topbar/dock (both position:fixed) visibly wiggle. Every place that used
+// to read window.scrollY or listen for a "scroll" on window now does it on
+// this instead.
+const pageScroll = document.getElementById("pageScroll");
 const topbar = document.getElementById("topbar");
 const topbarNav = document.getElementById("topbarNav");
 const settingsBtn = document.getElementById("settingsBtn");
@@ -655,36 +662,36 @@ window.addEventListener("resize", syncTabletTopbar, { passive: true });
 // input now.
 function syncTopbarContrast() {
   const heroBottom = heroSection.classList.contains("hidden") ? 0 : heroSection.offsetHeight;
-  const pastHero = window.scrollY > Math.max(0, heroBottom - topbar.offsetHeight);
+  const pastHero = pageScroll.scrollTop > Math.max(0, heroBottom - topbar.offsetHeight);
   document.body.classList.toggle("topbar-on-light", pastHero);
 }
 
-window.addEventListener("scroll", syncTopbarContrast, { passive: true });
+pageScroll.addEventListener("scroll", syncTopbarContrast, { passive: true });
 window.addEventListener("resize", syncTopbarContrast, { passive: true });
 
 // -------------------------------------------------- hero content fade ---
 // The title/description/Play button/category tag fade out as the hero
 // scrolls up, so they're gone before they'd otherwise scroll in behind the
 // topbar (title text sliding in under the logo reads as broken, not as
-// content that's simply moved on). rect.top + scrollY is the block's
-// document-relative top, which -- unlike rect.top alone -- stays constant
-// as you scroll, so it doesn't need caching or a resize/layout-change
-// invalidation of its own; re-derived fresh every scroll tick instead.
-// fadeEnd is the scrollY at which that top edge would reach the topbar's
-// bottom edge -- opacity reaches 0 there, not after, so nothing is still
-// fading in behind the topbar itself.
+// content that's simply moved on). rect.top + pageScroll.scrollTop is the
+// block's scroll-container-relative top, which -- unlike rect.top alone --
+// stays constant as you scroll, so it doesn't need caching or a
+// resize/layout-change invalidation of its own; re-derived fresh every
+// scroll tick instead. fadeEnd is the scrollTop at which that top edge
+// would reach the topbar's bottom edge -- opacity reaches 0 there, not
+// after, so nothing is still fading in behind the topbar itself.
 function syncHeroContentFade() {
   if (heroSection.classList.contains("hidden")) return;
-  const docTop = heroContent.getBoundingClientRect().top + window.scrollY;
+  const docTop = heroContent.getBoundingClientRect().top + pageScroll.scrollTop;
   const fadeEnd = Math.max(1, docTop - topbar.offsetHeight);
-  const opacity = Math.max(0, Math.min(1, 1 - window.scrollY / fadeEnd));
+  const opacity = Math.max(0, Math.min(1, 1 - pageScroll.scrollTop / fadeEnd));
   heroContent.style.opacity = String(opacity);
   // Faded-out but still in normal flow (the hero itself isn't pinned), so
   // without this the invisible Play button/tag stay clickable/tabbable
   // for a while longer as the rest of the box keeps scrolling past.
   heroContent.style.pointerEvents = opacity < 0.05 ? "none" : "";
 }
-window.addEventListener("scroll", syncHeroContentFade, { passive: true });
+pageScroll.addEventListener("scroll", syncHeroContentFade, { passive: true });
 window.addEventListener("resize", syncHeroContentFade, { passive: true });
 
 // ------------------------------------------------------------- overlays
@@ -728,16 +735,16 @@ function closeOverlay(scrimEl, panelEl, onClosed) {
 // while it's open -- otherwise a scroll that ran past the end of the
 // drawer, or one made with the pointer over the scrim, moved the whole
 // library underneath. See style.css's .scroll-locked, which is set on
-// <html> because that's what actually scrolls here. Kept locked through
-// the close animation too, or the page behind would jump into view before
-// the drawer has finished fading out.
+// #pageScroll because that's what actually scrolls here. Kept locked
+// through the close animation too, or the page behind would jump into
+// view before the drawer has finished fading out.
 function openSettings() {
-  document.documentElement.classList.add("scroll-locked");
+  pageScroll.classList.add("scroll-locked");
   openOverlay(settingsScrim, settingsDrawer);
 }
 function closeSettings() {
   closeOverlay(settingsScrim, settingsDrawer, () => {
-    document.documentElement.classList.remove("scroll-locked");
+    pageScroll.classList.remove("scroll-locked");
   });
 }
 // While locked, almost everything in the drawer is admin-gated and hidden

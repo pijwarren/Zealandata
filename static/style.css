@@ -127,31 +127,21 @@
 
 *{ box-sizing:border-box; }
 
+/* Neither html nor body scroll any more -- both pinned to exactly the
+   viewport height, with #pageScroll (below) as the one real scroll
+   container for the hero and browse area. This exists entirely for mobile
+   Safari: its address bar collapses/expands in response to the DOCUMENT
+   scrolling, and .topbar/.dock-wrap (both position:fixed, anchored to the
+   viewport) visibly wiggled as that animated. Trapping the scrolling in an
+   inner element instead means the document itself never scrolls, so that
+   toolbar animation -- and the wiggle it drove -- never triggers. topbar,
+   dock-wrap and every modal stay as ordinary position:fixed children of
+   body, same as before; only the hero+browse content moved, into
+   #pageScroll (see templates/index.html). */
 html{
-  /* .row__scroller intentionally bleeds a bit past the viewport edge
-     (negative margin, for hover-shadow room) -- clip that here so it
-     can't create a page-level horizontal scrollbar. Doesn't affect the
-     scroller's own overflow-x:auto, which is a separate element. */
-  overflow-x:hidden;
-  /* Belt-and-suspenders alongside the overflow-x above: that stops the
-     page having anywhere to scroll to sideways, this stops the elastic
-     rubber-band some touch browsers still show at a scroll boundary even
-     when there's nothing past it to reveal. Doesn't touch vertical
-     overscroll (the pull-to-refresh-style bounce there is left alone) or
-     any scroll container's own axis -- see .row__scroller, .topbar__nav
-     and .dock__docs, which all keep their default overscroll-behavior so
-     their horizontal swipe isn't affected. */
-  overscroll-behavior-x:none;
-  /* Keeps the scrollbar's space reserved even while the page is locked
-     below, so opening the settings drawer doesn't shunt the whole page
-     sideways by a scrollbar width as it disappears. */
-  scrollbar-gutter:stable;
+  height:100vh;
+  overflow:hidden;
 }
-/* The page behind a modal shouldn't move. Set on <html> rather than
-   <body>: html already carries an overflow-x, which stops body's own
-   overflow propagating to the viewport, so html is what actually
-   scrolls here. */
-html.scroll-locked{ overflow-y:hidden; }
 html,body{
   --hero-h: clamp(380px, 64vh, 640px);
   /* Measured into this by app.js, since it depends on the bar's own
@@ -159,7 +149,6 @@ html,body{
      that runs. */
   --topbar-h: 60px;
   margin:0;
-  min-height:100vh;
   background:var(--color-bg);
   color:var(--color-text);
   font-family:var(--font-body);
@@ -174,11 +163,34 @@ html,body{
      can only ever narrow a gesture going down the tree, never reopen one
      an ancestor has already forbidden, and .row__scroller, .topbar__nav
      and .dock__docs all depend on a horizontal pan reaching them to
-     swipe-scroll. overflow-x:hidden below is what actually stops the page
-     itself panning sideways; touch-action here is only about the
-     double-tap. */
+     swipe-scroll. #pageScroll's own overflow-x:hidden below is what
+     actually stops the page itself panning sideways; touch-action here is
+     only about the double-tap. */
   touch-action:manipulation;
 }
+body{
+  height:100vh;
+  overflow:hidden;
+}
+
+/* The one real scroll container -- see the html rule above for why. Sized
+   to fill whatever's left below the fixed topbar's own height isn't
+   needed here: the topbar floats OVER this (it's position:fixed, this is
+   just a full-height, full-width block underneath it), the same way the
+   hero used to scroll in from under it before this element existed. */
+#pageScroll{
+  height:100%;
+  overflow-y:auto;
+  overflow-x:hidden;
+  overscroll-behavior-x:none;
+  -webkit-overflow-scrolling:touch;
+  /* Keeps the scrollbar's space reserved even while scroll-locked below,
+     so opening the settings drawer doesn't shunt the page sideways by a
+     scrollbar width as it disappears. */
+  scrollbar-gutter:stable;
+}
+/* The page behind a modal shouldn't move. */
+#pageScroll.scroll-locked{ overflow-y:hidden; }
 
 .hidden{ display:none !important; }
 
