@@ -422,34 +422,42 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
    keeps them centred while they fit and stops the first badge being pushed
    off the left edge once they don't. */
 /* Pinned to the very top of the screen on its own -- not parked below the
-   topbar, behind it. It sticks flush at top:0, same as the topbar itself,
-   so once it reaches the top it rides there underneath the topbar's
-   transparent strip for the rest of the scroll (z-index below the topbar,
-   above everything else). A direct child of <body>, not nested in .hero,
-   because position:sticky only pins within its own parent's box -- sitting
-   inside the (short, non-sticky) hero would have let it scroll away with
-   it; body is tall enough that it stays put for the whole page. */
+   topbar, behind it. It sticks flush at top:0, same as the topbar itself
+   (z-index below the topbar, above everything else). A direct child of
+   <body>, not nested in .hero, because position:sticky only pins within
+   its own parent's box -- sitting inside the (short, non-sticky) hero
+   would have let it scroll away with it; body is tall enough that it
+   stays put for the whole page. */
 .category-nav{
   position:sticky; top:0; flex-shrink:0; z-index:20;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
-  /* Back to the original 16/20 now the badge hover is a 2px lift with no
-     shadow behind it -- overflow-x:auto still clips the other axis, but
-     2px is all there is to clear. */
-  padding:16px var(--page-inset) 20px;
+  /* Top padding clears the topbar's own measured height (--topbar-h) plus
+     the same 20px gap the badges keep below themselves, so they sit an
+     even distance from the logo/buttons above and whatever's below --
+     rather than sitting inside the topbar's box, which is fixed on top and
+     would otherwise swallow their clicks and rollover even where the
+     topbar itself paints nothing. The bottom 20px is also just enough to
+     clear the badges' own 2px hover lift without overflow-x:auto clipping
+     it on the other axis. */
+  padding:calc(var(--topbar-h) + 20px) var(--page-inset) 20px;
   overflow-x:auto;
   scrollbar-width:none;
 }
 .category-nav::-webkit-scrollbar{ display:none; }
 /* Blur+fade behind the buttons rather than on .category-nav itself, so it
    doesn't also mute the button labels -- content sliding up from beneath
-   the pinned strip would otherwise show through the gaps around them. */
+   the pinned strip would otherwise show through the gaps around them.
+   The mask's fade is a fixed 36px off the bottom edge rather than a
+   percentage of the box, so it still tapers off right where the badges
+   meet the content below -- not partway up the badges themselves -- now
+   that the topbar-clearing top padding has made the box much taller. */
 .category-nav::before{
   content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
   background:linear-gradient(180deg, rgba(243,244,246,1) 0%, rgba(243,244,246,0.25) 100%);
   backdrop-filter:blur(16px);
   -webkit-backdrop-filter:blur(16px);
-  mask-image:linear-gradient(180deg, black 60%, transparent 100%);
-  -webkit-mask-image:linear-gradient(180deg, black 60%, transparent 100%);
+  mask-image:linear-gradient(180deg, black calc(100% - 36px), transparent 100%);
+  -webkit-mask-image:linear-gradient(180deg, black calc(100% - 36px), transparent 100%);
 }
 /* The ESNZ mission badge IS the chip -- it brings its own plate, mark and
    wording as one piece of artwork (see app.js's CATEGORY_NAV_NAMES), so the
@@ -1280,7 +1288,9 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
-  .category-nav{ padding:14px 16px 18px; }
+  /* Same topbar-clearing top padding as the base rule, just paired with the
+     smaller 18px this breakpoint already uses below the badges. */
+  .category-nav{ padding:calc(var(--topbar-h) + 18px) 16px 18px; }
   /* Smaller on a phone, where the strip is scrolling anyway (see the base
      rule) -- 44px still carries the wording legibly and fits more of the
      six on screen at once. */
