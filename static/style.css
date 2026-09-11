@@ -221,13 +221,21 @@ button:focus-visible, .card:focus-visible{
 .topbar__title{
   display:flex; align-items:center;
 }
+/* <picture> is inline by default, which would add a descender's worth of
+   slack under the logo and throw the bar's measured height off by a pixel
+   or two. */
+.topbar__title picture{ display:block; }
 /* Height pinned to the icon buttons opposite, for the same two reasons as
    the category badges: it keeps the bar one 36px line tall so nothing about
    its height changes, and an <img> has no intrinsic size until its SVG
    arrives -- app.js measures this bar into --topbar-h for the hero's sticky
    offset, so a box that starts at zero would park the hero wrong for a
-   frame. The logo is a transparent single-colour mark, no plate, so it sits
-   straight on the bar's blur. */
+   frame. Both variants are transparent single-colour marks, no plate, so
+   they sit straight on the bar's blur.
+
+   width:auto is what lets this one rule serve both: the horizontal lockup
+   is 470x125 and lands at 135px wide, the E-only monogram 105x123 and lands
+   at 31px, and neither needs a width of its own. */
 .topbar__logo{
   display:block; height:36px; width:auto;
 }
