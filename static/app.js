@@ -283,17 +283,24 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
   const meta = document.createElement("div");
   meta.className = "card__meta";
 
+  // Title and remaining time share one line, the time pushed right; the bar
+  // goes under both. Keeping them on a line is what lets the title sit back
+  // down near the card's foot instead of being pushed up by a stacked badge.
+  const line = document.createElement("div");
+  line.className = "card__line";
+
   const title = document.createElement("div");
   title.className = "card__title";
   title.textContent = item.title;
-  meta.appendChild(title);
+  line.appendChild(title);
 
   if (badge) {
     const b = document.createElement("div");
     b.className = "card__resume-badge";
     b.textContent = badge;
-    meta.appendChild(b);
+    line.appendChild(b);
   }
+  meta.appendChild(line);
 
   if (item.progress && item.progress.duration) {
     const bar = document.createElement("div");
@@ -387,14 +394,28 @@ for (const name of CATEGORY_NAV_NAMES) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "category-nav__item";
+  const slug = categoryIconSlug(name);
   const img = document.createElement("img");
-  img.src = `/static/icons/categories/${categoryIconSlug(name)}.svg`;
+  img.className = "category-nav__mono";
+  img.src = `/static/icons/categories/${slug}.svg`;
   // The badge carries the wording as artwork, so the alt text is what gives
   // the button its accessible name -- and is what shows if the file is ever
   // missing, which is the whole fallback. Ampersand to match the row
   // headings, which do the same substitution.
   img.alt = name.replace(/\band\b/gi, "&");
   btn.appendChild(img);
+  // Each mission has its own brand colour, which the nav shows on rollover.
+  // A second layer cross-faded over the first rather than a src swap: the
+  // coloured artwork sits on a slightly wider plate than the monochrome one,
+  // so swapping would jog the button width, and the first hover would wait
+  // on a network fetch. Decorative -- the mono layer already names the
+  // button, so this one is hidden from assistive tech.
+  const colour = document.createElement("img");
+  colour.className = "category-nav__colour";
+  colour.src = `/static/icons/categories/${slug}-colour.svg`;
+  colour.alt = "";
+  colour.setAttribute("aria-hidden", "true");
+  btn.appendChild(colour);
   btn.dataset.categoryName = name;
   btn.addEventListener("click", () => {
     const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
@@ -622,6 +643,55 @@ if (typeof ResizeObserver !== "undefined") {
   stickyObserver.observe(topbar);
 }
 window.addEventListener("resize", syncStickyOffsets, { passive: true });
+
+// ------------------------------------------------- top bar contrast ---
+// The bar has no plate behind it any more, so it sits directly on whatever
+// is underneath: the hero poster at the top of the page, the light page
+// ground once you have scrolled past it. Its logo and buttons default to
+// light ink for the poster and flip to dark when what is behind them is
+// light -- either because the page scrolled, or because this particular
+// poster happens to be a bright one.
+let heroTopIsLight = false;
+
+function syncTopbarContrast() {
+  // Past the hero, the bar is over the page ground, which is always light.
+  const heroBottom = heroSection.classList.contains("hidden") ? 0 : heroSection.offsetHeight;
+  const pastHero = window.scrollY > Math.max(0, heroBottom - topbar.offsetHeight);
+  document.body.classList.toggle("topbar-on-light", pastHero || heroTopIsLight);
+}
+
+// Mean luminance of the strip of the poster the bar actually covers -- not
+// the whole image, which averages out a bright sky over a dark seabed and
+// tells you nothing about the corner the logo sits in. Same-origin, so the
+// canvas stays untainted; wrapped anyway because a decode failure here must
+// not take the page down, and a wrong guess only costs contrast.
+function measureHeroTop() {
+  heroTopIsLight = false;
+  try {
+    if (!heroImg.naturalWidth) return;
+    const barFraction = topbar.offsetHeight / Math.max(1, heroSection.offsetHeight);
+    const stripH = Math.max(1, Math.round(heroImg.naturalHeight * barFraction));
+    const c = document.createElement("canvas");
+    c.width = 32; c.height = 8;
+    const ctx = c.getContext("2d", { willReadFrequently: true });
+    ctx.drawImage(heroImg, 0, 0, heroImg.naturalWidth, stripH, 0, 0, 32, 8);
+    const d = ctx.getImageData(0, 0, 32, 8).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) {
+      sum += 0.2126 * d[i] + 0.7152 * d[i + 1] + 0.0722 * d[i + 2];
+    }
+    // 0-255. 150 sits above a typical overcast sky and well above anything
+    // the hero scrim darkens, so only a genuinely bright top flips it.
+    heroTopIsLight = sum / (d.length / 4) > 150;
+  } catch (err) {
+    heroTopIsLight = false;
+  }
+  syncTopbarContrast();
+}
+
+heroImg.addEventListener("load", measureHeroTop);
+window.addEventListener("scroll", syncTopbarContrast, { passive: true });
+window.addEventListener("resize", syncTopbarContrast, { passive: true });
 
 // ------------------------------------------------------------- overlays
 

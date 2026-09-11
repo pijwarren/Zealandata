@@ -9,16 +9,15 @@
 <body>
 
 <header class="topbar" id="topbar">
-  <!-- <picture> rather than two images toggled with CSS, so the browser
-       fetches only the variant it will actually show. The 640px breakpoint
-       below has to stay in step with style.css's own mobile breakpoint by
-       hand -- there is no way to share one value between a source[media]
-       and a @media rule. -->
+  <!-- Painted as a CSS mask rather than an <img>: the bar has no plate now,
+       so the logo has to recolour for whatever is behind it, and under a
+       mask its colour is just background-color for a class to flip. That
+       also puts the horizontal/monogram breakpoint back in the stylesheet
+       with every other breakpoint, instead of in a source[media] that had
+       to be kept in step with it by hand. role+aria-label because an empty
+       span has no accessible name of its own. -->
   <div class="topbar__title">
-    <picture>
-      <source media="(max-width: 640px)" srcset="/static/icons/esnz-logo-e.svg">
-      <img class="topbar__logo" src="/static/icons/esnz-logo-horizontal.svg" alt="Earth Sciences New Zealand">
-    </picture>
+    <span class="topbar__logo" role="img" aria-label="Earth Sciences New Zealand"></span>
   </div>
   <div class="topbar__controls">
     <button type="button" class="btn-icon" id="startScreensaverBtn" aria-label="Start screensaver now" title="Start screensaver now">

@@ -263,17 +263,9 @@ button:focus-visible, .card:focus-visible{
   transform:translateY(0);
   transition:transform .25s ease;
 }
-/* Blur+fade lives on a pseudo-element behind the title/buttons rather than
-   directly on .topbar, so the mask that fades the blur out doesn't also
-   fade the actual content sitting on top of it. */
-.topbar::before{
-  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(243,244,246,0.85) 0%, rgba(243,244,246,0) 100%);
-  backdrop-filter:blur(14px);
-  -webkit-backdrop-filter:blur(14px);
-  mask-image:linear-gradient(180deg, black 0%, black 55%, transparent 100%);
-  -webkit-mask-image:linear-gradient(180deg, black 0%, black 55%, transparent 100%);
-}
+/* No plate. The bar sits straight on the poster, and its contents recolour
+   for what is behind them instead -- see .topbar__logo and app.js's
+   syncTopbarContrast. */
 .topbar--hidden{ transform:translateY(-100%); }
 .topbar__title{
   display:flex; align-items:center;
@@ -293,9 +285,33 @@ button:focus-visible, .card:focus-visible{
    width:auto is what lets this one rule serve both: the horizontal lockup
    is 470x125 and lands at 135px wide, the E-only monogram 105x123 and lands
    at 31px, and neither needs a width of its own. */
+/* A mask, not an image: with the plate gone the logo has to read on a dark
+   poster and on the light page ground, and under a mask its colour is
+   background-color, which a class can flip. Width is explicit because a
+   mask has no intrinsic size -- 136px is the 470x125 lockup at 36px tall.
+   Light by default, for the poster; body.topbar-on-light flips it. */
 .topbar__logo{
-  display:block; height:36px; width:auto;
+  display:block; width:136px; height:36px;
+  background-color:var(--color-on-media);
+  -webkit-mask:url("/static/icons/esnz-logo-horizontal.svg") no-repeat center / contain;
+  mask:url("/static/icons/esnz-logo-horizontal.svg") no-repeat center / contain;
+  transition:background-color .2s ease;
 }
+body.topbar-on-light .topbar__logo{ background-color:var(--color-accent-900); }
+/* The bar's own buttons take the same treatment -- they were light-theme
+   chips, invisible against a dark poster once the plate went. */
+.topbar .btn-icon{
+  background:rgba(255,255,255,0.16);
+  border-color:rgba(255,255,255,0.45);
+  color:var(--color-on-media);
+}
+.topbar .btn-icon:hover{ background:rgba(255,255,255,0.28); border-color:var(--color-on-media); }
+body.topbar-on-light .topbar .btn-icon{
+  background:rgba(6,45,81,0.07);
+  border-color:var(--color-divider);
+  color:var(--color-text);
+}
+body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); border-color:var(--color-accent); }
 .topbar__controls{ display:flex; align-items:center; gap:10px; }
 
 /* -------------------------------------------------------------- hero */
@@ -360,7 +376,9 @@ body.topbar-hidden .hero{
    44px badge beside it. The glyph goes up from 14px, which was sized to
    sit beside a word rather than to carry the button on its own. */
 .hero__play{
-  width:56px; height:56px; flex-shrink:0;
+  /* Matches .hero__badge img exactly, so the disc and the badge beside it
+     sit on one line rather than the button overhanging it. */
+  width:44px; height:44px; flex-shrink:0;
   padding:0; border-radius:50%;
   justify-content:center;
 }
@@ -462,6 +480,19 @@ body.topbar-hidden .hero{
 .category-nav__item img{
   display:block; height:55px; width:auto;
 }
+/* Rollover swaps the monochrome badge for the mission's own brand colour.
+   The coloured plate is drawn very slightly wider than the mono one, so it
+   is absolutely positioned and centred -- it covers the layer beneath
+   rather than resizing the button -- and only it fades, which avoids the
+   moment of half-transparency a two-way cross-fade would give. */
+.category-nav__colour{
+  position:absolute; top:50%; left:50%;
+  transform:translate(-50%,-50%);
+  opacity:0; pointer-events:none;
+  transition:opacity .15s ease;
+}
+.category-nav__item:hover .category-nav__colour,
+.category-nav__item:focus-visible .category-nav__colour{ opacity:1; }
 /* No colour change to make on fixed artwork, so hover is the lift alone plus
    a little separation from the hero behind it. */
 .category-nav__item:hover{ transform:translateY(-2px); }
@@ -580,7 +611,14 @@ body.topbar-hidden .hero{
   display:flex; flex-direction:column; gap:6px;
   z-index:1;
 }
-.card__title{ font-size:13px; font-weight:500; color:var(--color-on-media); }
+/* Title and remaining time on one line, the time pushed to the right edge
+   and never squeezed -- the title takes the slack and ellipsises instead. */
+.card__line{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; }
+.card__title{
+  flex:1 1 auto; min-width:0;
+  font-size:13px; font-weight:500; color:var(--color-on-media);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}
 .card__top-right{
   position:absolute; top:9px; right:9px;
   display:flex; align-items:center; gap:6px;
@@ -590,6 +628,7 @@ body.topbar-hidden .hero{
    stay readable; sitting in the bottom stack it is already on the card
    scrim, and the plate would just be a blob over a dark gradient. */
 .card__resume-badge{
+  flex:0 0 auto;
   font-size:10px; font-weight:500; letter-spacing:.2px;
   color:var(--color-on-media-dim);
 }
@@ -1199,6 +1238,14 @@ body.admin-mode #setHeroBtn{ display:flex; }
 
 @media (max-width:640px){
   .topbar{ padding:14px 16px; }
+  /* The monogram below 640, as the <picture> source used to do -- now in the
+     stylesheet with every other breakpoint. 31px is the 105x123 mark at 36px
+     tall. */
+  .topbar__logo{
+    width:31px;
+    -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
+    mask-image:url("/static/icons/esnz-logo-e.svg");
+  }
   html,body{ --hero-h: clamp(250px, 38vh, 640px); }
   /* bottom must clear #browseMain's -40px overlap (below) or the hero's
      own content -- particularly the Play button, last in the stack --
