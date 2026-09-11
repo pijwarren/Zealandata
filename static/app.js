@@ -733,8 +733,13 @@ settingsBtn.addEventListener("click", async () => {
   }
   openSettings();
 });
+// No tap-outside-to-close here (unlike the PIN pad, resume prompt and doc
+// viewer, which all still close on their scrim) -- this is the admin
+// panel, reachable only once unlocked, and a stray tap on the dimmed
+// backdrop around it (easy to land on the calibration panel's wider
+// layout) shouldn't discard whatever was mid-edit. The X button is the
+// only way to close it now.
 settingsCloseBtn.addEventListener("click", closeSettings);
-settingsScrim.addEventListener("click", closeSettings);
 
 let screensaverEnabled = false;
 
