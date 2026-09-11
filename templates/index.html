@@ -47,8 +47,13 @@
       </div>
     </div>
   </div>
-  <div class="category-nav" id="categoryNav"></div>
 </div>
+
+<!-- Its own element, not nested in .hero: the badges pin to the top of the
+     screen on their own (see style.css's .category-nav), independent of the
+     hero above them, which just scrolls away underneath like ordinary
+     content. -->
+<div class="category-nav" id="categoryNav"></div>
 
 <main id="browseMain">
   <div id="empty" class="empty hidden">

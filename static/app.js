@@ -503,9 +503,11 @@ function renderPopularRow(items) {
 function paintHero(item, heroThumbnail) {
   if (!item) {
     heroSection.classList.add("hidden");
+    categoryNav.classList.add("hidden"); // no longer nested in the hero -- hide it too
     return;
   }
   heroSection.classList.remove("hidden");
+  categoryNav.classList.remove("hidden");
   // The strip is unmeasurable while the hero is display:none, so take the
   // reading now it has one. (ResizeObserver catches this too where it
   // exists; this covers the browsers where it doesn't.)
@@ -603,12 +605,12 @@ setHeroBtn.addEventListener("click", async () => {
   paintHeroFromPick(lastContinueItems, allMediaItems);
 });
 
-// Both offsets the hero's sticky position is built from (see style.css's
-// .hero) depend on how their own content wraps -- the category labels
-// shrink and rewrap with the viewport, and the bar's height follows its
-// buttons -- so they're measured rather than guessed. Without this the
-// strip parks a few pixels high or low and either clips its own buttons
-// or leaves a sliver of hero showing above them.
+// Both feed a category jump's scroll-margin-top (see style.css's .row),
+// which needs to clear the topbar+nav pair pinned above it, and depend on
+// how their own content wraps -- the category labels shrink and rewrap
+// with the viewport, and the bar's height follows its buttons -- so
+// they're measured rather than guessed. Without this a jump lands a few
+// pixels short, with the row heading tucked under the pinned strip.
 function syncStickyOffsets() {
   const nav = categoryNav.offsetHeight;
   const bar = topbar.offsetHeight;

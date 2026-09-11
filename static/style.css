@@ -317,25 +317,12 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
 
 /* -------------------------------------------------------------- hero */
 
-/* .hero is one sticky unit -- the media area and the category-nav strip
-   below it stay pinned together as you scroll, rather than the nav being
-   left behind in normal flow underneath the pinned hero. */
-/* Sticky, but pinned at a negative offset rather than 0: the hero slides
-   up and out of the way like normal content, and only stops once its
-   bottom strip -- the category buttons -- has reached the top. So the
-   buttons end up parked below the top bar and go no further, while the
-   rows get the whole viewport instead of whatever was left under a hero
-   that never moved.
-
-   The buttons stay inside .hero deliberately. position:sticky only pins
-   within its own parent's box, so a nav sitting inside a hero that
-   scrolled away would scroll away with it -- pinning the hero itself is
-   what lets the strip stay put without moving it out into its own
-   element. */
+/* Plain in-flow banner now -- it scrolls away under the topbar like any
+   other content, rather than sticking. Only the topbar and the category
+   badges (see .category-nav below) stay pinned; the hero image is
+   deliberately not part of that -- it should actually leave the screen as
+   you scroll past it. */
 .hero{
-  position:sticky;
-  top:calc(var(--category-nav-h) + var(--topbar-h) - var(--hero-h));
-  z-index:2;
   display:flex; flex-direction:column;
   height:var(--hero-h);
 }
@@ -429,8 +416,16 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
    scrollbar-less pattern .row__scroller and .dock__docs use. "safe center"
    keeps them centred while they fit and stops the first badge being pushed
    off the left edge once they don't. */
+/* Pinned to the very top of the screen on its own -- not parked below the
+   topbar, behind it. It sticks flush at top:0, same as the topbar itself,
+   so once it reaches the top it rides there underneath the topbar's
+   transparent strip for the rest of the scroll (z-index below the topbar,
+   above everything else). A direct child of <body>, not nested in .hero,
+   because position:sticky only pins within its own parent's box -- sitting
+   inside the (short, non-sticky) hero would have let it scroll away with
+   it; body is tall enough that it stays put for the whole page. */
 .category-nav{
-  position:relative; flex-shrink:0; z-index:1;
+  position:sticky; top:0; flex-shrink:0; z-index:20;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
   /* Back to the original 16/20 now the badge hover is a 2px lift with no
      shadow behind it -- overflow-x:auto still clips the other axis, but
@@ -442,7 +437,7 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
 .category-nav::-webkit-scrollbar{ display:none; }
 /* Blur+fade behind the buttons rather than on .category-nav itself, so it
    doesn't also mute the button labels -- content sliding up from beneath
-   the sticky hero would otherwise show through the gaps around them. */
+   the pinned strip would otherwise show through the gaps around them. */
 .category-nav::before{
   content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
   background:linear-gradient(180deg, rgba(243,244,246,1) 0%, rgba(243,244,246,0.25) 100%);
@@ -465,13 +460,14 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
   transition:transform .22s cubic-bezier(.2,.8,.2,1);
 }
 /* Height fixed rather than derived from the file, and it is the height that
-   matters: app.js measures this strip into --category-nav-h for the hero's
-   sticky offset, and an <img> has no intrinsic size until its SVG arrives.
-   Left to `height:auto` the nav measures padding-only on first paint, parks
-   the hero ~55px wrong, and only corrects when the ResizeObserver catches
-   the images loading. Pinning the height reserves the right box immediately;
-   width fills in when the file lands. 55px is the artwork's own height, so
-   the badges render 1:1 with no resampling. */
+   matters: app.js measures this strip into --category-nav-h, which a
+   category jump's scroll-margin-top (see .row) uses to clear the pinned
+   topbar+nav pair, and an <img> has no intrinsic size until its SVG
+   arrives. Left to `height:auto` the nav measures padding-only on first
+   paint and only corrects once the ResizeObserver catches the images
+   loading. Pinning the height reserves the right box immediately; width
+   fills in when the file lands. 55px is the artwork's own height, so the
+   badges render 1:1 with no resampling. */
 .category-nav__item img{
   display:block; height:55px; width:auto;
 }
