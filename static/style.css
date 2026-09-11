@@ -343,34 +343,15 @@ body.topbar-on-light .topbar::before{
   transition:background-color .2s ease;
 }
 body.topbar-on-light .topbar__logo{ background-color:var(--color-accent-900); }
-/* The bar's own buttons take the same treatment -- they were light-theme
-   chips, invisible against a dark poster once the plate went. Sized to
-   match the category badges too (see .topbar__logo above). */
-.topbar .btn-icon{
-  width:55px; height:55px;
-  background:rgba(255,255,255,0.16);
-  border-color:rgba(255,255,255,0.45);
-  color:var(--color-on-media);
-  /* .btn-icon's own transition covers background/border-color for its
-     hover state; color is added here so the padlock (painted via
-     currentColor, see .topbar__settings-icon) fades with everything else
-     in the bar on the light/dark crossing instead of snapping. */
-  transition:background .15s ease, border-color .15s ease, color .2s ease;
-}
-.topbar .btn-icon:hover{ background:rgba(255,255,255,0.28); border-color:var(--color-on-media); }
-body.topbar-on-light .topbar .btn-icon{
-  background:rgba(6,45,81,0.07);
-  border-color:var(--color-divider);
-  color:var(--color-text);
-}
-body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); border-color:var(--color-accent); }
 /* A mask, like .topbar__logo, rather than an inline <svg fill="currentColor">
    like the button used to carry -- swapping the source file (locked vs
    unlocked) is simpler as a background-image/mask-image toggle than
    keeping two <svg> markups in the DOM and hiding one. background-color:
-   currentColor is what lets it pick up .btn-icon's own colour (and its
-   body.topbar-on-light flip) for free, same mechanism, no separate rule
-   needed here.
+   currentColor is what lets it pick up its button's own colour for free,
+   same mechanism, no separate rule needed here. Now sized for the dock's
+   38px buttons (see .dock__controls .btn-icon) rather than the topbar's
+   55px ones -- this lived there until the settings button moved down
+   into the dock alongside the rest of playback.
 
    Width is explicit, not auto: unlike an <img>, a mask gives the box no
    intrinsic size of its own to size against, so width:auto here collapses
@@ -380,17 +361,21 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
    taller), so unlocked gets its own narrower width alongside the
    mask-image swap below rather than sharing this one. */
 .topbar__settings-icon{
-  display:block; width:20px; height:20px;
+  display:block; width:14px; height:14px;
   background-color:currentColor;
   -webkit-mask:url("/static/icons/locked.svg") no-repeat center / contain;
   mask:url("/static/icons/locked.svg") no-repeat center / contain;
 }
 body.admin-mode .topbar__settings-icon{
-  width:15px;
+  width:10px;
   -webkit-mask-image:url("/static/icons/unlocked.svg");
   mask-image:url("/static/icons/unlocked.svg");
 }
-.topbar__controls{ display:flex; align-items:center; gap:10px; }
+/* Empty now -- see the template's comment -- and kept only as a spacer the
+   same width the settings button used to be, so the badges in
+   .topbar__nav beside it stay centred against the logo rather than
+   drifting into the space a button no longer occupies. */
+.topbar__controls{ width:55px; }
 /* The mission badges, pinned here permanently (see app.js, which builds
    them straight into this element -- there's no separate strip elsewhere
    any more). flex:1 takes whatever room .topbar__title and
@@ -1384,13 +1369,10 @@ body.admin-mode #setHeroBtn{ display:flex; }
     -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
     mask-image:url("/static/icons/esnz-logo-e.svg");
   }
-  .topbar .btn-icon{ width:32px; height:32px; }
-  /* Same 20:55 (locked) and 15:55 (unlocked) ratio the icon keeps against
-     its button at every other size -- left at the base 20/15px here it
-     would swallow more than half of a 32px button instead of the ~36%/27%
-     it reads at everywhere else. */
-  .topbar__settings-icon{ width:12px; height:12px; }
-  body.admin-mode .topbar__settings-icon{ width:9px; }
+  /* Matches the spacer's old width from when this held the settings
+     button itself (see .topbar__controls) -- keeps the same gap the
+     badges beside it centre in, now that the button's moved to the dock. */
+  .topbar__controls{ width:32px; }
   .category-nav__item img{ height:32px; }
 }
 @media (max-width:640px){
@@ -1404,12 +1386,11 @@ body.admin-mode #setHeroBtn{ display:flex; }
     -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
     mask-image:url("/static/icons/esnz-logo-e.svg");
   }
-  .topbar .btn-icon{ width:44px; height:44px; }
   /* The six mission badges don't fit a phone-width bar between the logo and
-     the settings button -- they'd either overflow it or squeeze down to
-     illegible artwork (the wording is baked into the SVG, so it can't
-     reflow). Dropped here rather than shrunk further; a category is still
-     reachable via its row further down the page. .topbar__title and
+     the (now-empty) controls spacer -- they'd either overflow it or squeeze
+     down to illegible artwork (the wording is baked into the SVG, so it
+     can't reflow). Dropped here rather than shrunk further; a category is
+     still reachable via its row further down the page. .topbar__title and
      .topbar__controls sit at .topbar's own justify-content:space-between
      ends regardless, so removing the middle flex item just leaves the gap
      between them. */

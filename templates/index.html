@@ -23,17 +23,12 @@
        (not a separate strip that comes and goes on scroll) -- see
        style.css's .topbar__nav. -->
   <div class="topbar__nav" id="topbarNav"></div>
-  <div class="topbar__controls">
-    <!-- The icon is a padlock rather than a gear now -- see
-         .topbar__settings-icon -- so the button doubles as an admin-mode
-         indicator (locked/unlocked, painted by app.js's paintAdminMode)
-         without needing to open the drawer to check. It still just opens
-         Settings either way; the actual lock/unlock control is the
-         "Unlock admin mode" button inside. -->
-    <button type="button" class="btn-icon" id="settingsBtn" aria-label="Settings" title="Settings">
-      <span class="topbar__settings-icon" aria-hidden="true"></span>
-    </button>
-  </div>
+  <!-- Empty now that the settings button has moved down to the dock (see
+       below) -- kept as a same-width spacer rather than removed outright,
+       so .topbar__nav's badges stay centred between it and the logo
+       instead of drifting right into the space the button used to
+       balance. -->
+  <div class="topbar__controls" aria-hidden="true"></div>
 </header>
 
 <div class="hero hidden" id="heroSection">
@@ -413,6 +408,17 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="17 1 21 5 17 9"></polyline><path d="M3 11V9a4 4 0 0 1 4-4h14"></path><polyline points="7 23 3 19 7 15"></polyline><path d="M21 13v2a4 4 0 0 1-4 4H3"></path></svg>
     </button>
     <button type="button" class="btn-icon" id="setHeroBtn" aria-label="Set as hero video" title="Set as hero video" disabled>★</button>
+    <!-- The icon is a padlock rather than a gear -- see
+         .topbar__settings-icon -- so the button doubles as an admin-mode
+         indicator (locked/unlocked, painted by app.js's paintAdminMode)
+         without needing to open the drawer to check. It still just opens
+         Settings either way; the actual lock/unlock control is the
+         "Unlock admin mode" button inside. Not tied to whether anything's
+         playing, unlike its siblings here -- see dockPlaybackBtns in
+         app.js, which this is deliberately left out of. -->
+    <button type="button" class="btn-icon" id="settingsBtn" aria-label="Settings" title="Settings">
+      <span class="topbar__settings-icon" aria-hidden="true"></span>
+    </button>
   </div>
   </div>
 </div>
