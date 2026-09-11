@@ -287,14 +287,15 @@ button:focus-visible, .card:focus-visible{
    The logo and buttons themselves still recolour for what's behind them
    rather than relying on a plate for their own legibility (see
    .topbar__logo and app.js's syncTopbarContrast) -- but the scrim below
-   is still needed, full-bleed across the whole bar, to hide page content
-   scrolling up behind the badges in the gaps between them once those are
-   pinned here too (see .topbar__nav): the same reason any pinned nav strip
-   needs one. Two-toned like the logo/buttons (see body.topbar-on-light
-   below): dark by default, since the bar sits over the hero poster from
-   page load, then swaps light once scrolled past it onto the page ground
-   -- unlike the logo/buttons this isn't just a colour flip, since the two
-   grounds need different-toned scrims, not just different-toned ink.
+   is still needed once scrolled past the hero, full-bleed across the whole
+   bar, to hide page content scrolling up behind the badges in the gaps
+   between them once those are pinned here too (see .topbar__nav): the same
+   reason any pinned nav strip needs one. Transparent by default, since the
+   bar sits over the hero poster from page load -- the poster's own
+   .hero__scrim already darkens its top edge for the logo/badges/buttons to
+   read against, so a second plate here just muddied it further -- then
+   picks up the light page-ground scrim (body.topbar-on-light below) once
+   scrolled past it, where there's no poster darkening anything underneath.
 
    Solid all the way through the bar's own height, not fading within it --
    the pseudo is deliberately taller than .topbar itself (height:calc(100%
@@ -305,20 +306,25 @@ button:focus-visible, .card:focus-visible{
 .topbar::before{
   content:""; position:absolute; top:0; left:0; right:0; height:calc(100% + 100px);
   z-index:-1; pointer-events:none;
-  background-color:rgba(22,24,38,0.55);
+  background-color:transparent;
   /* Matches .topbar__logo's own fade, so the scrim and the logo/buttons it
      sits behind cross from dark to light together rather than the plate
      snapping while everything on it eases. background-color rather than
      the background shorthand: this is a plain colour swap, no gradient or
      image to interpolate. */
   transition:background-color .2s ease;
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
   mask-image:linear-gradient(180deg, black calc(100% - 100px), transparent 100%);
   -webkit-mask-image:linear-gradient(180deg, black calc(100% - 100px), transparent 100%);
 }
+/* Blur lives here rather than the base rule above -- over the hero there's
+   no background-color for it to sit on (see there), and blurring the
+   poster with nothing drawn on top of it read as a smeared strip rather
+   than an absent scrim. Only needed once there's an actual plate to soften
+   what's under it. */
 body.topbar-on-light .topbar::before{
   background-color:rgba(243,244,246,1);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
 }
 .topbar__title{
   display:flex; align-items:center;
