@@ -61,7 +61,12 @@
   --color-neutral-900:#12202E;
 
   --color-divider:   rgba(6,45,81,0.14);
-  --color-danger:    #C42B2B;
+  /* Brand orange. Measured 2.63:1 on the ground, which is right for a warm
+     UI accent (the dock's Stop hover) but not for reading: the one place
+     danger inks TEXT is the PIN pad's 12px "Incorrect PIN", so that string
+     takes the darker companion below and stays legible. */
+  --color-danger:     #F47218;
+  --color-danger-ink: #B44E08;
 
   /* Ink for the surfaces that sit ON TOP OF PHOTOGRAPHY rather than on the
      UI ground -- the hero's copy, a card's title over its thumbnail, the
@@ -184,24 +189,24 @@ button.tag:active{ opacity:.65; }
 .btn-primary{ background:var(--color-text); color:var(--color-bg); border-color:var(--color-text); }
 .btn-primary:hover{ background:var(--color-accent-800); }
 .btn-primary:active{ background:var(--color-accent-900); }
-.btn-secondary{ border-color:var(--color-divider); }
-.btn-secondary:hover{ background:rgba(6,45,81,0.05); }
-.btn-secondary:active{ background:rgba(6,45,81,0.09); border-color:var(--color-accent); }
+.btn-secondary{ border-color:var(--color-divider); background:rgba(6,45,81,0.07); }
+.btn-secondary:hover{ background:rgba(6,45,81,0.12); }
+.btn-secondary:active{ background:rgba(6,45,81,0.17); border-color:var(--color-accent); }
 .btn-block{ width:100%; justify-content:center; }
 
 .btn-icon{
   width:36px; height:36px; padding:0;
   border-radius:50%;
   border:1px solid var(--color-divider);
-  background:rgba(255,255,255,0.75);
+  background:rgba(6,45,81,0.07);
   color:var(--color-text);
   font-family:var(--font-body);
   display:flex; align-items:center; justify-content:center;
   cursor:pointer;
   transition:background .15s ease, border-color .15s ease;
 }
-.btn-icon:hover{ background:rgba(6,45,81,0.06); border-color:var(--color-accent); }
-.btn-icon:active{ background:rgba(6,45,81,0.11); border-color:var(--color-accent); }
+.btn-icon:hover{ background:rgba(6,45,81,0.12); border-color:var(--color-accent); }
+.btn-icon:active{ background:rgba(6,45,81,0.17); border-color:var(--color-accent); }
 .btn-icon:disabled{ opacity:.35; cursor:default; pointer-events:none; }
 .btn-icon-lg{ width:68px; height:68px; }
 .btn-icon-lg:hover{ background:var(--color-accent-800); }
@@ -330,6 +335,14 @@ body.topbar-hidden .hero{
   color:var(--color-on-media);
 }
 .hero__content .tag{ margin-bottom:14px; }
+/* The category reads as its mission badge here rather than an outline tag,
+   in the -on-media (white) colourway -- see app.js's paintHeroCategory. The
+   outline tag is still styled above because a category with no badge of its
+   own (anything outside the fixed six, "Uncategorized" included) falls back
+   to it. Smaller than the nav's 55px: this one is a label, not a control, and
+   sitting it at the nav's size would read as the same button twice. */
+.hero__badge{ display:block; margin-bottom:14px; }
+.hero__badge img{ display:block; height:44px; width:auto; }
 /* The category tag and Play button both default to accent/navy fills, which
    are near-invisible against the scrim. Over media they invert: the button
    becomes the light surface and the navy becomes its label. */
@@ -776,15 +789,15 @@ body.admin-mode .settings-grid{
 }
 .keystone__corner{
   padding:9px 10px; border-radius:var(--radius-sm);
-  border:1px solid var(--color-divider); background:rgba(6,45,81,0.035);
+  border:1px solid var(--color-divider); background:rgba(6,45,81,0.07);
   color:var(--color-neutral-700); font-family:inherit; font-size:12px;
   cursor:pointer; transition:background-color .1s ease, border-color .1s ease, color .1s ease;
 }
 .keystone__corner:hover{ border-color:var(--color-accent); color:var(--color-accent); }
-.keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.11); }
+.keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.17); }
 .keystone__corner.is-selected{
   border-color:var(--color-accent); color:var(--color-accent);
-  background:rgba(26,107,174,0.10);
+  background:rgba(26,107,174,0.16);
 }
 /* Arrows live on the axis they drive -- left/right along the top, up/down
    down the left side -- so the pad sits in the corner of an L of them and
@@ -848,13 +861,13 @@ body.admin-mode .settings-grid{
 }
 .mapping-row__step{
   width:40px; height:40px; flex:0 0 auto; border-radius:50%;
-  border:1px solid var(--color-divider); background:rgba(6,45,81,0.035);
+  border:1px solid var(--color-divider); background:rgba(6,45,81,0.07);
   color:var(--color-text); font-size:18px; line-height:1; cursor:pointer;
   display:flex; align-items:center; justify-content:center;
   transition:background-color .1s ease, border-color .1s ease;
 }
 .mapping-row__step:hover{ border-color:var(--color-accent); color:var(--color-accent); }
-.mapping-row__step:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.11); }
+.mapping-row__step:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.17); }
 .mapping-row__number{
   width:84px; flex:0 0 auto; box-sizing:border-box; text-align:center;
   font:inherit; font-size:15px; font-variant-numeric:tabular-nums;
@@ -952,12 +965,12 @@ body.admin-mode .settings-grid{
   transition:background-color .1s ease;
 }
 .pinpad__dot--filled{ background:var(--color-accent); }
-.pinpad__error{ font-size:12px; color:var(--color-danger); margin:-14px 0 0; }
+.pinpad__error{ font-size:12px; color:var(--color-danger-ink); margin:-14px 0 0; }
 .pinpad__grid{ display:grid; grid-template-columns:repeat(3, 1fr); gap:12px; width:100%; }
 .pinpad__key{
   aspect-ratio:1; border-radius:50%;
   border:1px solid var(--color-divider);
-  background:rgba(6,45,81,0.035);
+  background:rgba(6,45,81,0.07);
   color:var(--color-text);
   font-family:var(--font-body);
   font-size:18px; font-weight:500;
@@ -965,10 +978,10 @@ body.admin-mode .settings-grid{
   display:flex; align-items:center; justify-content:center;
   transition:background-color .1s ease, border-color .1s ease;
 }
-.pinpad__key:hover{ background:rgba(6,45,81,0.06); border-color:var(--color-accent); }
+.pinpad__key:hover{ background:rgba(6,45,81,0.12); border-color:var(--color-accent); }
 .pinpad__key:active{ background:var(--color-accent-800); }
 .pinpad__key--ghost{ background:none; border:none; font-size:12px; color:var(--color-neutral-600); }
-.pinpad__key--ghost:hover{ background:rgba(6,45,81,0.04); border:none; }
+.pinpad__key--ghost:hover{ background:rgba(6,45,81,0.09); border:none; }
 
 /* -------------------------------------------------------------- dock */
 

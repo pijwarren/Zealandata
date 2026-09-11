@@ -344,6 +344,32 @@ const CATEGORY_NAV_NAMES = [
 // this exact transform, so a file and its category cannot drift apart
 // without the image simply 404ing (and falling back to the alt text below).
 const categoryIconSlug = (name) => name.toLowerCase().replace(/\s+/g, "-");
+const CATEGORY_ICON_SLUGS = new Set(CATEGORY_NAV_NAMES.map(categoryIconSlug));
+
+// The hero shows the same badge the nav does, in its -on-media (white)
+// colourway: the hero sits on the poster image under a dark scrim, so the
+// DarkBlue artwork the light-ground nav uses would disappear into it.
+//
+// Falls back to the old outline tag when there is no badge for the category.
+// The nav can assume its fixed six, but this cannot: item.category comes from
+// a folder name under MEDIA_DIR, so it is whatever someone made on the Pi --
+// "Uncategorized" for a loose file, or any new folder.
+function paintHeroCategory(category) {
+  heroCategory.textContent = "";
+  heroCategory.classList.toggle("hidden", !category);
+  if (!category) return;
+  const slug = categoryIconSlug(category);
+  if (CATEGORY_ICON_SLUGS.has(slug)) {
+    heroCategory.className = "hero__badge";
+    const img = document.createElement("img");
+    img.src = `/static/icons/categories/${slug}-on-media.svg`;
+    img.alt = category;
+    heroCategory.appendChild(img);
+  } else {
+    heroCategory.className = "tag tag-outline";
+    heroCategory.textContent = category;
+  }
+}
 for (const name of CATEGORY_NAV_NAMES) {
   const btn = document.createElement("button");
   btn.type = "button";
@@ -446,7 +472,7 @@ function paintHero(item, heroThumbnail) {
   syncStickyOffsets();
   const src = heroThumbnail || item.thumbnail;
   if (src) heroImg.src = src;
-  heroCategory.textContent = item.category || "";
+  paintHeroCategory(item.category);
   heroTitle.textContent = item.title;
   heroDesc.textContent = item.description || "";
   heroDesc.classList.toggle("hidden", !item.description);
