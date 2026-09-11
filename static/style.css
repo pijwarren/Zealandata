@@ -1225,7 +1225,12 @@ body.admin-mode .settings-grid{
 
 .dock-wrap{
   position:fixed; left:50%; bottom:20px;
-  transform:translateX(-50%);
+  /* translateZ(0) alongside the centring translateX -- same compositor-
+     layer promotion .topbar gets and for the same reason: a bottom-
+     anchored fixed element is exactly as prone to visibly wiggling on
+     scroll as a top-anchored one. The mobile override below drops the
+     centring half (left/right insets replace it) but keeps this half. */
+  transform:translateX(-50%) translateZ(0);
   width:min(860px, calc(100% - 32px));
   display:flex; flex-direction:column; gap:10px;
   z-index:50;
@@ -1492,7 +1497,10 @@ body.tablet-topbar .category-nav__item img{ height:32px; }
      even a little wide, html's overflow-x:hidden (see near the top of this
      file) clips the excess at the viewport edge instead of wrapping or
      scrolling it into view -- which reads as the dock being cut off. */
-  .dock-wrap{ left:10px; right:10px; bottom:10px; transform:none; width:auto; max-width:calc(100vw - 20px); }
+  /* translateZ(0) rather than the base rule's translateX(-50%) translateZ(0)
+     -- left/right insets do the centring at this width instead, but the
+     compositor-layer promotion stays. */
+  .dock-wrap{ left:10px; right:10px; bottom:10px; transform:translateZ(0); width:auto; max-width:calc(100vw - 20px); }
   /* row-gap isn't used here (rather than margin on each row) because a
      hidden (display:none) row still consumes its row-gap in a CSS grid --
      with time/frame hidden while idle, that leftover gap-without-content
