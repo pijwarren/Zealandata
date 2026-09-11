@@ -317,35 +317,51 @@ body.topbar-on-light .topbar .btn-icon{
 }
 body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); border-color:var(--color-accent); }
 .topbar__controls{ display:flex; align-items:center; gap:10px; }
-/* The compact badge set -- see app.js's setupNavDockObserver, which shows
-   it only once the full-size badges below the hero (.category-nav) have
-   scrolled out of view, and hides it again if you scroll back up to them.
-   flex:1 takes whatever room .topbar__title and .topbar__controls leave,
-   so it's naturally centred between the logo and the buttons without any
-   measuring -- unlike .category-nav (which has nothing to centre itself
-   against but the viewport), this one is an actual sibling of theirs in
-   the same flex row. Same badge markup and 55px sizing as .category-nav
-   -- .category-nav__item's own rules aren't scoped to that parent -- so it
-   sits on the bar's own line with no separate height rule needed. padding
-   gives its 2px hover lift (see .category-nav__item:active) room without
-   overflow-x:auto clipping it on the other axis, the same reason
-   .category-nav carries a bottom padding of its own. */
+/* The mission badges, pinned here permanently (see app.js, which builds
+   them straight into this element -- there's no separate strip elsewhere
+   any more). flex:1 takes whatever room .topbar__title and
+   .topbar__controls leave, so it's naturally centred between the logo and
+   the buttons with no measuring needed. Same badge markup and 55px sizing
+   as everywhere they've always used (.category-nav__item's own rules
+   aren't scoped to any particular parent). padding gives the badges' own
+   2px hover lift (see .category-nav__item:active) room without
+   overflow-x:auto clipping it on the other axis. */
 .topbar__nav{
+  position:relative; z-index:1;
   flex:1 1 auto; min-width:0;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
   margin:0 16px; padding:4px 0;
   overflow-x:auto; scrollbar-width:none;
 }
 .topbar__nav::-webkit-scrollbar{ display:none; }
+/* A scrim behind the badges, since (unlike the rest of the topbar, which
+   is deliberately plate-less) this needs to hide page content scrolling
+   up behind it in the gaps between them, the same reason a pinned nav
+   strip always has -- the badges' own artwork is legible either way, but
+   the gaps around them aren't. Two-toned like the logo/buttons beside it
+   (see .topbar__logo, body.topbar-on-light): dark by default, since this
+   sits over the hero poster from page load, then swaps light once
+   scrolled past it onto the page ground -- unlike the logo/buttons this
+   isn't just a colour flip, since the two grounds need different-toned
+   scrims, not just different-toned ink. */
+.topbar__nav::before{
+  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
+  background:linear-gradient(180deg, rgba(22,24,38,0.55) 0%, rgba(22,24,38,0.15) 100%);
+  backdrop-filter:blur(16px);
+  -webkit-backdrop-filter:blur(16px);
+  mask-image:linear-gradient(180deg, black 60%, transparent 100%);
+  -webkit-mask-image:linear-gradient(180deg, black 60%, transparent 100%);
+}
+body.topbar-on-light .topbar__nav::before{
+  background:linear-gradient(180deg, rgba(243,244,246,1) 0%, rgba(243,244,246,0.25) 100%);
+}
 
 /* -------------------------------------------------------------- hero */
 
 /* Plain in-flow banner -- it scrolls away under the topbar like any other
-   content, rather than sticking. Only the topbar stays pinned; the hero
-   image (and the full-size badges below it, .category-nav) are
-   deliberately not part of that -- they should actually leave the screen
-   as you scroll past, with .topbar__nav's compact badges taking over once
-   they're gone (see app.js's setupNavDockObserver). */
+   content, rather than sticking. The topbar (badges included, see
+   .topbar__nav) stays pinned; the hero image is deliberately not part of
+   that -- it should actually leave the screen as you scroll past it. */
 .hero{
   display:flex; flex-direction:column;
   height:var(--hero-h);
@@ -413,7 +429,12 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
 
 /* ---------------------------------------------------------- browsing */
 
-#browseMain{ padding:34px var(--page-inset) 150px; position:relative; z-index:1; background:var(--color-bg); margin-top:-40px; }
+/* No overlap with .hero above it -- used to carry a -40px margin to blend
+   into the hero's Play button, back when the category badges were nested
+   inside a sticky .hero and this sat right against that pinned strip.
+   Stale now that the badges live in the topbar (see .topbar__nav) and
+   .hero is a plain, unpinned banner -- nothing here needs blending over. */
+#browseMain{ padding:34px var(--page-inset) 150px; position:relative; z-index:1; background:var(--color-bg); }
 
 .row__heading{
   font-family:var(--font-heading);
@@ -439,39 +460,17 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
    before it went small enough -- the strip scrolls instead, the same
    scrollbar-less pattern .row__scroller and .dock__docs use. "safe center"
    keeps them centred while they fit and stops the first badge being pushed
-   off the left edge once they don't. */
-/* Not pinned -- this is the full-size set, in normal flow right below the
-   hero; it scrolls away with it. .topbar__nav (in the topbar itself) is
-   the compact set that takes over once this one's scrolled out of view --
-   see app.js's setupNavDockObserver. */
-.category-nav{
-  position:relative; flex-shrink:0; z-index:1;
-  display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
-  /* Back to the original 16/20 now the badge hover is a 2px lift with no
-     shadow behind it -- overflow-x:auto still clips the other axis, but
-     2px is all there is to clear. */
-  padding:16px var(--page-inset) 20px;
-  overflow-x:auto;
-  scrollbar-width:none;
-}
-.category-nav::-webkit-scrollbar{ display:none; }
-/* Blur+fade behind the buttons rather than on .category-nav itself, so it
-   doesn't also mute the button labels -- content sliding up from beneath
-   would otherwise show through the gaps around them. */
-.category-nav::before{
-  content:""; position:absolute; inset:0; z-index:-1; pointer-events:none;
-  background:linear-gradient(180deg, rgba(243,244,246,1) 0%, rgba(243,244,246,0.25) 100%);
-  backdrop-filter:blur(16px);
-  -webkit-backdrop-filter:blur(16px);
-  mask-image:linear-gradient(180deg, black 60%, transparent 100%);
-  -webkit-mask-image:linear-gradient(180deg, black 60%, transparent 100%);
-}
-/* The ESNZ mission badge IS the chip -- it brings its own plate, mark and
-   wording as one piece of artwork (see app.js's CATEGORY_NAV_NAMES), so the
-   button is stripped back to a transparent holder. Everything the old glass
-   chip painted here (fill, rim, blur, radius, uppercase type) now lives
-   inside the SVG, and repainting any of it behind the badge would just show
-   as a halo around its square-bottom-left corner. */
+   off the left edge once they don't. (This class prefix predates the
+   badges moving permanently into the topbar -- .category-nav itself is
+   gone; .topbar__nav is the only container that renders them now, but the
+   per-button classes below kept their original names.)
+
+   The ESNZ mission badge IS the chip -- it brings its own plate, mark and
+   wording as one piece of artwork (see app.js's CATEGORY_NAV_NAMES), so
+   the button is stripped back to a transparent holder. Everything a glass
+   chip would normally paint here (fill, rim, blur, radius, uppercase type)
+   lives inside the SVG instead, and repainting any of it behind the badge
+   would just show as a halo around its square-bottom-left corner. */
 .category-nav__item{
   flex:0 0 auto; min-width:0;
   padding:0; border:none; background:none; box-shadow:none;
@@ -482,8 +481,7 @@ body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); bor
 /* Height fixed rather than derived from the file -- an <img> has no
    intrinsic size until its SVG arrives, so `height:auto` would render at
    padding-only size for a frame and jump once it loads. 55px is the
-   artwork's own height, so the badges render 1:1 with no resampling
-   (matched by .topbar__nav's, which reuses this same rule). */
+   artwork's own height, so the badges render 1:1 with no resampling. */
 .category-nav__item img{
   display:block; height:55px; width:auto;
 }
@@ -1275,9 +1273,6 @@ body.admin-mode #setHeroBtn{ display:flex; }
   }
   .topbar .btn-icon{ width:44px; height:44px; }
   html,body{ --hero-h: clamp(250px, 38vh, 640px); }
-  /* bottom must clear #browseMain's -40px overlap (below) or the hero's
-     own content -- particularly the Play button, last in the stack --
-     gets visually covered by #browseMain painting on top of it */
   .hero__content{ left:16px; right:16px; bottom:44px; }
   /* the content stack is anchored from the bottom with nothing above it,
      so a long description can push the tag/title off the top of a short
@@ -1291,7 +1286,6 @@ body.admin-mode #setHeroBtn{ display:flex; }
   #browseMain{ padding:26px 16px 160px; }
   .row__scroller .card{ flex:0 0 225px; }
   .row__arrow{ display:none !important; }
-  .category-nav{ padding:14px 16px 18px; }
   /* Smaller on a phone, where the strip is scrolling anyway (see the base
      rule) -- 44px still carries the wording legibly and fits more of the
      six on screen at once. */

@@ -45,6 +45,7 @@ const pinBackBtn = document.getElementById("pinBackBtn");
 
 const heroSection = document.getElementById("heroSection");
 const heroImg = document.getElementById("heroImg");
+const heroContent = document.getElementById("heroContent");
 const heroCategory = document.getElementById("heroCategory");
 const heroTitle = document.getElementById("heroTitle");
 const heroDesc = document.getElementById("heroDesc");
@@ -56,7 +57,6 @@ const continueGrid = document.getElementById("continueGrid");
 const popularRow = document.getElementById("popularRow");
 const popularGrid = document.getElementById("popularGrid");
 const categoryRows = document.getElementById("categoryRows");
-const categoryNav = document.getElementById("categoryNav");
 
 const dockPreviewWrap = document.getElementById("dockPreviewWrap");
 const dockPreview = document.getElementById("dockPreview");
@@ -397,71 +397,40 @@ function paintHeroCategory(category) {
     heroCategory.textContent = category;
   }
 }
-// Builds one full set of mission badges into `container` -- called once for
-// the large below-hero nav and again for the compact one that docks into
-// the topbar once the first has scrolled out of view (see
-// setupNavDockObserver). Two independent button sets rather than one moved
-// between parents: moving a sticky element between containers on scroll
-// would either jump the page (removing ~95px from the flow) or need a
-// matching spacer kept in sync, where two fixed sets driven by simple
-// show/hide have no layout to reconcile.
-function buildCategoryBadges(container) {
-  for (const name of CATEGORY_NAV_NAMES) {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "category-nav__item";
-    const slug = categoryIconSlug(name);
-    const img = document.createElement("img");
-    img.className = "category-nav__mono";
-    img.src = `/static/icons/categories/${slug}.svg`;
-    // The badge carries the wording as artwork, so the alt text is what gives
-    // the button its accessible name -- and is what shows if the file is ever
-    // missing, which is the whole fallback. Ampersand to match the row
-    // headings, which do the same substitution.
-    img.alt = name.replace(/\band\b/gi, "&");
-    btn.appendChild(img);
-    // Each mission has its own brand colour, which the nav shows on rollover.
-    // A second layer cross-faded over the first rather than a src swap: the
-    // coloured artwork sits on a slightly wider plate than the monochrome one,
-    // so swapping would jog the button width, and the first hover would wait
-    // on a network fetch. Decorative -- the mono layer already names the
-    // button, so this one is hidden from assistive tech.
-    const colour = document.createElement("img");
-    colour.className = "category-nav__colour";
-    colour.src = `/static/icons/categories/${slug}-colour.svg`;
-    colour.alt = "";
-    colour.setAttribute("aria-hidden", "true");
-    btn.appendChild(colour);
-    btn.dataset.categoryName = name;
-    btn.addEventListener("click", () => {
-      const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
-      if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
-    container.appendChild(btn);
-  }
-}
-buildCategoryBadges(categoryNav);
-buildCategoryBadges(topbarNav);
-
-// The compact badge set starts hidden (see the "hidden" class in the
-// template) and only appears once the large nav below the hero has
-// scrolled fully out from under the topbar -- rootMargin shrinks the
-// observer's notion of the viewport by the topbar's own height, so
-// "intersecting" already accounts for the topbar sitting on top of
-// whatever's beneath it. Rebuilt whenever the topbar's height changes
-// (see syncStickyOffsets) since rootMargin can't be updated in place.
-let navDockObserver = null;
-function setupNavDockObserver() {
-  if (typeof IntersectionObserver === "undefined") return;
-  if (navDockObserver) navDockObserver.disconnect();
-  navDockObserver = new IntersectionObserver(
-    ([entry]) => {
-      const docked = !entry.isIntersecting;
-      topbarNav.classList.toggle("hidden", !docked);
-    },
-    { rootMargin: `-${topbar.offsetHeight}px 0px 0px 0px` }
-  );
-  navDockObserver.observe(categoryNav);
+// The mission badges live permanently in the topbar (#topbarNav) -- pinned
+// there with it from page load, not a separate strip that comes and goes.
+for (const name of CATEGORY_NAV_NAMES) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "category-nav__item";
+  const slug = categoryIconSlug(name);
+  const img = document.createElement("img");
+  img.className = "category-nav__mono";
+  img.src = `/static/icons/categories/${slug}.svg`;
+  // The badge carries the wording as artwork, so the alt text is what gives
+  // the button its accessible name -- and is what shows if the file is ever
+  // missing, which is the whole fallback. Ampersand to match the row
+  // headings, which do the same substitution.
+  img.alt = name.replace(/\band\b/gi, "&");
+  btn.appendChild(img);
+  // Each mission has its own brand colour, which the nav shows on rollover.
+  // A second layer cross-faded over the first rather than a src swap: the
+  // coloured artwork sits on a slightly wider plate than the monochrome one,
+  // so swapping would jog the button width, and the first hover would wait
+  // on a network fetch. Decorative -- the mono layer already names the
+  // button, so this one is hidden from assistive tech.
+  const colour = document.createElement("img");
+  colour.className = "category-nav__colour";
+  colour.src = `/static/icons/categories/${slug}-colour.svg`;
+  colour.alt = "";
+  colour.setAttribute("aria-hidden", "true");
+  btn.appendChild(colour);
+  btn.dataset.categoryName = name;
+  btn.addEventListener("click", () => {
+    const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
+    if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+  topbarNav.appendChild(btn);
 }
 
 function renderCategories(items) {
@@ -504,7 +473,7 @@ function renderCategories(items) {
     categoryRows.appendChild(section);
   }
 
-  for (const btn of categoryNav.children) {
+  for (const btn of topbarNav.children) {
     btn.classList.toggle("category-nav__item--empty", !sortedNames.includes(btn.dataset.categoryName));
   }
 }
@@ -537,15 +506,9 @@ function renderPopularRow(items) {
 function paintHero(item, heroThumbnail) {
   if (!item) {
     heroSection.classList.add("hidden");
-    categoryNav.classList.add("hidden"); // no longer nested in the hero -- hide it too
     return;
   }
   heroSection.classList.remove("hidden");
-  categoryNav.classList.remove("hidden");
-  // The strip is unmeasurable while the hero is display:none, so take the
-  // reading now it has one. (ResizeObserver catches this too where it
-  // exists; this covers the browsers where it doesn't.)
-  syncStickyOffsets();
   const src = heroThumbnail || item.thumbnail;
   if (src) heroImg.src = src;
   paintHeroCategory(item.category);
@@ -558,6 +521,10 @@ function paintHero(item, heroThumbnail) {
   // other non-Continue-Watching selection (without resume, saved
   // progress for it is simply left alone rather than cleared).
   heroPlayBtn.onclick = () => playItem(item);
+  // Content just changed height (the description can toggle on/off), which
+  // shifts where its top edge actually is -- recompute the fade against
+  // that rather than whatever the last scroll tick left it at.
+  syncHeroContentFade();
 }
 
 function pickHero(continueItems, allItems, explicitHeroId) {
@@ -641,15 +608,13 @@ setHeroBtn.addEventListener("click", async () => {
 
 // Feeds a category jump's scroll-margin-top (see style.css's .row), which
 // needs to clear the topbar pinned above it, and depends on the bar's own
-// height following its buttons -- so it's measured rather than guessed.
-// Without this a jump lands a few pixels short, with the row heading
-// tucked under the topbar. Also re-pins setupNavDockObserver (above),
-// since its rootMargin is keyed to this same height and can't be updated
-// in place once set.
+// height following its buttons (including the badge row it now carries
+// permanently) -- so it's measured rather than guessed. Without this a
+// jump lands a few pixels short, with the row heading tucked under the
+// topbar.
 function syncStickyOffsets() {
   const bar = topbar.offsetHeight;
   if (bar) document.documentElement.style.setProperty("--topbar-h", bar + "px");
-  setupNavDockObserver();
 }
 if (typeof ResizeObserver !== "undefined") {
   const stickyObserver = new ResizeObserver(syncStickyOffsets);
@@ -677,6 +642,31 @@ function syncTopbarContrast() {
 
 window.addEventListener("scroll", syncTopbarContrast, { passive: true });
 window.addEventListener("resize", syncTopbarContrast, { passive: true });
+
+// -------------------------------------------------- hero content fade ---
+// The title/description/Play button/category tag fade out as the hero
+// scrolls up, so they're gone before they'd otherwise scroll in behind the
+// topbar (title text sliding in under the logo reads as broken, not as
+// content that's simply moved on). rect.top + scrollY is the block's
+// document-relative top, which -- unlike rect.top alone -- stays constant
+// as you scroll, so it doesn't need caching or a resize/layout-change
+// invalidation of its own; re-derived fresh every scroll tick instead.
+// fadeEnd is the scrollY at which that top edge would reach the topbar's
+// bottom edge -- opacity reaches 0 there, not after, so nothing is still
+// fading in behind the topbar itself.
+function syncHeroContentFade() {
+  if (heroSection.classList.contains("hidden")) return;
+  const docTop = heroContent.getBoundingClientRect().top + window.scrollY;
+  const fadeEnd = Math.max(1, docTop - topbar.offsetHeight);
+  const opacity = Math.max(0, Math.min(1, 1 - window.scrollY / fadeEnd));
+  heroContent.style.opacity = String(opacity);
+  // Faded-out but still in normal flow (the hero itself isn't pinned), so
+  // without this the invisible Play button/tag stay clickable/tabbable
+  // for a while longer as the rest of the box keeps scrolling past.
+  heroContent.style.pointerEvents = opacity < 0.05 ? "none" : "";
+}
+window.addEventListener("scroll", syncHeroContentFade, { passive: true });
+window.addEventListener("resize", syncHeroContentFade, { passive: true });
 
 // ------------------------------------------------------------- overlays
 
