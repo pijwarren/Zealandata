@@ -264,10 +264,15 @@ button:focus-visible, .card:focus-visible{
 .topbar{
   position:fixed; top:0; left:0; right:0; z-index:30;
   display:flex; align-items:center; justify-content:space-between;
-  /* Top padding matches the category badges' own (16px) rather than the
-     smaller --space-4 the bottom still uses, so the two pinned strips read
-     as one family. */
-  padding:16px var(--page-inset) var(--space-4);
+  /* Top AND left padding are both 2/5 of the logo's own height (52px here
+     -- see .topbar__logo) at every size the logo comes in, rather than a
+     fixed 16px/var(--page-inset) or the smaller --space-4 the bottom still
+     uses -- keeps the same proportion above and to the left of the mark as
+     it shrinks at the tablet and mobile breakpoints below, instead of
+     either gap growing relatively bigger. Right stays on --page-inset,
+     same as the rest of the page's content, since only the left edge sits
+     against the logo. */
+  padding:20.8px var(--page-inset) var(--space-4) 20.8px;
 }
 /* Pinned here always -- it never scrolls off screen, so it no longer
    slides away on scroll-down (that used to also pop the hero's bottom
@@ -1363,7 +1368,9 @@ body.admin-mode #setHeroBtn{ display:flex; }
    the bar gets to 640 the more likely the strip needs its scroll fallback
    again -- unavoidable without shrinking past legible. */
 @media (max-width:800px){
-  .topbar{ padding:12px var(--page-inset) var(--space-4); }
+  /* Top and left both 2/5 of this tier's 32px logo -- see the base
+     .topbar rule. */
+  .topbar{ padding:12.8px var(--page-inset) var(--space-4) 12.8px; }
   .topbar__logo{
     width:27px; height:32px;
     -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
@@ -1376,7 +1383,9 @@ body.admin-mode #setHeroBtn{ display:flex; }
   .category-nav__item img{ height:32px; }
 }
 @media (max-width:640px){
-  .topbar{ padding:14px 16px; }
+  /* Top and left both 2/5 of this tier's 44px logo -- see the base
+     .topbar rule; right and bottom keep their own values. */
+  .topbar{ padding:17.6px 16px 14px 17.6px; }
   /* The monogram below 640, as the <picture> source used to do -- now in the
      stylesheet with every other breakpoint. Sized to the category badges'
      own mobile height (see .category-nav__item img below) -- 38px is the
