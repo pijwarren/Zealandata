@@ -219,17 +219,17 @@ button:focus-visible, .card:focus-visible{
 }
 .topbar--hidden{ transform:translateY(-100%); }
 .topbar__title{
-  font-family:var(--font-heading);
-  font-weight:500;
-  font-size:19px;
-  letter-spacing:-0.2px;
-  display:flex; align-items:center; gap:9px;
+  display:flex; align-items:center;
 }
-.topbar__dot{
-  width:7px; height:7px; border-radius:50%;
-  background:var(--color-accent);
-  box-shadow:0 0 10px var(--color-accent);
-  display:inline-block;
+/* Height pinned to the icon buttons opposite, for the same two reasons as
+   the category badges: it keeps the bar one 36px line tall so nothing about
+   its height changes, and an <img> has no intrinsic size until its SVG
+   arrives -- app.js measures this bar into --topbar-h for the hero's sticky
+   offset, so a box that starts at zero would park the hero wrong for a
+   frame. The logo is a transparent single-colour mark, no plate, so it sits
+   straight on the bar's blur. */
+.topbar__logo{
+  display:block; height:36px; width:auto;
 }
 .topbar__controls{ display:flex; align-items:center; gap:10px; }
 
