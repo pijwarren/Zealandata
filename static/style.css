@@ -282,18 +282,18 @@ button:focus-visible, .card:focus-visible{
 
    Solid all the way through the bar's own height, not fading within it --
    the pseudo is deliberately taller than .topbar itself (height:calc(100%
-   + 40px), overhanging the bottom rather than `inset:0`) so the fade
-   happens entirely in that extra 40px below the real bar, against
+   + 100px), overhanging the bottom rather than `inset:0`) so the fade
+   happens entirely in that extra 100px below the real bar, against
    whatever's scrolling past underneath, instead of thinning out the scrim
    while it's still behind visible bar content. */
 .topbar::before{
-  content:""; position:absolute; top:0; left:0; right:0; height:calc(100% + 40px);
+  content:""; position:absolute; top:0; left:0; right:0; height:calc(100% + 100px);
   z-index:-1; pointer-events:none;
   background:rgba(22,24,38,0.55);
   backdrop-filter:blur(16px);
   -webkit-backdrop-filter:blur(16px);
-  mask-image:linear-gradient(180deg, black calc(100% - 40px), transparent 100%);
-  -webkit-mask-image:linear-gradient(180deg, black calc(100% - 40px), transparent 100%);
+  mask-image:linear-gradient(180deg, black calc(100% - 100px), transparent 100%);
+  -webkit-mask-image:linear-gradient(180deg, black calc(100% - 100px), transparent 100%);
 }
 body.topbar-on-light .topbar::before{
   background:rgba(243,244,246,1);
@@ -345,6 +345,26 @@ body.topbar-on-light .topbar .btn-icon{
   color:var(--color-text);
 }
 body.topbar-on-light .topbar .btn-icon:hover{ background:rgba(6,45,81,0.12); border-color:var(--color-accent); }
+/* A mask, like .topbar__logo, rather than an inline <svg fill="currentColor">
+   like the button used to carry -- swapping the source file (locked vs
+   unlocked) is simpler as a background-image/mask-image toggle than
+   keeping two <svg> markups in the DOM and hiding one. background-color:
+   currentColor is what lets it pick up .btn-icon's own colour (and its
+   body.topbar-on-light flip) for free, same mechanism, no separate rule
+   needed here. Height fixed with width:auto for the same reason as the
+   logo: the two files aren't the same aspect ratio (24x24 locked, 18x24
+   unlocked, its shackle open and taller) and neither needs a width of its
+   own -- only unlocked shifts width when it swaps in. */
+.topbar__settings-icon{
+  display:block; height:20px; width:auto;
+  background-color:currentColor;
+  -webkit-mask:url("/static/icons/locked.svg") no-repeat center / contain;
+  mask:url("/static/icons/locked.svg") no-repeat center / contain;
+}
+body.admin-mode .topbar__settings-icon{
+  -webkit-mask-image:url("/static/icons/unlocked.svg");
+  mask-image:url("/static/icons/unlocked.svg");
+}
 .topbar__controls{ display:flex; align-items:center; gap:10px; }
 /* The mission badges, pinned here permanently (see app.js, which builds
    them straight into this element -- there's no separate strip elsewhere

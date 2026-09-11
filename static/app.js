@@ -1,12 +1,12 @@
 // ---------------------------------------------------------------- DOM refs
 const topbar = document.getElementById("topbar");
 const topbarNav = document.getElementById("topbarNav");
-const startScreensaverBtn = document.getElementById("startScreensaverBtn");
 const settingsBtn = document.getElementById("settingsBtn");
 const settingsCloseBtn = document.getElementById("settingsCloseBtn");
 const settingsScrim = document.getElementById("settingsScrim");
 const settingsDrawer = document.getElementById("settingsDrawer");
 const rescanBtn = document.getElementById("rescanBtn");
+const screensaverField = document.getElementById("screensaverField");
 const screensaverToggleBtn = document.getElementById("screensaverToggleBtn");
 const adminModeBtn = document.getElementById("adminModeBtn");
 const changePinField = document.getElementById("changePinField");
@@ -747,18 +747,6 @@ async function setScreensaver(enabled) {
 }
 screensaverToggleBtn.addEventListener("click", () => setScreensaver(!screensaverEnabled));
 
-startScreensaverBtn.addEventListener("click", async () => {
-  startScreensaverBtn.disabled = true;
-  try {
-    const res = await fetch("/api/screensaver/start", { method: "POST" });
-    const data = await res.json().catch(() => ({}));
-    if (typeof data.enabled === "boolean") paintScreensaverToggle(data.enabled);
-    paintDockIdle(); // next pollStatus tick fills in the actual pick's title
-  } finally {
-    startScreensaverBtn.disabled = false;
-  }
-});
-
 rescanBtn.addEventListener("click", async () => {
   rescanBtn.textContent = "Scanning…";
   await fetch("/api/rescan", { method: "POST" });
@@ -869,6 +857,7 @@ function paintAdminMode() {
   adminModeBtn.textContent = adminToken ? "Lock admin mode" : "Unlock admin mode";
   changePinField.classList.toggle("hidden", !adminToken);
   previewField.classList.toggle("hidden", !adminToken);
+  screensaverField.classList.toggle("hidden", !adminToken);
   // The whole Library and calibration sections, rather than each control
   // inside them -- everything they hold is admin-only, so gating them
   // individually was four ways of saying the same thing.
