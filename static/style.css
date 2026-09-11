@@ -583,10 +583,15 @@ body.topbar-hidden .hero{
 .card__play{
   position:absolute; top:50%; left:50%;
   width:44px; height:44px; transform:translate(-50%,-50%) scale(.85);
-  border-radius:50%; background:rgba(233,233,237,0.14); backdrop-filter:blur(6px);
-  border:1px solid rgba(233,233,237,0.25);
+  /* The hero's Play button, to the pixel: a solid light disc with the navy
+     mark on it, not the translucent glass one this was. Both are 44px
+     already, so only the fill, the mark's colour and the glyph itself
+     needed to change. */
+  border-radius:50%;
+  background:var(--color-on-media);
+  border:1px solid var(--color-on-media);
   display:flex; align-items:center; justify-content:center;
-  color:var(--color-on-media); font-size:15px; opacity:0;
+  color:var(--color-accent-900); opacity:0;
   transition:opacity .15s ease, transform .15s ease;
   pointer-events:none;
 }
