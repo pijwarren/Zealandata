@@ -287,6 +287,11 @@ function buildCard(item, { badge, showRestart, isContinueRow } = {}) {
     fill.style.width = `${Math.min(100, (item.progress.position / item.progress.duration) * 100)}%`;
     bar.appendChild(fill);
     thumbWrap.appendChild(bar);
+    // The bar floats above the card's bottom edge rather than sitting on it,
+    // so the title has to lift to clear it -- but only on cards that
+    // actually have one. Marked here rather than matched with :has() in CSS,
+    // which the Pi's Firefox build predates.
+    thumbWrap.classList.add("has-progress");
   }
 
   const title = document.createElement("div");

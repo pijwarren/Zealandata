@@ -549,6 +549,9 @@ body.topbar-hidden .hero{
 }
 /* Over the thumbnail, under .card__scrim -- light ink whatever the theme. */
 .card__title{ position:absolute; left:13px; right:13px; bottom:13px; font-size:13px; font-weight:500; color:var(--color-on-media); }
+/* Lifted to clear the bar, and only on cards that have one -- app.js adds
+   the class alongside the bar itself. */
+.card__frame.has-progress .card__title{ bottom:24px; }
 .card__top-right{
   position:absolute; top:9px; right:9px;
   display:flex; align-items:center; gap:6px;
@@ -578,8 +581,23 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
 .card:hover .card__restart, .card:focus-within .card__restart, .card--selected .card__restart{ opacity:1; }
 .card__restart:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
 .card__restart:active{ border-color:var(--color-accent); background:var(--color-accent-900); }
-.card__progress{ position:absolute; left:0; right:0; bottom:0; height:3px; background:rgba(233,233,237,0.15); z-index:1; }
-.card__progress-fill{ height:100%; background:var(--color-accent); }
+/* Floats clear of the card's bottom edge instead of being welded to it,
+   inset to the same 13px the title uses so the two line up. Both ends are
+   rounded, which also means a barely-started item shows as a dot rather
+   than a sliver -- correct, but it is why the fill carries the radius too
+   and not just the track.
+
+   4px rather than the old 3px: the rounding is 2px at each end and does not
+   register at 3. The track alpha is up from .15 for the same reason -- flush
+   against the frame it only had to read as a hairline, floating it has to
+   read as an object, and the card scrim is near-black by this point. */
+.card__progress{
+  position:absolute; left:13px; right:13px; bottom:11px;
+  height:4px; border-radius:980px;
+  background:rgba(233,233,237,0.28);
+  z-index:1;
+}
+.card__progress-fill{ height:100%; border-radius:980px; background:var(--color-accent); }
 
 .empty{ padding:90px 0; text-align:center; color:var(--color-neutral-600); }
 .empty__sub{ font-size:13px; opacity:.8; }
