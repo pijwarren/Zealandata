@@ -40,7 +40,7 @@
   --color-bg:        #F3F4F6;
   --color-surface:   #FFFFFF;
   --color-text:      #062D51;   /* ESNZ navy -- brand exact */
-  --color-accent:    #1A6BAE;
+  --color-accent:    #60C7FA;
   --color-accent-100:#EAF3FB;
   --color-accent-300:#AEDBFF;   /* ESNZ sky -- brand exact */
   --color-accent-400:#6BA8DA;
@@ -1002,7 +1002,7 @@ body.admin-mode .settings-grid{
 .keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.17); }
 .keystone__corner.is-selected{
   border-color:var(--color-accent); color:var(--color-accent);
-  background:rgba(26,107,174,0.16);
+  background:rgba(96,199,250,0.16);
 }
 /* Arrows live on the axis they drive -- left/right along the top, up/down
    down the left side -- so the pad sits in the corner of an L of them and
