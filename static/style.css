@@ -671,9 +671,15 @@ body.admin-mode .topbar__settings-icon{
 .card:hover, .card:focus-visible{
   /* Lift plus a 4px ring. No glow and no drop shadow -- those were the
      expensive part, reaching 34px and 62px past the card into padding the
-     scrollport had to reserve. The lift costs 18px per side and the ring 4. */
+     scrollport had to reserve. The lift costs 18px per side and the ring 4.
+
+     The inset copy alongside it papers over a seam the outer ring alone
+     left between itself and the poster -- box-shadow draws from the
+     border box outward, and at a scaled, rounded corner the antialiasing
+     of that edge and the clipped poster's own edge don't quite land on
+     the same pixel, which read as a thin embossed line between the two. */
   transform:scale(1.08) translateY(-4px);
-  box-shadow:0 0 0 4px var(--color-accent);
+  box-shadow:0 0 0 4px var(--color-accent), inset 0 0 0 1px var(--color-accent);
   z-index:2;
 }
 .card:focus-visible{ outline:none; }
@@ -682,12 +688,12 @@ body.admin-mode .topbar__settings-icon{
    lands, not 220ms later. */
 .card:active{
   transform:scale(1.04) translateY(-2px);
-  box-shadow:0 0 0 4px var(--color-accent-900);
+  box-shadow:0 0 0 4px var(--color-accent-900), inset 0 0 0 1px var(--color-accent-900);
   transition-duration:.08s;
 }
 .card--selected{
   transform:scale(1.08) translateY(-4px);
-  box-shadow:0 0 0 4px var(--color-accent);
+  box-shadow:0 0 0 4px var(--color-accent), inset 0 0 0 1px var(--color-accent);
   z-index:2;
 }
 
