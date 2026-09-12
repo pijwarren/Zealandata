@@ -634,6 +634,13 @@ body.admin-mode .topbar__settings-icon{
 .category-nav__colour{
   position:absolute; top:50%; left:50%;
   transform:translate(-50%,-50%);
+  /* A few percent taller than the mono layer beneath it (see .category-
+     nav__item img), not just wider -- the two files' artwork sits at a
+     slightly different inset from their own viewBox edges, so matching
+     heights exactly still let a sliver of the mono layer's top edge show
+     past the colour one on hover. Centred either way, so the extra height
+     grows the same amount off the top and bottom. */
+  height:calc(var(--badge-h) * 1.06); width:auto;
   opacity:0; pointer-events:none;
   transition:opacity .15s ease;
 }
