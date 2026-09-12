@@ -399,42 +399,62 @@ function paintHeroCategory(category) {
     heroCategory.textContent = category;
   }
 }
+// Each mission's own brand colour, shown on the badge's rollover -- pulled
+// straight from its -colour.svg artwork so hovering recolours the same
+// mono shape to an exact match instead of cross-fading in a second image.
+// (Oceans and Fisheries' own colour is the same sky the mono artwork
+// already uses at rest -- not a mistake, that just makes its hover a
+// no-op on the accent, navy stays navy throughout.)
+const CATEGORY_ACCENTS = {
+  "geological-hazards": "#D6DEE6",
+  "weather-and-climate-hazards": "#B8FF7E",
+  "atmosphere-and-climate": "#CBC0FF",
+  "land-and-water": "#FF9E65",
+  "oceans-and-fisheries": "#AEDBFF",
+  energy: "#56E8C2",
+};
 // The mission badges live permanently in the topbar (#topbarNav) -- pinned
 // there with it from page load, not a separate strip that comes and goes.
+//
+// Inlined as real <svg> markup (fetched once per badge) rather than an
+// <img src>: every mono badge is exactly two flat fills -- #062D51 navy
+// and #AEDBFF sky (the sky is the mark/wording detail, navy the plate) --
+// so recolouring on hover is a CSS `fill` override on whichever paths
+// carry that sky fill, targeted by the fill value itself (see
+// .category-nav__item below). That only reaches paths that are actually
+// part of this document, which `mask-image`/`<img src>` don't give access
+// to; it also means there's only ever the one shape on screen, so there's
+// no second, slightly-differently-proportioned "-colour.svg" image to
+// keep aligned with the first (the earlier design's misaligned-hover-edge
+// bug came from exactly that).
 for (const name of CATEGORY_NAV_NAMES) {
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "category-nav__item";
   const slug = categoryIconSlug(name);
-  const img = document.createElement("img");
-  img.className = "category-nav__mono";
-  img.src = `/static/icons/categories/${slug}.svg`;
-  // The badge carries the wording as artwork, so the alt text is what gives
-  // the button its accessible name -- and is what shows if the file is ever
-  // missing, which is the whole fallback. Ampersand to match how the artwork
-  // itself spells it out, tight on space -- unlike the row headings (see
-  // renderCategories), which have a full line to themselves and spell "and"
-  // out in full.
-  img.alt = name.replace(/\band\b/gi, "&");
-  btn.appendChild(img);
-  // Each mission has its own brand colour, which the nav shows on rollover.
-  // A second layer cross-faded over the first rather than a src swap: the
-  // coloured artwork sits on a slightly wider plate than the monochrome one,
-  // so swapping would jog the button width, and the first hover would wait
-  // on a network fetch. Decorative -- the mono layer already names the
-  // button, so this one is hidden from assistive tech.
-  const colour = document.createElement("img");
-  colour.className = "category-nav__colour";
-  colour.src = `/static/icons/categories/${slug}-colour.svg`;
-  colour.alt = "";
-  colour.setAttribute("aria-hidden", "true");
-  btn.appendChild(colour);
+  // The badge carries the wording as artwork, so this is what gives the
+  // button its accessible name. Ampersand to match how the artwork itself
+  // spells it out, tight on space -- unlike the row headings (see
+  // renderCategories), which have a full line to themselves and spell
+  // "and" out in full.
+  btn.setAttribute("aria-label", name.replace(/\band\b/gi, "&"));
+  btn.style.setProperty("--mission-accent", CATEGORY_ACCENTS[slug] || "#AEDBFF");
   btn.dataset.categoryName = name;
   btn.addEventListener("click", () => {
     const section = categoryRows.querySelector(`section[aria-label="${CSS.escape(name)}"]`);
     if (section) section.scrollIntoView({ behavior: "smooth", block: "start" });
   });
   topbarNav.appendChild(btn);
+  fetch(`/static/icons/categories/${slug}.svg`)
+    .then((res) => res.text())
+    .then((svgText) => {
+      const svg = new DOMParser().parseFromString(svgText, "image/svg+xml").documentElement;
+      svg.classList.add("category-nav__mono");
+      // Decorative now that the button itself carries the name -- see
+      // aria-label above.
+      svg.setAttribute("aria-hidden", "true");
+      btn.appendChild(svg);
+    });
 }
 
 // "12 min left" / "Almost done" -- shared by every card that carries

@@ -619,33 +619,30 @@ body.admin-mode .topbar__settings-icon{
 }
 /* Height is --badge-h (see :root), not the file's own -- an <img> has no
    intrinsic size until its SVG arrives, so `height:auto` would render at
-   padding-only size for a frame and jump once it loads. 55px is the
-   artwork's own natural height (still --badge-h's own max, so at rest on
-   a wide viewport nothing is resampled), but it eases down below that as
-   the viewport narrows instead of jumping between fixed sizes. */
-.category-nav__item img{
+   padding-only size for a frame and jump once it loads; the inlined
+   <svg> (see app.js) has its own width/height attributes from the file,
+   which the CSS properties below still win over. 55px is the artwork's
+   own natural height (still --badge-h's own max, so at rest on a wide
+   viewport nothing is resampled), but it eases down below that as the
+   viewport narrows instead of jumping between fixed sizes. */
+.category-nav__item img, .category-nav__mono{
   display:block; height:var(--badge-h); width:auto;
 }
-/* Rollover swaps the monochrome badge for the mission's own brand colour.
-   The coloured plate is drawn very slightly wider than the mono one, so it
-   is absolutely positioned and centred -- it covers the layer beneath
-   rather than resizing the button -- and only it fades, which avoids the
-   moment of half-transparency a two-way cross-fade would give. */
-.category-nav__colour{
-  position:absolute; top:50%; left:50%;
-  transform:translate(-50%,-50%);
-  /* A few percent taller than the mono layer beneath it (see .category-
-     nav__item img), not just wider -- the two files' artwork sits at a
-     slightly different inset from their own viewBox edges, so matching
-     heights exactly still let a sliver of the mono layer's top edge show
-     past the colour one on hover. Centred either way, so the extra height
-     grows the same amount off the top and bottom. */
-  height:calc(var(--badge-h) * 1.06); width:auto;
-  opacity:0; pointer-events:none;
-  transition:opacity .15s ease;
+/* Rollover recolours the mono badge to the mission's own brand colour --
+   every mono file is exactly two flat fills, #062D51 navy (the plate)
+   and #AEDBFF sky (the mark/wording detail), so overriding whichever
+   paths carry that sky fill is enough, no second image or cross-fade
+   needed. --mission-accent is set per badge in app.js, read off the same
+   -colour.svg artwork this used to swap in wholesale -- this reaches the
+   exact same colour, on the exact same shape, so there's no second,
+   slightly differently-proportioned image to keep aligned with the first
+   any more (that mismatch was a real, visible bug: a sliver of the mono
+   layer's own edge showing past the colour one on hover). */
+.category-nav__mono path[fill="#AEDBFF"]{ transition:fill .15s ease; }
+.category-nav__item:hover .category-nav__mono path[fill="#AEDBFF"],
+.category-nav__item:focus-visible .category-nav__mono path[fill="#AEDBFF"]{
+  fill:var(--mission-accent);
 }
-.category-nav__item:hover .category-nav__colour,
-.category-nav__item:focus-visible .category-nav__colour{ opacity:1; }
 /* Scale only, from centre -- no rise. A poster gets both (see .card), but
    these sit in the pinned topbar strip, where the rise was tight against
    .topbar__nav's own clipped headroom (see its padding); scaling in place
@@ -1554,7 +1551,8 @@ body.tablet-topbar .topbar__nav{ margin-right:0; }
      six on screen at once. Moot while .topbar__nav is display:none just
      above, but kept correct (and at matching specificity -- see this
      block's opening comment) rather than dead-but-wrong. */
-  body.tablet-topbar .category-nav__item img{ height:44px; }
+  body.tablet-topbar .category-nav__item img,
+  body.tablet-topbar .category-nav__mono{ height:44px; }
   /* max-width as a hard backstop on top of the left/right insets: the
      insets alone rely on `width:auto` resolving correctly against a
      position:fixed element's containing block, and if that ever comes out
