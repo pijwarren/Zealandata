@@ -1506,8 +1506,17 @@ body.tablet-topbar .topbar__controls{ width:0; }
 /* Right margin dropped too, for the same reason -- .topbar's own right
    padding (--page-inset, see the base rule) is what the strip now runs
    out to, the same edge every other row of content on the page aligns
-   to, instead of stopping short of it for a spacer that's gone. */
-body.tablet-topbar .topbar__nav{ margin-right:0; }
+   to, instead of stopping short of it for a spacer that's gone.
+
+   justify-content switches from the base rule's "safe center" to "safe
+   flex-end" here too: --badge-h's fit equation for this tier (see :root)
+   is deliberately solved with a few px of slack rather than an exact fit,
+   so there's usually still some free room in .topbar__nav's own box even
+   once it's this tight. Centring split that slack evenly on both sides,
+   which put the strip's right edge short of --page-inset for no reason;
+   right-aligning spends it all on the left instead, against the logo,
+   where the room is actually still comfortable. */
+body.tablet-topbar .topbar__nav{ margin-right:0; justify-content:safe flex-end; }
 @media (max-width:640px){
   /* body.tablet-topbar rather than plain .topbar here (and below, for
      .topbar__logo and .category-nav__item img) -- width<=640 always
