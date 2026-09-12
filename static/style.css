@@ -453,8 +453,23 @@ body.admin-mode .topbar__settings-icon{
    less fixed-width stuff before it. This is that same balance (left
    padding + logo width, minus the fixed right padding) expressed in
    --logo-h instead of one width it only held at a single size, now that
-   both ends of the bar are fluid together. */
-.topbar__controls{ width:calc(var(--logo-h) * 4.16 - var(--page-inset)); }
+   both ends of the bar are fluid together.
+
+   Scaled down by --spacer-factor (1 at 1600px width and up, ramping to 0
+   by 850px, where body.tablet-topbar takes over and pins this at 0
+   outright) rather than held at the full balancing width down to that
+   point: shrinking the spacer as the window narrows hands that freed
+   width straight to .topbar__nav next to it, which "safe center" then
+   spends by centring the badges in a wider box shifted toward the
+   spacer's side -- reading as the whole strip drifting rightward,
+   continuously, the further the window narrows. Unlike growing
+   .topbar__nav's own margin to fake the same drift, this can't eat into
+   room --badge-h's fit equation is counting on: the spacer shrinking only
+   ever gives width back to the badges, never takes any away. */
+.topbar__controls{
+  --spacer-factor: min(1, max(0, calc((100vw - 850px) / 750px)));
+  width:calc((var(--logo-h) * 4.16 - var(--page-inset)) * var(--spacer-factor));
+}
 /* The mission badges, pinned here permanently (see app.js, which builds
    them straight into this element -- there's no separate strip elsewhere
    any more). flex:1 takes whatever room .topbar__title and
