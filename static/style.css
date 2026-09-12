@@ -448,7 +448,14 @@ body.admin-mode .topbar__settings-icon{
 .topbar__nav{
   flex:1 1 auto; min-width:0;
   display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
-  margin:0 16px;
+  /* Down from 16px: balancing .topbar__controls against the logo (see
+     there) for true centring already spends more of the bar's width on
+     each side than the old off-centre layout did, and the six badges'
+     986px needs whatever's left. 16px of pure breathing room on each side
+     was more than this can still afford -- the strip was clipping (and
+     needing its scroll fallback) at viewport widths that used to show it
+     in full. */
+  margin:0 4px;
   /* Up from 4px: the hover lift below (scale(1.08) translateY(-4px) on a
      55px badge) needs ~6px of headroom above it, and 4 wasn't quite enough
      -- the top of the badge clipped against overflow-x:auto's forced
