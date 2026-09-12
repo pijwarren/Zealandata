@@ -37,6 +37,24 @@
    pulls from the 600-700 range rather than 200-300, surfaces from 100-200
    rather than 800-900. The numbers did not invert, the usages did. */
 :root{
+  /* Fluid, not tiered: solved from the fit equation for the topbar's
+     desktop layout (full wordmark logo, .topbar__controls balancing it,
+     .topbar__nav's own margins, the six badges' 986px-at-this-height
+     strip and its fixed 6px gaps) so that at any viewport width down to
+     the mobile breakpoint, all six badges fit with no scrolling and no
+     size tier to jump between -- the topbar's own height (and the logo's,
+     and the badges') just eases down continuously as the window narrows.
+     body.tablet-topbar redefines this for the mark-only logo it switches
+     to, which is a different equation (a much narrower logo shape frees
+     up room, so the same viewport width can afford a taller badge there);
+     everything below that reads var(--badge-h) picks up whichever applies
+     without needing its own duplicate rule. 27/40 (and 19.5/90 in the
+     tablet redefinition) carry a few px of built-in slack over the exact
+     solved values -- better to sit slightly under the theoretical max
+     than to reintroduce clipping from a rounding error. */
+  --badge-h: min(55px, calc((100vw - 40px) / 27));
+  --logo-h:  calc(var(--badge-h) * 0.95);
+
   --color-bg:        #F3F4F6;
   --color-surface:   #FFFFFF;
   --color-text:      #062D51;   /* ESNZ navy -- brand exact */
@@ -301,12 +319,12 @@ button:focus-visible, .card:focus-visible{
      it. translateZ(0) over the plainer `transform:none` promotion because
      it's the one that reliably triggers GPU compositing across engines. */
   transform:translateZ(0);
-  /* Top AND left padding are both 2/5 of the logo's own height (52px here
-     -- see .topbar__logo), rather than a fixed 16px/var(--page-inset) or
-     the smaller --space-4 the bottom still uses -- keeps the same
-     proportion above and to the left of the mark as it shrinks at the
-     tablet breakpoint below. Right stays on --page-inset, same as the rest
-     of the page's content, since only the left edge sits against the logo.
+  /* Top AND left padding are both 2/5 of the logo's own height (--logo-h,
+     itself fluid -- see :root), rather than a fixed 16px/var(--page-inset)
+     or the smaller --space-4 the bottom still uses -- keeps the same
+     proportion above and to the left of the mark as it eases down with
+     the viewport. Right stays on --page-inset, same as the rest of the
+     page's content, since only the left edge sits against the logo.
 
      Left stops following this height-based formula in the tablet tier
      (body.tablet-topbar, below) and below 640px, though -- both switch to
@@ -314,7 +332,7 @@ button:focus-visible, .card:focus-visible{
      the horizontal lockup's own built-in whitespace, so 2/5 of ITS height
      sat it right on the edge. See there for the fixed value it uses
      instead. */
-  padding:20.8px var(--page-inset) var(--space-4) 20.8px;
+  padding:calc(var(--logo-h) * 0.4) var(--page-inset) var(--space-4) calc(var(--logo-h) * 0.4);
 }
 /* Pinned here always -- it never scrolls off screen, so it no longer
    slides away on scroll-down (that used to also pop the hero's bottom
@@ -384,12 +402,13 @@ body.topbar-on-light .topbar::before{
 /* A mask, not an image: with the plate gone the logo has to read on a dark
    poster and on the light page ground, and under a mask its colour is
    background-color, which a class can flip. Width is explicit because a
-   mask has no intrinsic size -- 197px is the 470x125 lockup at 52px tall
-   (5% down from the 55px that still sizes the badges and icon buttons
-   beside it, so the logo reads slightly smaller than its neighbours).
-   Light by default, for the poster; body.topbar-on-light flips it. */
+   mask has no intrinsic size -- 3.76 is the 470x125 lockup's own aspect
+   ratio, applied to --logo-h (5% under --badge-h, so the logo reads
+   slightly smaller than its neighbours, same as always -- both are fluid
+   now, so the ratio holds at every width instead of just at one). Light
+   by default, for the poster; body.topbar-on-light flips it. */
 .topbar__logo{
-  display:block; width:197px; height:52px;
+  display:block; width:calc(var(--logo-h) * 3.76); height:var(--logo-h);
   background-color:var(--color-on-media);
   -webkit-mask:url("/static/icons/esnz-logo-horizontal.svg") no-repeat center / contain;
   mask:url("/static/icons/esnz-logo-horizontal.svg") no-repeat center / contain;
@@ -427,46 +446,50 @@ body.admin-mode .topbar__settings-icon{
 /* Empty now -- see the template's comment -- and kept only as a spacer for
    .topbar__nav beside it to centre its badges against. Sized to balance
    the LOGO now, not the settings button that used to sit here: with
-   .topbar's own left padding (20.8px) plus the 197px logo on one side
-   summing to more than its right padding (--page-inset, 25.5px) plus a
-   spacer on the other, .topbar__nav's flex:1 box -- and "safe center"
-   inside it -- would land off-centre in the bar as a whole, shifted
-   toward whichever side had less fixed-width stuff before it. 192.3px is
-   what closes that gap: 25.5 + 192.3 = 20.8 + 197, so both sides tie and
-   the flexible middle the badges centre in is a true centre, not just a
-   centre of whatever was left over. */
-.topbar__controls{ width:192.3px; }
+   .topbar's own left padding plus the logo on one side summing to more
+   than its right padding (--page-inset) plus a spacer on the other,
+   .topbar__nav's flex:1 box -- and "safe center" inside it -- would land
+   off-centre in the bar as a whole, shifted toward whichever side had
+   less fixed-width stuff before it. This is that same balance (left
+   padding + logo width, minus the fixed right padding) expressed in
+   --logo-h instead of one width it only held at a single size, now that
+   both ends of the bar are fluid together. */
+.topbar__controls{ width:calc(var(--logo-h) * 4.16 - var(--page-inset)); }
 /* The mission badges, pinned here permanently (see app.js, which builds
    them straight into this element -- there's no separate strip elsewhere
    any more). flex:1 takes whatever room .topbar__title and
    .topbar__controls leave, so it's naturally centred between the logo and
-   the buttons with no measuring needed. Same badge markup and 55px sizing
-   as everywhere they've always used (.category-nav__item's own rules
-   aren't scoped to any particular parent). padding gives the badges' own
-   2px hover lift (see .category-nav__item:active) room without
-   overflow-x:auto clipping it on the other axis. */
+   the buttons with no measuring needed. Same badge markup as everywhere
+   they've always used (.category-nav__item's own rules aren't scoped to
+   any particular parent), sized via --badge-h (see :root) instead of a
+   fixed 55px.
+
+   No horizontal scrolling any more -- --badge-h (and everything measured
+   off it: the logo, .topbar__controls' spacer, this row's own gap and
+   margins) is solved so the six badges' combined width always fits what's
+   left over at the current viewport width, all the way down to the
+   640px breakpoint where the whole strip is dropped instead. "safe
+   center" and overflow:hidden below are the backstop if that solve is
+   ever off by a rounding pixel, not a real scroll path -- there's nothing
+   left to scroll to once nothing overflows. */
 .topbar__nav{
   flex:1 1 auto; min-width:0;
-  display:flex; flex-wrap:nowrap; justify-content:safe center; gap:clamp(4px, 1vw, 12px);
-  /* Down from 16px: balancing .topbar__controls against the logo (see
-     there) for true centring already spends more of the bar's width on
-     each side than the old off-centre layout did, and the six badges'
-     986px needs whatever's left. 16px of pure breathing room on each side
-     was more than this can still afford -- the strip was clipping (and
-     needing its scroll fallback) at viewport widths that used to show it
-     in full. */
+  display:flex; flex-wrap:nowrap; justify-content:safe center;
+  /* Fixed, not the old clamp(4px, 1vw, 12px) -- --badge-h's fit equation
+     needs a constant to solve for, and a gap that itself grew with the
+     viewport would leave the equation solved for the wrong width. */
+  gap:6px;
   margin:0 4px;
-  /* Up from 4px: the hover lift below (scale(1.08) translateY(-4px) on a
-     55px badge) needs ~6px of headroom above it, and 4 wasn't quite enough
-     -- the top of the badge clipped against overflow-x:auto's forced
-     y-clip, the same mechanism .row__scroller's own padding works around
-     below. Kept symmetric (not just added above) so the extra padding
+  /* Up from 4px: the hover lift below (scale(1.08) on a badge up to 55px
+     tall) needs a little headroom above it, and 4 wasn't quite enough --
+     the top of the badge clipped against the y-clip overflow:hidden below
+     forces, the same mechanism .row__scroller's own padding works around
+     elsewhere. Kept symmetric (not just added above) so the extra padding
      doesn't nudge the badges' vertical centre down off-line with the logo
      and buttons beside them. */
   padding:8px 0;
-  overflow-x:auto; scrollbar-width:none;
+  overflow:hidden;
 }
-.topbar__nav::-webkit-scrollbar{ display:none; }
 
 /* -------------------------------------------------------------- hero */
 
@@ -594,12 +617,14 @@ body.admin-mode .topbar__settings-icon{
   cursor:pointer;
   transition:transform .22s cubic-bezier(.2,.8,.2,1);
 }
-/* Height fixed rather than derived from the file -- an <img> has no
+/* Height is --badge-h (see :root), not the file's own -- an <img> has no
    intrinsic size until its SVG arrives, so `height:auto` would render at
    padding-only size for a frame and jump once it loads. 55px is the
-   artwork's own height, so the badges render 1:1 with no resampling. */
+   artwork's own natural height (still --badge-h's own max, so at rest on
+   a wide viewport nothing is resampled), but it eases down below that as
+   the viewport narrows instead of jumping between fixed sizes. */
 .category-nav__item img{
-  display:block; height:55px; width:auto;
+  display:block; height:var(--badge-h); width:auto;
 }
 /* Rollover swaps the monochrome badge for the mission's own brand colour.
    The coloured plate is drawn very slightly wider than the mono one, so it
@@ -1422,38 +1447,39 @@ body.admin-mode #setHeroBtn{ display:flex; }
 #loopBtn.active{ color:var(--color-accent); border-color:var(--color-accent); }
 
 /* Tablet width: the badges stay (unlike below 640, where they're dropped
-   entirely -- see .topbar__nav below) but the full horizontal lockup, at
-   its full 55px-family height, is tight against six badges plus the
-   controls spacer in ~850px. Switching to the mark-only logo and bringing
-   every topbar item down to the same smaller height the badges themselves
-   drop to buys back the room -- the badges shrinking is what actually
-   narrows their combined 986px strip; .topbar__nav's own overflow-x:auto
-   is still there underneath as a fallback if six of them still don't fit.
+   entirely -- see .topbar__nav below) but the full horizontal lockup
+   leaves nowhere near enough room next to six badges once the bar gets
+   this narrow. Switching to the mark-only logo buys the room back -- it
+   has none of the wordmark's built-in whitespace, so the same viewport
+   width affords a taller badge with it than without.
 
-   32px (down from the 44px this tier started at) is what the six badges'
-   986px strip, at this height, needs to clear the logo/spacer/padding/gap
-   overhead within 850px with room to spare -- worked back from that combined
-   width rather than picked by eye. Narrower than 850 the badges' own
-   986px-of-artwork doesn't shrink any further with the viewport (only this
-   height does, and it's already fixed for the whole tier), so the closer
-   the bar gets to 640 the more likely the strip needs its scroll fallback
-   again -- unavoidable without shrinking past legible.
+   --badge-h is redefined here with its OWN fit equation (not just a
+   smaller cap on the same one): a different logo shape changes the fixed
+   overhead the six badges' 986px strip has to clear at a given width, so
+   it needs its own solve, not a scaled-down copy of the desktop one. See
+   the :root definition for how that solve works and why 19.5/90 (below)
+   carry the same kind of built-in slack 27/40 do there.
 
    A class, not a max-width:850px media query -- see app.js's
    syncTabletTopbar. iPad Pros need this tier too regardless of their own
    viewport width, which in landscape (1194/1366px) is well past 850 and
    would otherwise get the full desktop bar; JS decides body.tablet-topbar
    from viewport width OR device, one flag either way finds this rule. */
-/* Top still follows the base rule's 2/5-of-logo-height -- left doesn't:
-   the mark-only logo below reads as a much tighter glyph than the
-   horizontal lockup it replaces, with none of the lockup's own built-in
-   whitespace, so the same proportion that worked for the full wordmark
-   sat it right on top of the edge. Fixed at 24px instead, closer to
-   --page-inset (what the rest of the page's content aligns to) than to
-   2/5 of a 32px logo (12.8px). */
-body.tablet-topbar .topbar{ padding:12.8px var(--page-inset) var(--space-4) 24px; }
+body.tablet-topbar{
+  --badge-h: min(40px, calc((100vw - 90px) / 19.5));
+}
+/* Top still follows the base rule's 2/5-of-logo-height (now via --badge-h
+   directly, not --logo-h -- the mark-only logo doesn't take the 5%
+   reduction the wordmark does, it's sized 1:1 with the badges beside it)
+   -- left doesn't: the mark-only logo reads as a much tighter glyph than
+   the horizontal lockup it replaces, with none of the lockup's own
+   built-in whitespace, so the same proportion that worked for the full
+   wordmark sat it right on top of the edge. Fixed at 24px instead, closer
+   to --page-inset (what the rest of the page's content aligns to) than to
+   2/5 of a typical height here. */
+body.tablet-topbar .topbar{ padding:calc(var(--badge-h) * 0.4) var(--page-inset) var(--space-4) 24px; }
 body.tablet-topbar .topbar__logo{
-  width:27px; height:32px;
+  width:calc(var(--badge-h) * 0.854); height:var(--badge-h);
   -webkit-mask-image:url("/static/icons/esnz-logo-e.svg");
   mask-image:url("/static/icons/esnz-logo-e.svg");
 }
@@ -1469,7 +1495,6 @@ body.tablet-topbar .topbar__controls{ width:0; }
    out to, the same edge every other row of content on the page aligns
    to, instead of stopping short of it for a spacer that's gone. */
 body.tablet-topbar .topbar__nav{ margin-right:0; }
-body.tablet-topbar .category-nav__item img{ height:32px; }
 @media (max-width:640px){
   /* body.tablet-topbar rather than plain .topbar here (and below, for
      .topbar__logo and .category-nav__item img) -- width<=640 always
