@@ -401,10 +401,13 @@ function paintHeroCategory(category) {
 }
 // Each mission's own brand colour, shown on the badge's rollover -- pulled
 // straight from its -colour.svg artwork so hovering recolours the same
-// mono shape to an exact match instead of cross-fading in a second image.
-// (Oceans and Fisheries' own colour is the same sky the mono artwork
-// already uses at rest -- not a mistake, that just makes its hover a
-// no-op on the accent, navy stays navy throughout.)
+// mono shape to an exact match instead of cross-fading in a second image
+// (see style.css's .category-nav__mono, which swaps the plate to this and
+// the mark/wording to navy -- the roles the colour artwork itself uses).
+// Oceans and Fisheries' own colour is the same sky the mono artwork's
+// mark/wording already uses at rest -- not a mistake, that just means its
+// hover swaps the plate and the mark's colours rather than introducing a
+// new one.
 const CATEGORY_ACCENTS = {
   "geological-hazards": "#D6DEE6",
   "weather-and-climate-hazards": "#B8FF7E",

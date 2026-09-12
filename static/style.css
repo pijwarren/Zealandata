@@ -629,19 +629,28 @@ body.admin-mode .topbar__settings-icon{
   display:block; height:var(--badge-h); width:auto;
 }
 /* Rollover recolours the mono badge to the mission's own brand colour --
-   every mono file is exactly two flat fills, #062D51 navy (the plate)
-   and #AEDBFF sky (the mark/wording detail), so overriding whichever
-   paths carry that sky fill is enough, no second image or cross-fade
-   needed. --mission-accent is set per badge in app.js, read off the same
-   -colour.svg artwork this used to swap in wholesale -- this reaches the
-   exact same colour, on the exact same shape, so there's no second,
-   slightly differently-proportioned image to keep aligned with the first
-   any more (that mismatch was a real, visible bug: a sliver of the mono
-   layer's own edge showing past the colour one on hover). */
-.category-nav__mono path[fill="#AEDBFF"]{ transition:fill .15s ease; }
+   every mono file is exactly two flat fills, #062D51 navy (the plate,
+   the single big rounded-rect path) and #AEDBFF sky (the mark/wording
+   detail, every other path). The real -colour.svg artwork swaps both,
+   not just one, and swaps their roles too: its plate takes the mission's
+   own accent (--mission-accent, read off that same artwork in app.js)
+   and its mark/wording turns navy -- so the plate's navy here goes to
+   the accent, and the mark's sky goes to navy, matching both fills to
+   their colour counterparts instead of leaving one as it was.
+
+   Targeting by fill value rather than needing a second image or
+   cross-fade also means there's no second, slightly differently-
+   proportioned image to keep aligned with the first any more (that
+   mismatch was a real, visible bug: a sliver of the mono layer's own
+   edge showing past the colour overlay on hover). */
+.category-nav__mono path{ transition:fill .15s ease; }
+.category-nav__item:hover .category-nav__mono path[fill="#062D51"],
+.category-nav__item:focus-visible .category-nav__mono path[fill="#062D51"]{
+  fill:var(--mission-accent);
+}
 .category-nav__item:hover .category-nav__mono path[fill="#AEDBFF"],
 .category-nav__item:focus-visible .category-nav__mono path[fill="#AEDBFF"]{
-  fill:var(--mission-accent);
+  fill:#062D51;
 }
 /* Scale only, from centre -- no rise. A poster gets both (see .card), but
    these sit in the pinned topbar strip, where the rise was tight against
