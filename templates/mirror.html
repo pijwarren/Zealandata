@@ -66,12 +66,15 @@
       cursor: grab;
     }
     #stage canvas.dragging { cursor: grabbing; }
-    /* A child of #stage, deliberately -- it needs to rotate along with the
-       canvas so it reads right-side-up to whoever's actually looking at
-       the (upside-down-mounted) screen this page is normally shown on,
-       the same reason the axis labels above are inside #stage too. */
+    /* A sibling of #stage, not a child -- unlike the axis labels, this is
+       chrome for whoever's actually driving this tab (the admin panel's
+       "Open output preview" button opens it in an ordinary browser), not
+       something that needs to read right-side-up on the physically
+       upside-down second screen #stage's own 180-degree rotate is for. A
+       child would rotate (and reposition) along with the canvas instead of
+       staying put where a normal button belongs. */
     #resetView {
-      position: absolute; z-index: 3;
+      position: fixed; z-index: 3;
       bottom: 16px; right: 16px;
       padding: 8px 14px;
       font: 600 13px/1 -apple-system, system-ui, sans-serif;
@@ -92,8 +95,8 @@
     <span class="axis-label axis-label--y" id="labelY">Y</span>
     <span class="axis-label axis-label--z" id="labelZ">Z</span>
     <div id="status">Loading the projection model&hellip;</div>
-    <button id="resetView" type="button" title="Reset to the calibrated view">Reset view</button>
   </div>
+  <button id="resetView" type="button" title="Reset to the calibrated view">Reset view</button>
   <script type="module">
     // Renders the projector's output client-side, through
     // static/calibration_preview.js -- itself a line-for-line port of
@@ -124,21 +127,52 @@
       z: document.getElementById("labelZ"),
     };
 
-    // Mouse/touch orbit, purely a local viewing aid -- see
-    // calibration_preview.js's orbitBy/resetOrbit for why this never
-    // touches the actual calibration mapping. Radians per CSS pixel of
-    // drag; the canvas is rotated 180deg with the rest of #stage, so a
-    // drag's raw movementX/Y already point the "wrong" way from the
+    // Mouse/touch orbit plus scroll/pinch zoom, purely a local viewing aid --
+    // see calibration_preview.js's orbitBy/zoomBy/resetOrbit for why none of
+    // this ever touches the actual calibration mapping. Radians per CSS
+    // pixel of drag; the canvas is rotated 180deg with the rest of #stage,
+    // so a drag's raw movementX/Y already point the "wrong" way from the
     // pointer's own on-screen perspective and both are negated to match.
     const ORBIT_RADIANS_PER_PX = 0.008;
+    // e^(-deltaY * this) so a normal mouse-wheel notch (~100) and a slow
+    // trackpad scroll both feel proportional rather than the same fixed
+    // step regardless of how hard the wheel was spun.
+    const WHEEL_ZOOM_SPEED = 0.0025;
+
+    // One-finger drag orbits; two-finger pinch zooms -- tracked through the
+    // same pointer stream since both can be in progress across the same
+    // gesture (e.g. lifting one finger of a pinch back to a single drag).
+    const activePointers = new Map(); // pointerId -> {x, y}
     let dragging = false;
+    let pinchStartDist = null;
+
+    function pinchDistance() {
+      const pts = [...activePointers.values()];
+      return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
+    }
+
     canvas.addEventListener("pointerdown", (event) => {
       if (!preview.isReady()) return;
-      dragging = true;
-      canvas.classList.add("dragging");
       canvas.setPointerCapture(event.pointerId);
+      activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (activePointers.size === 2) {
+        dragging = false;
+        canvas.classList.remove("dragging");
+        pinchStartDist = pinchDistance();
+      } else if (activePointers.size === 1) {
+        dragging = true;
+        canvas.classList.add("dragging");
+      }
     });
     canvas.addEventListener("pointermove", (event) => {
+      if (!activePointers.has(event.pointerId)) return;
+      activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (activePointers.size >= 2) {
+        const dist = pinchDistance();
+        if (pinchStartDist) preview.zoomBy(dist / pinchStartDist);
+        pinchStartDist = dist;
+        return;
+      }
       if (!dragging) return;
       preview.orbitBy(
         -event.movementX * ORBIT_RADIANS_PER_PX,
@@ -146,12 +180,25 @@
       );
     });
     function endDrag(event) {
-      dragging = false;
-      canvas.classList.remove("dragging");
+      activePointers.delete(event.pointerId);
       if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+      pinchStartDist = activePointers.size >= 2 ? pinchDistance() : null;
+      dragging = activePointers.size === 1;
+      canvas.classList.toggle("dragging", dragging);
     }
     canvas.addEventListener("pointerup", endDrag);
     canvas.addEventListener("pointercancel", endDrag);
+
+    // Mouse-wheel and trackpad scroll/pinch (browsers report a trackpad
+    // pinch as a wheel event with ctrlKey set) -- touch pinch is handled
+    // above through pointer events instead, since touchscreens don't fire
+    // wheel events at all.
+    canvas.addEventListener("wheel", (event) => {
+      if (!preview.isReady()) return;
+      event.preventDefault();
+      preview.zoomBy(Math.exp(-event.deltaY * WHEEL_ZOOM_SPEED));
+    }, { passive: false });
+
     resetViewBtn.addEventListener("click", () => preview.resetOrbit());
 
     // Matches the admin panel's own calibration poll. The payload is a

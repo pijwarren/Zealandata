@@ -684,6 +684,13 @@ function setStatus(msg) {
 let orbitYaw = 0;
 let orbitPitch = 0;
 const ORBIT_PITCH_LIMIT = Math.PI / 2 - 0.01;
+// A plain uniform scale on the (already origin-centred) model rather than an
+// actual camera dolly -- moving the eye closer would also have to interact
+// with the off-axis lens-shift terms in the frustum above, and this reads
+// the same for a viewing aid without touching any of that.
+let orbitZoom = 1;
+const ORBIT_ZOOM_MIN = 0.3;
+const ORBIT_ZOOM_MAX = 6;
 
 export function orbitBy(dYawRad, dPitchRad) {
   orbitYaw += dYawRad;
@@ -691,9 +698,18 @@ export function orbitBy(dYawRad, dPitchRad) {
   if (lastMapping) requestRender(lastMapping);
 }
 
+// factor > 1 zooms in, < 1 zooms out -- multiplicative so repeated small
+// wheel/pinch events compose the way a real zoom feels, rather than a
+// fixed step each time regardless of current zoom level.
+export function zoomBy(factor) {
+  orbitZoom = Math.min(ORBIT_ZOOM_MAX, Math.max(ORBIT_ZOOM_MIN, orbitZoom * factor));
+  if (lastMapping) requestRender(lastMapping);
+}
+
 export function resetOrbit() {
   orbitYaw = 0;
   orbitPitch = 0;
+  orbitZoom = 1;
   if (lastMapping) requestRender(lastMapping);
 }
 
@@ -742,7 +758,7 @@ function buildMatrices(mapping) {
   // (the origin, same as parseObj normalises to) before it's placed in eye
   // space -- see orbitBy's comment on why this sits here rather than
   // folded into modelM.
-  const mOrbit = matMul(matRotX(orbitPitch), matRotY(orbitYaw));
+  const mOrbit = matMul(matScale(orbitZoom), matMul(matRotX(orbitPitch), matRotY(orbitYaw)));
   const modelOrbited = matMul(mOrbit, modelM);
   const modelEye = matMul(mEye, modelOrbited);
   const mvp = matMul(proj, modelEye);

@@ -33,6 +33,7 @@ import random
 import hashlib
 import secrets
 import shutil
+import tempfile
 from pathlib import Path
 
 from flask import Flask, jsonify, request, send_from_directory, send_file, render_template, Response
@@ -1770,14 +1771,19 @@ def api_loading_image():
 @app.route("/api/current-frame")
 def api_current_frame():
     """Whatever's actually textured onto the model right now, as a single
-    still image -- the foreground pick's or screensaver pick's own poster
-    thumbnail (already generated at scan/upload time -- see
-    _generate_thumbnail) if one's playing, otherwise the configured loading
-    image. This never extracts a fresh frame per request -- reusing the
-    existing thumbnail keeps it exactly as cheap as the static
-    /api/loading-image endpoint the mirror used to always show instead,
-    rather than reintroducing the per-poll framebuffer capture mirror.html's
-    own comments describe moving away from."""
+    still image -- a plain frame grabbed fresh from the foreground/
+    screensaver pick's own source video, or the configured loading image if
+    nothing's playing.
+
+    Deliberately NOT /thumbnails/<id>.jpg: that poster is overwritten by the
+    admin panel's "projected thumbnail" capture (see app.js's
+    renderAndStoreThumbnail) with a frame already rendered through the
+    calibrated model -- keystoned, rotated, cropped to the projector's own
+    view. Texturing the model in the mirror with *that* would warp an
+    already-warped image a second time. A plain ffmpeg grab straight off the
+    source file is the same starting point the real projection pipeline
+    itself works from, so the model's own UV mapping is the only orientation
+    applied, exactly like it is for actual playback."""
     media_id = None
     if current_kind == "video":
         with meta_lock:
@@ -1786,9 +1792,14 @@ def api_current_frame():
         with screensaver_meta_lock:
             media_id = current_screensaver_id
     if media_id:
-        thumb_path = os.path.join(THUMB_DIR, f"{media_id}.jpg")
-        if os.path.exists(thumb_path):
-            return send_file(thumb_path)
+        item = get_media_by_id(media_id)
+        if item:
+            with tempfile.TemporaryDirectory() as tmp_dir:
+                tmp_path = os.path.join(tmp_dir, "frame.jpg")
+                if _extract_frame(item["path"], tmp_path, "iw:-1"):
+                    with open(tmp_path, "rb") as f:
+                        data = f.read()
+                    return Response(data, mimetype="image/jpeg", headers={"Cache-Control": "no-store"})
     if not LOADING_IMAGE_PATH or not os.path.exists(LOADING_IMAGE_PATH):
         return jsonify({"error": "no loading image configured"}), 404
     return send_file(LOADING_IMAGE_PATH)
