@@ -1567,6 +1567,9 @@ body.admin-mode .settings-grid{
   backdrop-filter:blur(20px) saturate(180%);
   -webkit-backdrop-filter:blur(20px) saturate(180%);
   border-color:rgba(255,255,255,0.16);
+  /* .btn-icon's own colour (navy) all but disappeared against this dark
+     navy plate. */
+  color:#fff;
 }
 .doc-viewer__nav{
   position:absolute; top:50%; transform:translateY(-50%);
