@@ -1105,8 +1105,12 @@ body.admin-mode .settings-grid{
 /* Laid out 2x2 in the corners' own arrangement, so "top left" is the
    button in the top left -- the whole point of the redesign is that the
    controls sit where the thing they move sits. */
+/* Inset by the same arrow-column width .keystone__grid balances the pad
+   with below, so these four buttons span exactly the pad's own width
+   instead of the whole (wider) panel. */
 .keystone__corners{
   display:grid; grid-template-columns:1fr 1fr; gap:8px;
+  padding:0 calc(var(--keystone-arrow) + var(--keystone-gap));
 }
 .keystone__corner{
   padding:9px 10px; border-radius:var(--radius-sm);
@@ -1117,7 +1121,7 @@ body.admin-mode .settings-grid{
 .keystone__corner:hover{ border-color:var(--color-accent); color:var(--color-accent); }
 .keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.17); }
 .keystone__corner.is-selected{
-  border-color:var(--color-accent); color:#fff;
+  border-color:var(--color-accent); color:var(--color-text);
   background:rgba(96,199,250,0.16);
 }
 /* Arrows live on the axis they drive -- left/right along the top, up/down
