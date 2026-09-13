@@ -283,8 +283,8 @@ function buildCard(item, { badge } = {}) {
   topRight.className = "card__top-right";
   const rename = document.createElement("button");
   rename.className = "card__rename";
-  rename.title = "Rename";
-  rename.setAttribute("aria-label", `Rename ${item.title}`);
+  rename.title = "Edit title/description";
+  rename.setAttribute("aria-label", `Edit title/description for ${item.title}`);
   rename.textContent = "✎";
   rename.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -298,8 +298,8 @@ function buildCard(item, { badge } = {}) {
   // interaction (see cardAttachmentsInput's own change handler).
   const addAttachment = document.createElement("button");
   addAttachment.className = "card__add-attachment";
-  addAttachment.title = "Add attachments";
-  addAttachment.setAttribute("aria-label", `Add attachments to ${item.title}`);
+  addAttachment.title = "Attach files";
+  addAttachment.setAttribute("aria-label", `Attach files to ${item.title}`);
   addAttachment.textContent = "📎";
   addAttachment.addEventListener("click", (e) => {
     e.stopPropagation();
