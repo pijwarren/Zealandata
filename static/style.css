@@ -744,10 +744,12 @@ body.admin-mode .topbar__settings-icon{
   color:#062D51; font-size:18px; line-height:1;
   cursor:pointer; z-index:3;
   display:flex; align-items:center; justify-content:center;
-  opacity:0; transition:opacity .15s ease, background .15s ease;
+  opacity:0; transition:opacity .15s ease, background .15s ease, color .15s ease;
 }
 .row__viewport:hover .row__arrow:not(.hidden), .row__arrow:focus-visible{ opacity:1; }
-.row__arrow:hover{ background:var(--color-accent-800); }
+/* White chevron on hover -- navy-on-navy (the fill darkens to
+   --color-accent-800 here) would otherwise all but disappear. */
+.row__arrow:hover{ background:var(--color-accent-800); color:#fff; }
 .row__arrow--left{ left:-6px; }
 .row__arrow--right{ right:-6px; }
 .row__arrow.hidden{ display:none; }
