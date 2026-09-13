@@ -279,41 +279,19 @@ button.tag:active{ opacity:.65; }
 .btn-icon-lg:active{ background:var(--color-accent-900); }
 .btn-icon-text{ font-size:11px; font-weight:600; letter-spacing:-0.02em; }
 
-/* Right-angle chevron -- the same two-arms-at-90-degrees mark the projector
-   paints over the selected keystone corner (see projector.c's FS_SRC), so a
-   nudge button on screen and the marker on the wall read as one shape,
-   rather than the arrow glyphs (left/right/up/down, single angle quotes)
-   each button used to pick for itself. Two borders of a square make the
-   arms and the corner where they meet is the point: unrotated it aims
-   up-and-right at a corner exactly as the projector's does, and the
-   modifiers swing it round to a cardinal direction. Sized in em so it
-   follows whatever font-size its button already sets. */
-.chevron{
-  --chevron-size:0.6em;
-  display:block;
-  width:var(--chevron-size); height:var(--chevron-size);
-  border-top:2px solid currentColor;
-  border-right:2px solid currentColor;
-  /* The arms only occupy the box's top and right, so their meeting point
-     needs translating back toward the centre the box spins around, or
-     rotating alone swings it visibly off-centre in every direction (each
-     one biased toward whatever it's pointing away from). The fraction
-     below is calibrated against a rendered, pixel-measured chevron rather
-     than derived from the box geometry alone -- the naive half-the-box
-     figure that math suggests overshoots in practice (borders drawn
-     outside the box, antialiasing on a diagonal stroke, and the visible
-     glyph reading as narrower than its full arm length all pull the
-     actual centre in from that). 0.2 is what centred it within a quarter
-     pixel, measured on a rendered row-arrow button at four cardinal
-     angles -- if this ever needs revisiting, measure again rather than
-     re-deriving it. */
-  transform:rotate(var(--chevron-angle,0deg))
-            translate(calc(var(--chevron-size) * -0.2), calc(var(--chevron-size) * 0.2));
-}
-.chevron--up{ --chevron-angle:-45deg; }
-.chevron--right{ --chevron-angle:45deg; }
-.chevron--down{ --chevron-angle:135deg; }
-.chevron--left{ --chevron-angle:-135deg; }
+/* The "re-arrow-right" icon (see app.js's ARROW_ICON_SVG) drawn straight
+   into markup wherever it's static rather than JS-generated (the keystone
+   pad's nudge buttons). Its own path data always draws it pointing right;
+   these rotate/mirror the rendered box itself via a plain CSS transform
+   rather than the internal SVG coordinates, so there's no risk of the
+   icon's own (non-square, 33x27) viewBox clipping a rotated shape the way
+   transforming its internal <g> would. Previously a nudge button here
+   deliberately matched the corner marker the projector itself draws on the
+   wall during calibration (see projector.c's FS_SRC) -- that visual echo
+   is gone now that this is the arrow icon everywhere else in the UI uses. */
+.arrow-icon--left{ transform:scaleX(-1); }
+.arrow-icon--up{ transform:rotate(-90deg); }
+.arrow-icon--down{ transform:rotate(90deg); }
 
 button:focus-visible, .card:focus-visible{
   outline:2px solid var(--color-accent); outline-offset:2px;

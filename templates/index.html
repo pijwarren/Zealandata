@@ -306,13 +306,43 @@
              up/down beside it, so a nudge is reached in the direction it
              goes rather than read off a label. -->
         <div class="keystone__grid">
+          <!-- Same "re-arrow-right" icon as the row scroll buttons -- see
+               app.js's ARROW_ICON_SVG -- rotated/mirrored via CSS transform
+               (.arrow-icon--*) rather than redrawing the path per
+               direction, since a CSS transform on the rendered <svg> box
+               itself can't clip against the icon's own (non-square)
+               viewBox the way rotating the internal coordinates would. -->
           <div class="keystone__arrows keystone__arrows--x">
-            <button type="button" class="mapping-row__step" id="keystoneXDown" aria-label="Move corner left"><span class="chevron chevron--left"></span></button>
-            <button type="button" class="mapping-row__step" id="keystoneXUp" aria-label="Move corner right"><span class="chevron chevron--right"></span></button>
+            <button type="button" class="mapping-row__step" id="keystoneXDown" aria-label="Move corner left">
+              <svg class="arrow-icon arrow-icon--left" width="22" height="22" viewBox="0 0 33 27" fill="currentColor">
+                <path d="M21.7955 -5.26292e-06L19.4619 2.33356L30.5522 13.4238L32.8857 11.0902L21.7955 -5.26292e-06Z"></path>
+                <path d="M30.5531 13.4271L19.4629 24.5173L21.7965 26.8509L32.8867 15.7606L30.5531 13.4271Z"></path>
+                <path d="M25.5762 11.7744H1.65008C0.742535 11.7744 0 12.5169 0 13.4244V15.0745H25.5762V11.7744Z"></path>
+              </svg>
+            </button>
+            <button type="button" class="mapping-row__step" id="keystoneXUp" aria-label="Move corner right">
+              <svg class="arrow-icon" width="22" height="22" viewBox="0 0 33 27" fill="currentColor">
+                <path d="M21.7955 -5.26292e-06L19.4619 2.33356L30.5522 13.4238L32.8857 11.0902L21.7955 -5.26292e-06Z"></path>
+                <path d="M30.5531 13.4271L19.4629 24.5173L21.7965 26.8509L32.8867 15.7606L30.5531 13.4271Z"></path>
+                <path d="M25.5762 11.7744H1.65008C0.742535 11.7744 0 12.5169 0 13.4244V15.0745H25.5762V11.7744Z"></path>
+              </svg>
+            </button>
           </div>
           <div class="keystone__arrows keystone__arrows--y">
-            <button type="button" class="mapping-row__step" id="keystoneYUp" aria-label="Move corner up"><span class="chevron chevron--up"></span></button>
-            <button type="button" class="mapping-row__step" id="keystoneYDown" aria-label="Move corner down"><span class="chevron chevron--down"></span></button>
+            <button type="button" class="mapping-row__step" id="keystoneYUp" aria-label="Move corner up">
+              <svg class="arrow-icon arrow-icon--up" width="22" height="22" viewBox="0 0 33 27" fill="currentColor">
+                <path d="M21.7955 -5.26292e-06L19.4619 2.33356L30.5522 13.4238L32.8857 11.0902L21.7955 -5.26292e-06Z"></path>
+                <path d="M30.5531 13.4271L19.4629 24.5173L21.7965 26.8509L32.8867 15.7606L30.5531 13.4271Z"></path>
+                <path d="M25.5762 11.7744H1.65008C0.742535 11.7744 0 12.5169 0 13.4244V15.0745H25.5762V11.7744Z"></path>
+              </svg>
+            </button>
+            <button type="button" class="mapping-row__step" id="keystoneYDown" aria-label="Move corner down">
+              <svg class="arrow-icon arrow-icon--down" width="22" height="22" viewBox="0 0 33 27" fill="currentColor">
+                <path d="M21.7955 -5.26292e-06L19.4619 2.33356L30.5522 13.4238L32.8857 11.0902L21.7955 -5.26292e-06Z"></path>
+                <path d="M30.5531 13.4271L19.4629 24.5173L21.7965 26.8509L32.8867 15.7606L30.5531 13.4271Z"></path>
+                <path d="M25.5762 11.7744H1.65008C0.742535 11.7744 0 12.5169 0 13.4244V15.0745H25.5762V11.7744Z"></path>
+              </svg>
+            </button>
           </div>
           <div class="keystone__pad" id="keystonePad" tabindex="0" role="application"
                aria-label="Drag to move the selected corner; arrow keys nudge it">
