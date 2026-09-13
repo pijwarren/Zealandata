@@ -56,6 +56,7 @@ SEQUENCE_CACHE_DIR = os.path.join(BASE_DIR, "static", "sequence_cache")
 PROGRESS_FILE = os.path.join(BASE_DIR, "progress.json")
 HERO_FILE = os.path.join(BASE_DIR, "hero.json")
 TITLES_FILE = os.path.join(BASE_DIR, "titles.json")
+DESCRIPTIONS_FILE = os.path.join(BASE_DIR, "descriptions.json")
 PLAY_COUNTS_FILE = os.path.join(BASE_DIR, "play_counts.json")
 ADMIN_PIN_FILE = os.path.join(BASE_DIR, "admin_pin.json")
 
@@ -424,11 +425,16 @@ _last_interaction = time.monotonic()
 
 _media_cache = {"items": None, "mtime": 0}
 _media_attachments = {}  # media_id -> {filename: absolute path}, rebuilt on every scan
+# media_id -> metadata_path (see _build_media_item), rebuilt on every scan alongside
+# _media_attachments -- what api_add_media_attachments resolves an id back to an
+# attachment directory through, since the id itself is a one-way hash of this path.
+_media_metadata_paths = {}
 media_lock = threading.Lock()
 
 progress_lock = threading.Lock()
 hero_lock = threading.Lock()
 titles_lock = threading.Lock()
+descriptions_lock = threading.Lock()
 play_counts_lock = threading.Lock()
 mapping_lock = threading.Lock()
 
@@ -731,6 +737,42 @@ def set_title_override(media_id, title):
         os.replace(tmp, TITLES_FILE)
 
 
+def _load_descriptions():
+    if not os.path.exists(DESCRIPTIONS_FILE):
+        return {}
+    try:
+        with open(DESCRIPTIONS_FILE, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except (json.JSONDecodeError, OSError):
+        return {}
+
+
+def get_description_override(media_id):
+    """A custom description set via admin-mode editing, if any -- same
+    override-file pattern as get_title_override, and for the same reason:
+    it takes precedence over whatever _build_media_item derived from a
+    description.txt sidecar (see _scan_dir/_build_sequence_item) without
+    touching that file, so a description edited here doesn't fight with
+    one already dropped alongside the video, and clearing the override
+    (see api_rename_media) falls straight back to that file's own
+    contents rather than to a blank field."""
+    with descriptions_lock:
+        return _load_descriptions().get(media_id)
+
+
+def set_description_override(media_id, description):
+    with descriptions_lock:
+        store = _load_descriptions()
+        if description:
+            store[media_id] = description
+        else:
+            store.pop(media_id, None)
+        tmp = DESCRIPTIONS_FILE + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(store, f)
+        os.replace(tmp, DESCRIPTIONS_FILE)
+
+
 # ------------------------------------------------------------- scanning ---
 
 
@@ -839,15 +881,21 @@ def _video_attachment_dir(video_path):
     return os.path.splitext(video_path)[0] + ATTACHMENTS_DIR_SUFFIX
 
 
-def _find_attachment_paths(metadata_path):
-    """metadata_path is a sequence folder (attachments live in an
-    attachments/ subfolder inside it) or a plain video file (attachments
-    live in a <stem>.attachments/ sibling folder -- see
-    _migrate_video_sidecars, which is what actually gets files there)."""
+def _attachment_dir_for(metadata_path):
+    """Where attachments for this item live or would go -- metadata_path is
+    a sequence folder (attachments live in an attachments/ subfolder inside
+    it) or a plain video file (attachments live in a <stem>.attachments/
+    sibling folder -- see _migrate_video_sidecars, which is what actually
+    gets files there). Doesn't require the directory to already exist, so
+    api_add_media_attachments can create it for a video that's never had
+    one before."""
     if os.path.isdir(metadata_path):
-        attach_dir = os.path.join(metadata_path, "attachments")
-    else:
-        attach_dir = _video_attachment_dir(metadata_path)
+        return os.path.join(metadata_path, "attachments")
+    return _video_attachment_dir(metadata_path)
+
+
+def _find_attachment_paths(metadata_path):
+    attach_dir = _attachment_dir_for(metadata_path)
     if not os.path.isdir(attach_dir):
         return []
     try:
@@ -934,6 +982,7 @@ def _build_media_item(playback_path, metadata_path, description=None, frame_coun
         category = "Uncategorized"
 
     title = get_title_override(media_id) or Path(metadata_path).stem.replace(".", " ").replace("_", " ")
+    description = get_description_override(media_id) or description
 
     attachments = []
     attachment_files = {}
@@ -943,6 +992,7 @@ def _build_media_item(playback_path, metadata_path, description=None, frame_coun
         attachments.append({"name": name, "kind": kind, "url": f"/api/media/{media_id}/attachments/{name}"})
         attachment_files[name] = full
     _media_attachments[media_id] = attachment_files
+    _media_metadata_paths[media_id] = metadata_path
 
     return {
         "id": media_id,
@@ -1007,6 +1057,7 @@ def _scan_dir(dir_path, items, is_root=False):
 def _scan_media():
     items = []
     _media_attachments.clear()
+    _media_metadata_paths.clear()
     _scan_dir(MEDIA_DIR, items, is_root=True)
     items.sort(key=lambda i: i["title"].lower())
     return items
@@ -2075,10 +2126,14 @@ def api_set_popular_visibility():
 
 @app.route("/api/media/<media_id>/rename", methods=["POST"])
 def api_rename_media(media_id):
-    """Renaming here only overrides the display title (see
-    set_title_override) — it never touches the underlying file, so
-    thumbnails, progress, and hero pinning (all keyed off the original file
-    path) stay intact."""
+    """Title is required, same as ever (see set_title_override). description
+    is optional -- present-but-empty clears the override back to whatever
+    description.txt sidecar (if any) _build_media_item would otherwise have
+    used, present-and-non-empty sets it, and simply omitting the key from
+    the request (the rename button used to be the only caller) leaves
+    whatever description was already there untouched. Neither field ever
+    touches the underlying file, so thumbnails, progress, and hero pinning
+    (all keyed off the original file path) stay intact."""
     if not ADMIN_PIN:
         return jsonify({"error": "admin mode isn't configured on this server"}), 404
     body = request.get_json(silent=True) or {}
@@ -2093,8 +2148,11 @@ def api_rename_media(media_id):
     if not title:
         return jsonify({"error": "title required"}), 400
     set_title_override(media_id, title)
+    if "description" in body:
+        set_description_override(media_id, (body.get("description") or "").strip())
     get_media(force=True)
-    return jsonify({"id": media_id, "title": title})
+    item = get_media_by_id(media_id)
+    return jsonify({"id": media_id, "title": title, "description": item.get("description")})
 
 
 @app.route("/api/admin/upload", methods=["POST"])
@@ -2144,25 +2202,66 @@ def api_upload_media():
 
     attachments = [f for f in request.files.getlist("attachments") if f and f.filename]
     if attachments:
-        attach_dir = _video_attachment_dir(dest_path)
-        os.makedirs(attach_dir, exist_ok=True)
-        for att in attachments:
-            att_ext = Path(att.filename).suffix.lower()
-            if att_ext not in ATTACHMENT_EXTS:
-                continue  # silently skip rather than fail the whole upload
-            att_filename = secure_filename(Path(att.filename).stem) + att_ext
-            if not att_filename or att_filename == att_ext:
-                continue
-            att_dest = os.path.join(attach_dir, att_filename)
-            if os.path.exists(att_dest):
-                att_stem, n = Path(att_filename).stem, 2
-                while os.path.exists(att_dest):
-                    att_dest = os.path.join(attach_dir, f"{att_stem} ({n}){att_ext}")
-                    n += 1
-            att.save(att_dest)
+        _save_attachment_files(_video_attachment_dir(dest_path), attachments)
 
     get_media(force=True)
     item = next((i for i in get_media() if i["path"] == dest_path), None)
+    return jsonify({"ok": True, "item": item})
+
+
+def _save_attachment_files(attach_dir, files):
+    """Saves each upload into attach_dir (created if it doesn't exist yet),
+    silently skipping wrong-type or empty-name files rather than failing
+    the whole batch, and de-duplicating names the same way api_upload_media
+    always has. Shared by that endpoint and api_add_media_attachments, the
+    only two places attachments are ever written."""
+    os.makedirs(attach_dir, exist_ok=True)
+    for att in files:
+        att_ext = Path(att.filename).suffix.lower()
+        if att_ext not in ATTACHMENT_EXTS:
+            continue
+        att_filename = secure_filename(Path(att.filename).stem) + att_ext
+        if not att_filename or att_filename == att_ext:
+            continue
+        att_dest = os.path.join(attach_dir, att_filename)
+        if os.path.exists(att_dest):
+            att_stem, n = Path(att_filename).stem, 2
+            while os.path.exists(att_dest):
+                att_dest = os.path.join(attach_dir, f"{att_stem} ({n}){att_ext}")
+                n += 1
+        att.save(att_dest)
+
+
+@app.route("/api/media/<media_id>/attachments", methods=["POST"])
+def api_add_media_attachments(media_id):
+    """Adds supplementary docs/images to a video already in the library --
+    the upload-time attachments field (see api_upload_media) covers a video
+    that's being added right now; this is for one that's already there,
+    found stuck without its paper after the fact. Multipart like upload
+    itself, so pin arrives as a form field rather than JSON.
+
+    Resolves media_id back to a directory via _media_metadata_paths rather
+    than item["path"]: for an image-sequence item that's the converted
+    cache video, not the original frames folder attachments actually live
+    alongside (see _attachment_dir_for)."""
+    if not ADMIN_PIN:
+        return jsonify({"error": "admin mode isn't configured on this server"}), 404
+    ok, locked_seconds = check_admin_pin(str(request.form.get("pin", "")))
+    if locked_seconds:
+        return jsonify({"error": f"too many incorrect PIN attempts — try again in {locked_seconds}s"}), 429
+    if not ok:
+        return jsonify({"error": "incorrect PIN"}), 403
+    if not get_media_by_id(media_id):
+        return jsonify({"error": "not found"}), 404
+    files = [f for f in request.files.getlist("attachments") if f and f.filename]
+    if not files:
+        return jsonify({"error": "no files provided"}), 400
+    metadata_path = _media_metadata_paths.get(media_id)
+    if not metadata_path:
+        return jsonify({"error": "not found"}), 404
+    _save_attachment_files(_attachment_dir_for(metadata_path), files)
+    get_media(force=True)
+    item = get_media_by_id(media_id)
     return jsonify({"ok": True, "item": item})
 
 

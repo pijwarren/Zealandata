@@ -829,17 +829,22 @@ body.admin-mode .topbar__settings-icon{
   font-size:10px; font-weight:500; letter-spacing:.2px;
   color:var(--color-on-media-dim);
 }
-.card__rename{
+/* .card__add-attachment (the paperclip button beside this one) shares
+   every one of these rules -- same size, same hover/active/admin-mode-only
+   reveal -- so it reads as one family of per-card icon buttons rather than
+   a one-off next to it. */
+.card__rename, .card__add-attachment{
   display:none; width:28px; height:28px; border-radius:50%; flex-shrink:0;
   border:1px solid rgba(233,233,237,0.14); background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
   color:var(--color-on-media); font-size:12px; line-height:1; cursor:pointer;
   align-items:center; justify-content:center;
   opacity:0; transition:opacity .15s, border-color .15s, background .15s;
 }
-body.admin-mode .card__rename{ display:flex; }
-body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .card__rename, body.admin-mode .card--selected .card__rename{ opacity:1; }
-.card__rename:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
-.card__rename:active{ border-color:var(--color-accent); background:var(--color-accent-900); }
+body.admin-mode .card__rename, body.admin-mode .card__add-attachment{ display:flex; }
+body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .card__rename, body.admin-mode .card--selected .card__rename,
+body.admin-mode .card:hover .card__add-attachment, body.admin-mode .card:focus-within .card__add-attachment, body.admin-mode .card--selected .card__add-attachment{ opacity:1; }
+.card__rename:hover, .card__add-attachment:hover{ border-color:var(--color-accent); background:var(--color-accent-800); }
+.card__rename:active, .card__add-attachment:active{ border-color:var(--color-accent); background:var(--color-accent-900); }
 /* Floats clear of the card's bottom edge instead of being welded to it,
    inset to the same 13px the title uses so the two line up. Both ends are
    rounded, which also means a barely-started item shows as a dot rather
@@ -1383,6 +1388,22 @@ body.admin-mode .settings-grid{
 }
 .confirm-modal__hint{ margin:-8px 0 0; font-size:13px; color:var(--color-neutral-600); }
 .confirm-modal__actions{ display:flex; flex-direction:column; gap:var(--space-6); width:100%; }
+
+/* A wider, left-aligned variant for the one confirm-modal that holds real
+   form fields (Edit video) rather than a title/hint/two-buttons choice --
+   align-items/text-align:center suit a short question, not a label+input
+   stack. */
+.confirm-modal--form{ align-items:stretch; text-align:left; width:min(420px, 90vw); }
+.confirm-modal--form .confirm-modal__title{
+  text-align:center; white-space:normal; overflow:visible; text-overflow:clip;
+}
+.confirm-modal--form textarea{
+  width:100%; box-sizing:border-box; resize:vertical; min-height:80px;
+  background:#FFFFFF; color:var(--color-text);
+  border:1px solid var(--color-divider); border-radius:var(--radius-sm);
+  padding:11px 16px; font:inherit;
+}
+.confirm-modal--form textarea:focus{ outline:none; border-color:var(--color-accent); }
 
 /* -------------------------------------------------------------- dock */
 

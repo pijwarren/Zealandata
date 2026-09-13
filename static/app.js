@@ -56,6 +56,14 @@ const resumeTitle = document.getElementById("resumeTitle");
 const resumeHint = document.getElementById("resumeHint");
 const resumeChoiceBtn = document.getElementById("resumeChoiceBtn");
 const restartChoiceBtn = document.getElementById("restartChoiceBtn");
+const editMediaScrim = document.getElementById("editMediaScrim");
+const editMediaModal = document.getElementById("editMediaModal");
+const editMediaTitleInput = document.getElementById("editMediaTitleInput");
+const editMediaDescInput = document.getElementById("editMediaDescInput");
+const editMediaError = document.getElementById("editMediaError");
+const editMediaSaveBtn = document.getElementById("editMediaSaveBtn");
+const editMediaCancelBtn = document.getElementById("editMediaCancelBtn");
+const cardAttachmentsInput = document.getElementById("cardAttachmentsInput");
 
 const heroSection = document.getElementById("heroSection");
 const heroImg = document.getElementById("heroImg");
@@ -283,6 +291,21 @@ function buildCard(item, { badge } = {}) {
     renameMedia(item);
   });
   topRight.appendChild(rename);
+  // Beside rename rather than buried in the edit modal: adding a
+  // supplementary doc/image to a video that's already in the library is a
+  // separate, occasional action from editing its title/description, and
+  // doesn't want a whole modal of its own -- a file picker is the entire
+  // interaction (see cardAttachmentsInput's own change handler).
+  const addAttachment = document.createElement("button");
+  addAttachment.className = "card__add-attachment";
+  addAttachment.title = "Add attachments";
+  addAttachment.setAttribute("aria-label", `Add attachments to ${item.title}`);
+  addAttachment.textContent = "📎";
+  addAttachment.addEventListener("click", (e) => {
+    e.stopPropagation();
+    addAttachmentsToMedia(item);
+  });
+  topRight.appendChild(addAttachment);
   thumbWrap.appendChild(topRight);
 
   // Title, remaining-time and progress bar are one bottom-anchored stack
@@ -1586,21 +1609,99 @@ mappingResetBtn.addEventListener("click", async () => {
   if (!data.error) paintMappingControls(data);
 });
 
-async function renameMedia(item) {
-  const newTitle = prompt("Rename video:", item.title);
-  if (!newTitle || !newTitle.trim() || newTitle.trim() === item.title) return;
-  const res = await fetch(`/api/media/${item.id}/rename`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token: adminToken, title: newTitle.trim() }),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (data.error) {
-    alert(data.error);
+// ------------------------------------------------------- edit video modal
+// Replaces what used to be a plain prompt() -- fine for a single line of
+// text, not for a title plus a whole description. Same
+// scrim/openOverlay/closeOverlay pattern as the resume-choice and PIN
+// modals elsewhere on this page.
+let editMediaItem = null;
+
+function renameMedia(item) {
+  editMediaItem = item;
+  editMediaTitleInput.value = item.title;
+  editMediaDescInput.value = item.description || "";
+  editMediaError.classList.add("hidden");
+  editMediaError.textContent = "";
+  openOverlay(editMediaScrim, editMediaModal);
+  editMediaTitleInput.focus();
+}
+
+function closeEditMedia() {
+  closeOverlay(editMediaScrim, editMediaModal, () => { editMediaItem = null; });
+}
+
+editMediaCancelBtn.addEventListener("click", closeEditMedia);
+editMediaScrim.addEventListener("click", closeEditMedia);
+
+editMediaSaveBtn.addEventListener("click", async () => {
+  const item = editMediaItem;
+  if (!item) return;
+  const title = editMediaTitleInput.value.trim();
+  if (!title) {
+    editMediaError.textContent = "Title required";
+    editMediaError.classList.remove("hidden");
     return;
   }
-  loadMedia();
+  editMediaSaveBtn.disabled = true;
+  try {
+    const res = await fetch(`/api/media/${item.id}/rename`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        token: adminToken,
+        title,
+        description: editMediaDescInput.value.trim(),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (data.error) {
+      editMediaError.textContent = data.error;
+      editMediaError.classList.remove("hidden");
+      return;
+    }
+    closeEditMedia();
+    loadMedia();
+  } finally {
+    editMediaSaveBtn.disabled = false;
+  }
+});
+
+// --------------------------------------------- add attachments to a card
+// The upload form's own attachments field only ever applies to the file
+// being uploaded right now -- this is for a video that's already in the
+// library, found stuck without its supplementary docs after the fact. One
+// shared hidden input rather than one per card (see cardAttachmentsInput
+// in index.html); this just remembers which card most recently triggered
+// it.
+let cardAttachmentsItem = null;
+
+function addAttachmentsToMedia(item) {
+  cardAttachmentsItem = item;
+  cardAttachmentsInput.value = "";
+  cardAttachmentsInput.click();
 }
+
+cardAttachmentsInput.addEventListener("change", async () => {
+  const item = cardAttachmentsItem;
+  const files = [...cardAttachmentsInput.files];
+  if (!item || !files.length) return;
+
+  const form = new FormData();
+  form.append("token", adminToken);
+  for (const f of files) form.append("attachments", f);
+
+  try {
+    const res = await fetch(`/api/media/${item.id}/attachments`, { method: "POST", body: form });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.error) {
+      alert(data.error || "Adding attachments failed");
+      return;
+    }
+    loadMedia();
+  } catch (err) {
+    alert("Adding attachments failed — check your connection");
+  }
+});
 
 // Repopulates the category dropdown from whatever's currently in the
 // library, keeping the "+ New category…" option last and preserving the

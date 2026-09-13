@@ -372,6 +372,36 @@
   </div>
 </div>
 
+<!-- Admin-only: opened by a card's rename (pencil) button in place of the
+     plain prompt() this used to be, now that there's a description to edit
+     alongside the title, not just one line of text a native prompt could
+     still hold. -->
+<div class="scrim hidden" id="editMediaScrim"></div>
+<div class="confirm-modal confirm-modal--form hidden" id="editMediaModal" role="dialog" aria-modal="true" aria-label="Edit video">
+  <div class="confirm-modal__title">Edit video</div>
+  <div class="field">
+    <label for="editMediaTitleInput">Title</label>
+    <input type="text" id="editMediaTitleInput" maxlength="200">
+  </div>
+  <div class="field">
+    <label for="editMediaDescInput">Description</label>
+    <textarea id="editMediaDescInput" rows="4" placeholder="Optional"></textarea>
+  </div>
+  <p class="field__hint hidden" id="editMediaError"></p>
+  <div class="confirm-modal__actions">
+    <button type="button" class="btn btn-primary btn-block" id="editMediaSaveBtn">Save</button>
+    <button type="button" class="btn btn-secondary btn-block" id="editMediaCancelBtn">Cancel</button>
+  </div>
+</div>
+
+<!-- One shared, invisible file input for every card's "add attachments"
+     button (see buildCard), rather than one per card -- it's only ever
+     used for whichever card was clicked last (see cardAttachmentsItem in
+     app.js), the same single-input-many-triggers pattern the upload
+     field's own attachments input doesn't need since there's only ever
+     one of those on screen at a time. -->
+<input type="file" id="cardAttachmentsInput" accept=".pdf,.png,.jpg,.jpeg,.gif,.webp" multiple class="hidden">
+
 <div class="scrim hidden" id="docScrim"></div>
 <div class="doc-viewer hidden" id="docViewer" role="dialog" aria-modal="true" aria-label="Document viewer">
   <button type="button" class="btn-icon doc-viewer__close" id="docViewerClose" aria-label="Close">
