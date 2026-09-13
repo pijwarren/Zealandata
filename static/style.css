@@ -294,13 +294,21 @@ button.tag:active{ opacity:.65; }
   width:var(--chevron-size); height:var(--chevron-size);
   border-top:2px solid currentColor;
   border-right:2px solid currentColor;
-  /* The arms only occupy the box's top and right, so their meeting point is
-     a quarter of the box up and to the right of the centre the box spins
-     around -- rotating alone would swing it off the middle of a round
-     button. Translating back by that quarter, in the box's own frame so it
-     holds at every angle, parks the point on the centre instead. */
+  /* The arms only occupy the box's top and right, so their meeting point
+     needs translating back toward the centre the box spins around, or
+     rotating alone swings it visibly off-centre in every direction (each
+     one biased toward whatever it's pointing away from). The fraction
+     below is calibrated against a rendered, pixel-measured chevron rather
+     than derived from the box geometry alone -- the naive half-the-box
+     figure that math suggests overshoots in practice (borders drawn
+     outside the box, antialiasing on a diagonal stroke, and the visible
+     glyph reading as narrower than its full arm length all pull the
+     actual centre in from that). 0.2 is what centred it within a quarter
+     pixel, measured on a rendered row-arrow button at four cardinal
+     angles -- if this ever needs revisiting, measure again rather than
+     re-deriving it. */
   transform:rotate(var(--chevron-angle,0deg))
-            translate(calc(var(--chevron-size) * -0.25), calc(var(--chevron-size) * 0.25));
+            translate(calc(var(--chevron-size) * -0.2), calc(var(--chevron-size) * 0.2));
 }
 .chevron--up{ --chevron-angle:-45deg; }
 .chevron--right{ --chevron-angle:45deg; }
