@@ -897,6 +897,18 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
     var(--shadow-lg);
   padding:var(--space-8);
   display:flex; flex-direction:column; gap:var(--space-6);
+  /* Belt-and-braces: .drawer itself no longer scrolls (see .drawer__scroll
+     above), but it also never clipped its own content -- nothing has
+     stopped a child that computes wider than expected (a nested
+     flex/grid item refusing to shrink below its own content's min-width,
+     which can happen at any depth despite the min-width:0 already given
+     to .drawer__scroll) from rendering straight past this panel's
+     rounded/bordered edge instead of being cut off by it. That reads as
+     the edge itself being clipped -- flat, square, no border or shadow --
+     when it's really the content escaping past a boundary that was never
+     enforced. overflow:hidden here makes the rounded corners an actual
+     clip, not just a background shape. */
+  overflow:hidden;
 }
 .drawer::before{
   content:"";
@@ -914,7 +926,15 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
    actually shrinks to the drawer's own max-height instead of growing past
    it and pushing the frame itself taller. */
 .drawer__scroll{
-  flex:1 1 auto; min-height:0;
+  flex:1 1 auto; min-height:0; min-width:0;
+  /* min-width:0 above overrides a flex item's default min-width:auto --
+     without it this can refuse to shrink below its content's own
+     min-content width (whatever inside it -- the settings grid, a row of
+     sliders -- happens to demand), forcing this wrapper wider than
+     .drawer actually is. .drawer's own overflow:hidden (see above) is
+     the backstop that clips such an overflow visually either way, but
+     fixing the width itself here means there's nothing to clip in the
+     first place. */
   /* .drawer's own flex column + gap used to space .settings-grid,
      #libraryField and #mappingField apart when they were its direct
      children -- splitting scrolling out into this wrapper left them as
