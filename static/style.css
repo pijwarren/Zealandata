@@ -915,6 +915,15 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
    it and pushing the frame itself taller. */
 .drawer__scroll{
   flex:1 1 auto; min-height:0;
+  /* .drawer's own flex column + gap used to space .settings-grid,
+     #libraryField and #mappingField apart when they were its direct
+     children -- splitting scrolling out into this wrapper left them as
+     plain block siblings inside a non-flex div instead, silently
+     collapsing that gap to zero (Library and Video orientation sat flush
+     against each other, the one gap that isn't #mappingField's own
+     internal flex gap between its sections). Same layout, moved down a
+     level. */
+  display:flex; flex-direction:column; gap:var(--space-6);
   overflow-y:auto; overflow-x:hidden;
   /* Stops a scroll that runs off the end of the drawer from carrying on
      into the page behind it -- the browser chains the two by default. */
