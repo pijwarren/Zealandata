@@ -872,13 +872,6 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   opacity:0; transition:opacity .2s ease;
 }
 .scrim.is-open{ opacity:1; }
-/* White selection highlight throughout the admin panel, in place of the
-   browser's default (blue on most platforms) -- text stays its own colour,
-   only the highlight itself changes. Two separate rules rather than a
-   combined selector list: ::-moz-selection is invalid alongside ::selection
-   in one selector in some engines and drops the whole rule. */
-.drawer ::selection{ background:#fff; }
-.drawer ::-moz-selection{ background:#fff; }
 .drawer{
   position:fixed; top:50%; left:50%; z-index:61;
   --materialize-scale:.96;
