@@ -36,6 +36,7 @@ const libraryField = document.getElementById("libraryField");
 const mappingField = document.getElementById("mappingField");
 const mappingShadingBtn = document.getElementById("mappingShadingBtn");
 const mappingFpsBtn = document.getElementById("mappingFpsBtn");
+const mappingCenterlineBtn = document.getElementById("mappingCenterlineBtn");
 const mappingFlipHBtn = document.getElementById("mappingFlipHBtn");
 const mappingFlipVBtn = document.getElementById("mappingFlipVBtn");
 const mappingResetBtn = document.getElementById("mappingResetBtn");
@@ -1133,6 +1134,10 @@ let mappingShadingEnabled = false;
 // loop is achieving, which the preview canvas -- a different renderer on
 // a different machine -- can't stand in for. So it's output-only.
 let mappingFpsEnabled = false;
+// Output-only like fps above, for the same reason: it's read by standing
+// in front of the physical projector to aim it at the print, not by
+// looking at this admin panel or the preview mirror.
+let mappingCenterlineEnabled = false;
 // Manual video orientation switches -- see server.py's MAPPING_BOOLEAN
 // comment on why these are plain operator-facing controls rather than
 // something computed automatically.
@@ -1177,6 +1182,8 @@ function paintMappingControls(mapping) {
   previewGizmoBtn.textContent = previewGizmoEnabled ? "Hide preview gizmo" : "Show preview gizmo";
   mappingFpsEnabled = !!mapping.fps;
   mappingFpsBtn.textContent = mappingFpsEnabled ? "Hide FPS on output" : "Show FPS on output";
+  mappingCenterlineEnabled = !!mapping.centerline;
+  mappingCenterlineBtn.textContent = mappingCenterlineEnabled ? "Hide alignment line" : "Show alignment line";
   mappingFlipHEnabled = !!mapping.video_flip_h;
   mappingFlipHBtn.textContent = mappingFlipHEnabled ? "Un-flip video horizontally" : "Flip video horizontally";
   for (const key of Object.keys(keystoneValues)) {
@@ -1522,6 +1529,17 @@ mappingFpsBtn.addEventListener("click", async () => {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ token: adminToken, fps: !mappingFpsEnabled }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!data.error) paintMappingControls(data);
+});
+
+mappingCenterlineBtn.addEventListener("click", async () => {
+  if (!adminToken) return;
+  const res = await fetch("/api/mapping", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token: adminToken, centerline: !mappingCenterlineEnabled }),
   });
   const data = await res.json().catch(() => ({}));
   if (!data.error) paintMappingControls(data);

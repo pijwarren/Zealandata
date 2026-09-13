@@ -178,15 +178,25 @@ MAPPING_BOOLEAN = {
     # own gizmo comments for why it's drawn after (bypassing) the keystone
     # warp. Off by default for the same reason shading is.
     "gizmo": False,
-    # Diagnostic aid, and the only one of these three that's readable from
-    # the projector itself rather than the admin panel: draws the render
-    # rate the projection page is actually achieving as a small overlay on
-    # the real HDMI output. /api/projection/stats already reports the same
-    # number, but reading it there means having a second device to hand --
-    # this is for standing in front of the projection and seeing directly
-    # what the Quality slider or a re-encoded source just bought. Off by
-    # default like the others: it's an overlay on the projected image.
+    # Diagnostic aid, readable from the projector itself rather than the
+    # admin panel (like centerline below): draws the render rate the
+    # projection page is actually achieving as a small overlay on the real
+    # HDMI output. /api/projection/stats already reports the same number,
+    # but reading it there means having a second device to hand -- this is
+    # for standing in front of the projection and seeing directly what the
+    # Quality slider or a re-encoded source just bought. Off by default like
+    # the others: it's an overlay on the projected image.
     "fps": False,
+    # Alignment aid: a single white vertical line down the centre of the
+    # output, at true screen-center regardless of the model's own pose --
+    # like the gizmo and fps readout above, this is meant to be read by
+    # standing in front of the physical projector, not from the admin panel,
+    # so it isn't mirrored in calibration_preview.js. Lets an operator move
+    # the projector itself (not the on-model calibration) until the line
+    # falls where the print actually wants its centre, before touching any
+    # of the scale/rotation/offset sliders at all. Off by default, same
+    # reasoning as the others.
+    "centerline": False,
     # Manual video orientation switches -- see video_rotation above in
     # MAPPING_NUMERIC. Defaulted to match the fixed correction these
     # replaced (a vertical flip only), so introducing these controls
@@ -258,6 +268,7 @@ THUMBNAIL_VIEW_FILE = os.path.join(BASE_DIR, "thumbnail_view.json")
 THUMBNAIL_VIEW_FORCED = {
     "gizmo": False,
     "fps": False,
+    "centerline": False,
     "keystone_corner": "",
     "shading": True,
 }

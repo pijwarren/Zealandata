@@ -109,6 +109,11 @@ struct mapping {
     /* On-screen frame-rate readout, toggled from the admin panel. Also
        independent of the two above -- see server.py's MAPPING_BOOLEAN. */
     bool fps_overlay;
+    /* Single white vertical line at true screen-center, drawn like the
+       gizmo/fps_overlay above (bypassing the keystone warp) -- an alignment
+       aid for aiming the physical projector at the print, independent of
+       both of the above. See server.py's MAPPING_BOOLEAN "centerline". */
+    bool centerline;
     /* Keystone: how far each corner of the final rendered picture is
        nudged from its default position, in NDC units (+-1 spans the full
        display) -- corrects for the projector itself sitting off-axis from
@@ -146,7 +151,7 @@ struct mapping {
 static struct mapping map_cur = {
     .scale = 1, .rot_x = 0, .rot_y = 0, .rot_z = 0, .off_x = 0, .off_y = 0,
     .render_scale = 1, .throw_dist = 0.6f, .throw_off_x = 0, .throw_off_y = 0,
-    .shading = false, .gizmo = false, .fps_overlay = false,
+    .shading = false, .gizmo = false, .fps_overlay = false, .centerline = false,
     .ks_tl_x = 0, .ks_tl_y = 0, .ks_tr_x = 0, .ks_tr_y = 0,
     .ks_bl_x = 0, .ks_bl_y = 0, .ks_br_x = 0, .ks_br_y = 0,
     .vid_rotation = 0, .vid_flip_h = false, .vid_flip_v = true,
@@ -233,6 +238,7 @@ static void mapping_reload(void) {
     json_bool(buf, "shading", &map_cur.shading);
     json_bool(buf, "gizmo", &map_cur.gizmo);
     json_bool(buf, "fps", &map_cur.fps_overlay);
+    json_bool(buf, "centerline", &map_cur.centerline);
     json_num(buf, "keystone_tl_x", &map_cur.ks_tl_x);
     json_num(buf, "keystone_tl_y", &map_cur.ks_tl_y);
     json_num(buf, "keystone_tr_x", &map_cur.ks_tr_x);
@@ -257,13 +263,13 @@ static void mapping_reload(void) {
     /* Below this the near plane (see the render loop's frustum setup)
        starts crowding the model itself. */
     if (map_cur.throw_dist < 0.3f) map_cur.throw_dist = 0.3f;
-    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f throw_off=(%.2f,%.2f) shading=%d gizmo=%d fps=%d "
+    printf("[cal] scale=%.2f rot=(%.0f,%.0f,%.0f) off=(%.2f,%.2f) rs=%.2f throw=%.2f throw_off=(%.2f,%.2f) shading=%d gizmo=%d fps=%d centerline=%d "
            "ks_tl=(%.2f,%.2f) ks_tr=(%.2f,%.2f) ks_bl=(%.2f,%.2f) ks_br=(%.2f,%.2f) ks_corner=%s "
            "video_rotation=%.0f video_flip=(%d,%d)\n",
            map_cur.scale, map_cur.rot_x, map_cur.rot_y, map_cur.rot_z,
            map_cur.off_x, map_cur.off_y, map_cur.render_scale, map_cur.throw_dist,
            map_cur.throw_off_x, map_cur.throw_off_y,
-           map_cur.shading, map_cur.gizmo, map_cur.fps_overlay,
+           map_cur.shading, map_cur.gizmo, map_cur.fps_overlay, map_cur.centerline,
            map_cur.ks_tl_x, map_cur.ks_tl_y, map_cur.ks_tr_x, map_cur.ks_tr_y,
            map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y,
            map_cur.keystone_corner[0] ? map_cur.keystone_corner : "-",
@@ -2253,6 +2259,24 @@ int main(void) {
             glBindBuffer(GL_ARRAY_BUFFER, labelVbo);
             glBufferSubData(GL_ARRAY_BUFFER, 0, hc * sizeof(label_vert), hudVerts);
             glDrawArrays(GL_LINES, 0, hc);
+        }
+
+        /* ---- alignment line: a single white vertical line at true
+           NDC x=0, top to bottom -- like the gizmo/fps readout above, drawn
+           straight in NDC rather than through any model/keystone transform,
+           so it marks true screen-center regardless of the calibration.
+           Gated on its own mapping.centerline flag -- see MAPPING_BOOLEAN
+           in server.py. ---- */
+        if (map_cur.centerline) {
+            label_vert lineVerts[2] = {
+                { 0.f, -1.f, 1.f, 1.f, 1.f },
+                { 0.f,  1.f, 1.f, 1.f, 1.f },
+            };
+            glUseProgram(labelProg);
+            glBindVertexArray(labelVao);
+            glBindBuffer(GL_ARRAY_BUFFER, labelVbo);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof lineVerts, lineVerts);
+            glDrawArrays(GL_LINES, 0, 2);
         }
 
         glBindVertexArray(vao);   /* restore, matching the mesh pass */
