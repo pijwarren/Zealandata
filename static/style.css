@@ -736,9 +736,12 @@ body.admin-mode .topbar__settings-icon{
 .row__arrow{
   position:absolute; top:50%; transform:translateY(-50%);
   width:36px; height:36px; border-radius:50%;
-  background:rgba(22,24,38,0.75); backdrop-filter:blur(6px);
+  /* Brand sky fill with the brand navy chevron on it (see .chevron's own
+     currentColor) -- the same pair the mission badges use, just swapped:
+     navy plate/sky mark there, sky plate/navy mark here. */
+  background:#AEDBFF;
   border:1px solid var(--color-divider);
-  color:var(--color-text); font-size:18px; line-height:1;
+  color:#062D51; font-size:18px; line-height:1;
   cursor:pointer; z-index:3;
   display:flex; align-items:center; justify-content:center;
   opacity:0; transition:opacity .15s ease, background .15s ease;
