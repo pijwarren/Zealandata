@@ -130,29 +130,32 @@ function setPauseIcon(paused) {
 
 // ------------------------------------------------------------- row cards
 
+// A full arrow (shaft + head) rather than the corner-chevron these used to
+// share with the keystone pad's nudges -- modelled on the prev/next
+// carousel buttons at earthsciences.nz, in our own sky/navy button colours
+// rather than copying their white/blue. Same shape mirrored left/right, so
+// one path traced clockwise around a right-pointing arrow and its x=256-x
+// reflection for the left one.
+const ARROW_ICON_SVG = {
+  right: '<svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M32,108 L152,108 L152,68 L224,128 L152,188 L152,148 L32,148 Z"></path></svg>',
+  left: '<svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,108 L104,108 L104,68 L32,128 L104,188 L104,148 L224,148 Z"></path></svg>',
+};
+
 function wrapScroller(scroller) {
   const viewport = document.createElement("div");
   viewport.className = "row__viewport";
   scroller.parentNode.insertBefore(viewport, scroller);
   viewport.appendChild(scroller);
 
-  // Same .chevron the keystone nudges and the projector's own corner marker
-  // use -- see style.css -- rather than an angle-quote glyph of its own.
-  const chevron = (dir) => {
-    const span = document.createElement("span");
-    span.className = `chevron chevron--${dir}`;
-    return span;
-  };
-
   const leftBtn = document.createElement("button");
   leftBtn.className = "row__arrow row__arrow--left hidden";
   leftBtn.setAttribute("aria-label", "Scroll left");
-  leftBtn.appendChild(chevron("left"));
+  leftBtn.innerHTML = ARROW_ICON_SVG.left;
 
   const rightBtn = document.createElement("button");
   rightBtn.className = "row__arrow row__arrow--right hidden";
   rightBtn.setAttribute("aria-label", "Scroll right");
-  rightBtn.appendChild(chevron("right"));
+  rightBtn.innerHTML = ARROW_ICON_SVG.right;
 
   viewport.insertBefore(leftBtn, scroller);
   viewport.appendChild(rightBtn);
