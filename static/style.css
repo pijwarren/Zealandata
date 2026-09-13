@@ -944,7 +944,18 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
      internal flex gap between its sections). Same layout, moved down a
      level. */
   display:flex; flex-direction:column; gap:var(--space-6);
-  overflow-y:auto; overflow-x:hidden;
+  /* overflow-x used to be hidden here explicitly, to stop this wrapper
+     from ever getting its own horizontal scrollbar. Dropped in favour of
+     .drawer's own overflow:hidden doing that job instead (nothing can
+     escape past .drawer's edge either way) -- this element also carries
+     mask-image below, and overflow + mask-image on the same box is a
+     known source of exactly a hairline (1-2px) clip along one edge in
+     some engines, which is worse than the horizontal scrollbar it was
+     guarding against. overflow-y:auto alone still computes overflow-x to
+     auto per spec (a "visible" paired with a non-visible overflow-y isn't
+     allowed to stay visible), so a genuine overflow still scrolls instead
+     of bleeding out -- it just isn't forced hidden pre-emptively anymore. */
+  overflow-y:auto;
   /* Stops a scroll that runs off the end of the drawer from carrying on
      into the page behind it -- the browser chains the two by default. */
   overscroll-behavior:contain;
