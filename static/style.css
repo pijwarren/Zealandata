@@ -908,7 +908,16 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
   border-radius:inherit; pointer-events:none;
   background:var(--glass-sheen);
 }
-body.admin-mode .drawer{ width:min(1100px, 94vw); }
+/* Fixed height here (not just the base rule's max-height), so the panel's
+   own edges -- including the bottom corner's deliberately-asymmetric
+   radius -- stay put on screen as sections are twirled open/closed. The
+   locked-mode drawer (PIN pad, screensaver) keeps hugging its own content
+   via the base max-height instead: it's far shorter than 96vh, and a fixed
+   height there would just be empty glass under the pad. Admin mode is
+   exactly the case with enough collapsible content for that recentering
+   to be visible, so it's the one that gets pinned; overflow-y:auto on
+   .drawer itself (see base rule) does the scrolling from here. */
+body.admin-mode .drawer{ width:min(1100px, 94vw); height:96vh; }
 .drawer.is-open{ opacity:1; --materialize-scale:1; }
 .drawer__header{ position:relative; flex:0 0 auto; width:100%; text-align:center; }
 .drawer__header h2{ font-family:var(--font-heading); font-weight:500; font-size:20px; margin:0; }
