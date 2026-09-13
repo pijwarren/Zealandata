@@ -130,15 +130,19 @@ function setPauseIcon(paused) {
 
 // ------------------------------------------------------------- row cards
 
-// A full arrow (shaft + head) rather than the corner-chevron these used to
-// share with the keystone pad's nudges -- modelled on the prev/next
-// carousel buttons at earthsciences.nz, in our own sky/navy button colours
-// rather than copying their white/blue. Same shape mirrored left/right, so
-// one path traced clockwise around a right-pointing arrow and its x=256-x
-// reflection for the left one.
+// The exact "re-arrow-right" icon earthsciences.nz's own carousel prev/next
+// buttons use (their sprite's #re-arrow-right symbol, viewBox 0 0 33 27),
+// in our own sky/navy button colours rather than copying their white/blue.
+// left is the same path data wrapped in a mirroring transform rather than
+// hand-derived reflected coordinates, so there's no risk of a transcription
+// error putting it a pixel or two off from a true mirror.
+const ARROW_ICON_PATHS =
+  '<path d="M21.7955 -5.26292e-06L19.4619 2.33356L30.5522 13.4238L32.8857 11.0902L21.7955 -5.26292e-06Z"></path>' +
+  '<path d="M30.5531 13.4271L19.4629 24.5173L21.7965 26.8509L32.8867 15.7606L30.5531 13.4271Z"></path>' +
+  '<path d="M25.5762 11.7744H1.65008C0.742535 11.7744 0 12.5169 0 13.4244V15.0745H25.5762V11.7744Z"></path>';
 const ARROW_ICON_SVG = {
-  right: '<svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M32,108 L152,108 L152,68 L224,128 L152,188 L152,148 L32,148 Z"></path></svg>',
-  left: '<svg width="20" height="20" viewBox="0 0 256 256" fill="currentColor" aria-hidden="true"><path d="M224,108 L104,108 L104,68 L32,128 L104,188 L104,148 L224,148 Z"></path></svg>',
+  right: `<svg width="20" height="20" viewBox="0 0 33 27" fill="currentColor" aria-hidden="true">${ARROW_ICON_PATHS}</svg>`,
+  left: `<svg width="20" height="20" viewBox="0 0 33 27" fill="currentColor" aria-hidden="true"><g transform="scale(-1,1) translate(-33,0)">${ARROW_ICON_PATHS}</g></svg>`,
 };
 
 function wrapScroller(scroller) {
