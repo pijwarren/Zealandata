@@ -59,6 +59,29 @@
       text-align: center; padding: 24px;
       background: rgba(0, 0, 0, 0.55);
     }
+    #stage canvas {
+      /* Otherwise a touch drag on the canvas also tries to scroll/zoom the
+         page, which fights the orbit drag below on touchscreens. */
+      touch-action: none;
+      cursor: grab;
+    }
+    #stage canvas.dragging { cursor: grabbing; }
+    /* A child of #stage, deliberately -- it needs to rotate along with the
+       canvas so it reads right-side-up to whoever's actually looking at
+       the (upside-down-mounted) screen this page is normally shown on,
+       the same reason the axis labels above are inside #stage too. */
+    #resetView {
+      position: absolute; z-index: 3;
+      bottom: 16px; right: 16px;
+      padding: 8px 14px;
+      font: 600 13px/1 -apple-system, system-ui, sans-serif;
+      color: #e8eaed;
+      background: rgba(32, 33, 36, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.25);
+      border-radius: 6px;
+      cursor: pointer;
+    }
+    #resetView:hover { background: rgba(48, 49, 52, 0.9); }
     .hidden { display: none !important; }
   </style>
 </head>
@@ -69,6 +92,7 @@
     <span class="axis-label axis-label--y" id="labelY">Y</span>
     <span class="axis-label axis-label--z" id="labelZ">Z</span>
     <div id="status">Loading the projection model&hellip;</div>
+    <button id="resetView" type="button" title="Reset to the calibrated view">Reset view</button>
   </div>
   <script type="module">
     // Renders the projector's output client-side, through
@@ -83,19 +107,52 @@
     // Pi nothing but the small mapping poll below.
     //
     // The tradeoff, worth being honest about: this is a reconstruction
-    // rather than a photograph of the output, so it shows the calibrated
-    // model with the idle image on it, not whatever video is playing right
-    // now, and it can only be as accurate as the port stays. That suits
-    // what this is for -- checking alignment while calibrating.
+    // rather than a photograph of the output, so it's only ever as accurate
+    // as the port stays, and it textures the model with a still poster
+    // frame of whatever was playing when the page loaded (see
+    // api_current_frame in server.py) -- captured once, not a live video
+    // feed, and not refreshed if something else starts playing afterward.
+    // That suits what this is for -- checking alignment while calibrating.
     import * as preview from "/static/calibration_preview.js";
 
     const statusEl = document.getElementById("status");
     const canvas = document.getElementById("mirrorCanvas");
+    const resetViewBtn = document.getElementById("resetView");
     const labels = {
       x: document.getElementById("labelX"),
       y: document.getElementById("labelY"),
       z: document.getElementById("labelZ"),
     };
+
+    // Mouse/touch orbit, purely a local viewing aid -- see
+    // calibration_preview.js's orbitBy/resetOrbit for why this never
+    // touches the actual calibration mapping. Radians per CSS pixel of
+    // drag; the canvas is rotated 180deg with the rest of #stage, so a
+    // drag's raw movementX/Y already point the "wrong" way from the
+    // pointer's own on-screen perspective and both are negated to match.
+    const ORBIT_RADIANS_PER_PX = 0.008;
+    let dragging = false;
+    canvas.addEventListener("pointerdown", (event) => {
+      if (!preview.isReady()) return;
+      dragging = true;
+      canvas.classList.add("dragging");
+      canvas.setPointerCapture(event.pointerId);
+    });
+    canvas.addEventListener("pointermove", (event) => {
+      if (!dragging) return;
+      preview.orbitBy(
+        -event.movementX * ORBIT_RADIANS_PER_PX,
+        -event.movementY * ORBIT_RADIANS_PER_PX
+      );
+    });
+    function endDrag(event) {
+      dragging = false;
+      canvas.classList.remove("dragging");
+      if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    }
+    canvas.addEventListener("pointerup", endDrag);
+    canvas.addEventListener("pointercancel", endDrag);
+    resetViewBtn.addEventListener("click", () => preview.resetOrbit());
 
     // Matches the admin panel's own calibration poll. The payload is a
     // small flat JSON object and the client is on the same LAN, so this is

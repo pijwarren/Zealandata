@@ -6,15 +6,23 @@
 // from the C matrix/shader code so the two stay in lock-step.
 //
 // It never touches the physical projector or its video pipeline: there's no
-// video here at all, just the model textured with the same static loading
-// image the projector shows when idle, plus the same orientation gizmo.
-// Rendering is done on demand (on open, and whenever a mapping value
-// changes) rather than in a continuous rAF loop -- the one exception is the
-// breathing keystone-corner marker (see render's tail end), which runs its
-// own short-lived rAF loop only while a corner is actually selected.
+// video here at all, just the model textured with a still poster frame of
+// whatever was actually playing when this page loaded (or the idle loading
+// image, if nothing was -- see server.py's api_current_frame), captured
+// once at init, not kept live, plus the same orientation gizmo. Rendering
+// is done on demand (on open, and whenever a mapping value changes) rather
+// than in a continuous rAF loop -- the one exception is the breathing
+// keystone-corner marker (see render's tail end), which runs its own
+// short-lived rAF loop only while a corner is actually selected.
 
 const MODEL_URL = "/api/projection/model";
-const TEXTURE_URL = "/api/loading-image";
+// Whatever was actually textured onto the model at the moment this page
+// loaded (the current pick's poster thumbnail, or the loading image if
+// nothing was playing) -- see server.py's api_current_frame. Loaded once at
+// init, like the old static loading-image texture this replaced -- not
+// re-polled, so the mirror keeps showing what it opened with even if
+// something else starts playing afterward.
+const TEXTURE_URL = "/api/current-frame";
 
 // Mirrors projector.c's SCALE_BASELINE exactly -- see its comment.
 const SCALE_BASELINE = 1.82;
@@ -667,6 +675,28 @@ function setStatus(msg) {
   else { statusEl.classList.add("hidden"); }
 }
 
+// Mouse-orbit for the mirror page only -- purely a viewing aid, never
+// persisted or sent to the server, and never touches the calibration
+// mapping itself. Applied between the calibrated model matrix and the
+// projector's own eye transform (see buildMatrices), so it reads as
+// spinning the viewpoint around the model exactly as calibrated, rather
+// than as an extra calibration rotation.
+let orbitYaw = 0;
+let orbitPitch = 0;
+const ORBIT_PITCH_LIMIT = Math.PI / 2 - 0.01;
+
+export function orbitBy(dYawRad, dPitchRad) {
+  orbitYaw += dYawRad;
+  orbitPitch = Math.min(ORBIT_PITCH_LIMIT, Math.max(-ORBIT_PITCH_LIMIT, orbitPitch + dPitchRad));
+  if (lastMapping) requestRender(lastMapping);
+}
+
+export function resetOrbit() {
+  orbitYaw = 0;
+  orbitPitch = 0;
+  if (lastMapping) requestRender(lastMapping);
+}
+
 // Ported from projector.c's render loop: rotation_z applied innermost,
 // then y, then x -- see that file's comment on why z has to be innermost --
 // then scale, then offset.
@@ -708,7 +738,13 @@ function buildMatrices(mapping) {
     near, far,
   );
   const mEye = matTranslate(-throwOffX, -throwOffY, -throwDist);
-  const modelEye = matMul(mEye, modelM);
+  // Orbit rotates the whole calibrated scene about the model's own centre
+  // (the origin, same as parseObj normalises to) before it's placed in eye
+  // space -- see orbitBy's comment on why this sits here rather than
+  // folded into modelM.
+  const mOrbit = matMul(matRotX(orbitPitch), matRotY(orbitYaw));
+  const modelOrbited = matMul(mOrbit, modelM);
+  const modelEye = matMul(mEye, modelOrbited);
   const mvp = matMul(proj, modelEye);
   // Same model/eye matrix, projected in parallel over the bounds the
   // frustum spans at the model's reference depth -- so the gizmo lands

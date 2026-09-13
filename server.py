@@ -418,6 +418,7 @@ current_media_meta = {"id": None, "title": None, "description": None, "is_sequen
 # dock can display "Screensaver mode: <title>" instead of "Nothing playing".
 screensaver_meta_lock = threading.Lock()
 current_screensaver_title = None
+current_screensaver_id = None
 
 # Last time any playback-control endpoint was hit — drives the idle timeout.
 _interaction_lock = threading.Lock()
@@ -1446,9 +1447,10 @@ def _screensaver_loop(gen):
 
         if not _still_current(gen):
             return
-        global current_screensaver_title
+        global current_screensaver_title, current_screensaver_id
         with screensaver_meta_lock:
             current_screensaver_title = pick["title"]
+            current_screensaver_id = pick["id"]
         # Not held under mpv_lock -- _hdmi_load checks gen itself and bails
         # the instant something newer claims the generation (a real
         # selection, a crash-restart), instead of finishing this pick's
@@ -1760,6 +1762,33 @@ def api_reset_mapping():
 
 @app.route("/api/loading-image")
 def api_loading_image():
+    if not LOADING_IMAGE_PATH or not os.path.exists(LOADING_IMAGE_PATH):
+        return jsonify({"error": "no loading image configured"}), 404
+    return send_file(LOADING_IMAGE_PATH)
+
+
+@app.route("/api/current-frame")
+def api_current_frame():
+    """Whatever's actually textured onto the model right now, as a single
+    still image -- the foreground pick's or screensaver pick's own poster
+    thumbnail (already generated at scan/upload time -- see
+    _generate_thumbnail) if one's playing, otherwise the configured loading
+    image. This never extracts a fresh frame per request -- reusing the
+    existing thumbnail keeps it exactly as cheap as the static
+    /api/loading-image endpoint the mirror used to always show instead,
+    rather than reintroducing the per-poll framebuffer capture mirror.html's
+    own comments describe moving away from."""
+    media_id = None
+    if current_kind == "video":
+        with meta_lock:
+            media_id = current_media_meta.get("id")
+    elif current_kind == "screensaver":
+        with screensaver_meta_lock:
+            media_id = current_screensaver_id
+    if media_id:
+        thumb_path = os.path.join(THUMB_DIR, f"{media_id}.jpg")
+        if os.path.exists(thumb_path):
+            return send_file(thumb_path)
     if not LOADING_IMAGE_PATH or not os.path.exists(LOADING_IMAGE_PATH):
         return jsonify({"error": "no loading image configured"}), 404
     return send_file(LOADING_IMAGE_PATH)
