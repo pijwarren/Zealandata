@@ -520,7 +520,13 @@ body.admin-mode .topbar__settings-icon{
   display:flex; flex-direction:column;
   height:var(--hero-h);
 }
-.hero__media{ position:relative; flex:1 1 auto; min-height:0; overflow:hidden; }
+/* Rounded on this one corner only -- overflow:hidden is what actually
+   clips .hero__bg/.hero__scrim/.hero__content to it, not just the media
+   box's own edge. */
+.hero__media{
+  position:relative; flex:1 1 auto; min-height:0; overflow:hidden;
+  border-bottom-right-radius:var(--radius-lg);
+}
 .hero__bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
 .hero__scrim{
   position:absolute; inset:0; pointer-events:none;
@@ -617,6 +623,18 @@ body.admin-mode .topbar__settings-icon{
 .row{
   margin-bottom:var(--space-8);
   scroll-margin-top:calc(var(--topbar-h) + var(--topbar-scrim-fade) + 20px);
+}
+/* A subtle seam between rows, not above the very first one on the page --
+   .row+.row alone would miss the join between the Most Popular row and the
+   first category row, since #popularRow and #categoryRows are siblings
+   and the actual .row sections only start one level down inside the
+   latter; the general-sibling version reaches across that. */
+.row + .row, #popularRow:not(.hidden) ~ #categoryRows > .row:first-child{
+  border-top:1px solid var(--color-divider);
+  /* A little breathing room so the line doesn't sit flush against the
+     heading right below it -- the previous row's own margin-bottom
+     already provides the space above the line. */
+  padding-top:12px;
 }
 
 /* The six badges come to 986px of fixed-width artwork, which fits a 1440
@@ -798,7 +816,7 @@ body.admin-mode .topbar__settings-icon{
 .card--coming-soon{
   cursor:default;
   background:transparent;
-  border:1px dashed var(--color-divider);
+  border:1px dashed var(--color-neutral-600);
 }
 .card--coming-soon:hover, .card--coming-soon:focus-visible{ transform:none; box-shadow:none; }
 .card__coming-soon-label{
