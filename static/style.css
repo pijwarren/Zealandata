@@ -915,7 +915,7 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
    it and pushing the frame itself taller. */
 .drawer__scroll{
   flex:1 1 auto; min-height:0;
-  overflow-y:auto;
+  overflow-y:auto; overflow-x:hidden;
   /* Stops a scroll that runs off the end of the drawer from carrying on
      into the page behind it -- the browser chains the two by default. */
   overscroll-behavior:contain;
@@ -925,9 +925,14 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
      has none of its own). A fixed-size fade rather than one keyed to actual
      scroll position: simpler, at the cost of a slight dim on whatever sits
      right at the very top/bottom of the list even when there's nothing
-     further to scroll to in that direction. */
+     further to scroll to in that direction -- which is exactly what the
+     padding below is for. */
   mask-image:linear-gradient(to bottom, transparent, black 24px, black calc(100% - 24px), transparent);
   -webkit-mask-image:linear-gradient(to bottom, transparent, black 24px, black calc(100% - 24px), transparent);
+  /* Extra scroll room matching the fade band's own height, so the true
+     first/last button can be scrolled clear of it instead of sitting stuck
+     under a permanent dim with nothing left to scroll to. */
+  padding-block:24px;
 }
 body.admin-mode .drawer{ width:min(1100px, 94vw); }
 .drawer.is-open{ opacity:1; --materialize-scale:1; }
