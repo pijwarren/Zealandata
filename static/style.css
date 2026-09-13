@@ -1024,7 +1024,7 @@ body.admin-mode .settings-grid{
   transition:transform var(--section-duration) var(--section-ease);
 }
 .mapping-section[open] > .mapping-section__summary::before{ transform:rotate(90deg); }
-.mapping-section__summary:hover{ color:var(--color-accent); }
+.mapping-section__summary:hover{ color:#fff; }
 /* Contents fade and slide into place when a section opens.
    Deliberately NOT a height sweep, which is what this used to be, for two
    separate reasons.
@@ -1117,7 +1117,7 @@ body.admin-mode .settings-grid{
 .keystone__corner:hover{ border-color:var(--color-accent); color:var(--color-accent); }
 .keystone__corner:active{ border-color:var(--color-accent); color:var(--color-accent); background:rgba(6,45,81,0.17); }
 .keystone__corner.is-selected{
-  border-color:var(--color-accent); color:var(--color-accent);
+  border-color:var(--color-accent); color:#fff;
   background:rgba(96,199,250,0.16);
 }
 /* Arrows live on the axis they drive -- left/right along the top, up/down
