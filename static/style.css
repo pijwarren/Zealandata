@@ -522,10 +522,12 @@ body.admin-mode .topbar__settings-icon{
 }
 /* Rounded on this one corner only -- overflow:hidden is what actually
    clips .hero__bg/.hero__scrim/.hero__content to it, not just the media
-   box's own edge. */
+   box's own edge. Its own scale, not one of the --radius-* tokens sized
+   for cards/panels/chips -- 14px reads as barely-there on a full-bleed
+   banner this size. */
 .hero__media{
   position:relative; flex:1 1 auto; min-height:0; overflow:hidden;
-  border-bottom-right-radius:var(--radius-lg);
+  border-bottom-right-radius:96px;
 }
 .hero__bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
 .hero__scrim{
