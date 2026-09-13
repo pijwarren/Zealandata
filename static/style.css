@@ -1061,6 +1061,14 @@ body.admin-mode .settings-grid{
    what the open-animation above needs the section to stay in. */
 .mapping-section[open] > * + *{ margin-top:20px; }
 
+/* Video orientation and Projection mapping's first row sits 4px lower than
+   this under their own section header -- .mapping-row carries its own
+   `padding:4px 0` (see below), which the plain .field divs Library uses
+   don't have. Nudging just the first one keeps "Scanning" lined up with
+   "Rotation"/"Scale" instead of sitting visibly tighter under its own
+   header than they do under theirs. */
+#sectionLibrary > .field:first-of-type{ padding-top:4px; }
+
 .mapping-subheading{
   display:block; font-size:11px; font-weight:600; text-transform:uppercase;
   letter-spacing:.5px; color:var(--color-neutral-600);
