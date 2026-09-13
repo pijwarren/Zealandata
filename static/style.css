@@ -540,10 +540,10 @@ body.admin-mode .topbar__settings-icon{
 .hero__bg{ position:absolute; inset:0; width:100%; height:100%; object-fit:cover; display:block; background:var(--color-surface); }
 .hero__scrim{
   position:absolute; inset:0; pointer-events:none;
-  /* rgb(6,45,81) -- brand-exact ESNZ navy (see --color-text) rather than
-     the dark theme's old off-brand near-black this was still using. */
-  background:linear-gradient(90deg, rgba(6,45,81,0.92) 0%, rgba(6,45,81,0.25) 55%, rgba(6,45,81,0) 78%),
-             linear-gradient(0deg, rgba(6,45,81,0.95) 0%, rgba(6,45,81,0) 30%);
+  /* rgb(12,12,12) -- a dark neutral grey, tried in place of the brand navy
+     this carried briefly. */
+  background:linear-gradient(90deg, rgba(12,12,12,0.92) 0%, rgba(12,12,12,0.25) 55%, rgba(12,12,12,0) 78%),
+             linear-gradient(0deg, rgba(12,12,12,0.95) 0%, rgba(12,12,12,0) 30%);
 }
 /* Everything in here sits on the hero IMAGE under a dark scrim, so it keeps
    light ink regardless of the theme -- see --color-on-media. The page ground
