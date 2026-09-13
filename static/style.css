@@ -897,16 +897,28 @@ body.admin-mode .card:hover .card__rename, body.admin-mode .card:focus-within .c
     var(--shadow-lg);
   padding:var(--space-8);
   display:flex; flex-direction:column; gap:var(--space-6);
-  overflow-y:auto;
-  /* Stops a scroll that runs off the end of the drawer from carrying on
-     into the page behind it -- the browser chains the two by default. */
-  overscroll-behavior:contain;
 }
 .drawer::before{
   content:"";
   position:absolute; inset:0; z-index:-1;
   border-radius:inherit; pointer-events:none;
   background:var(--glass-sheen);
+}
+/* Scrolling lives here, not on .drawer itself -- .drawer carries the glass
+   background/blur/border/radius and is position:fixed, and having that same
+   element also be the overflow:auto scrollport made the blurred background
+   visibly shift/scroll along with the content on every scroll (backdrop-
+   filter recomputing against a box whose own overflow was moving under it).
+   Splitting them means the glass frame never moves; only this plain,
+   unstyled wrapper's content does. flex:1 1 auto + min-height:0 so it
+   actually shrinks to the drawer's own max-height instead of growing past
+   it and pushing the frame itself taller. */
+.drawer__scroll{
+  flex:1 1 auto; min-height:0;
+  overflow-y:auto;
+  /* Stops a scroll that runs off the end of the drawer from carrying on
+     into the page behind it -- the browser chains the two by default. */
+  overscroll-behavior:contain;
 }
 body.admin-mode .drawer{ width:min(1100px, 94vw); }
 .drawer.is-open{ opacity:1; --materialize-scale:1; }
