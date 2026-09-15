@@ -11,15 +11,18 @@ WorkingDirectory=/home/pj/zealandata/weather
 # change). Each "-" prefix makes that invocation's exit code non-fatal to
 # the unit (still logged, still counted per-invocation in `systemctl
 # status`) -- with ten of these chained, one level's transient 404 (a GFS
-# run not fully published yet) shouldn't block the other nine.
-Environment=NODE=/home/pj/.local/node-v24.21.0-linux-arm64/bin/node
-ExecStart=-${NODE} fetch_wind.mjs surface
-ExecStart=-${NODE} fetch_wind.mjs 1000hPa
-ExecStart=-${NODE} fetch_wind.mjs 850hPa
-ExecStart=-${NODE} fetch_wind.mjs 700hPa
-ExecStart=-${NODE} fetch_wind.mjs 500hPa
-ExecStart=-${NODE} fetch_wind.mjs 250hPa
-ExecStart=-${NODE} fetch_wind.mjs 70hPa
-ExecStart=-${NODE} fetch_wind.mjs 10hPa
-ExecStart=-${NODE} fetch_waves.mjs
-ExecStart=-${NODE} fetch_temp.mjs
+# run not fully published yet) shouldn't block the other nine. (Not using
+# Environment=NODE=... + ${NODE} here -- this system's systemd doesn't
+# expand it in the executable-path position, only in arguments, so it
+# fails with 203/EXEC; spelling the path out ten times is the reliable
+# option.)
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs surface
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs 1000hPa
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs 850hPa
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs 700hPa
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs 500hPa
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs 250hPa
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs 70hPa
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs 10hPa
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_waves.mjs
+ExecStart=-/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_temp.mjs
