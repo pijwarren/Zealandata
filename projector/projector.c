@@ -2535,9 +2535,12 @@ int main(void) {
                floor -- see the big comment above WIND_FADE_VS_SRC for why
                that distinction matters once this is composited over
                idle_tex below. Higher = longer tail (0.96 ~= twice the
-               persistence of the original 0.94/single-dot version). */
+               persistence of the original 0.94/single-dot version).
+               Currents get a longer tail than wind/waves (0.985 vs 0.96)
+               -- ocean currents move slowly enough that the short wind
+               tail read as disconnected dashes rather than a flow. */
             glBlendFunc(GL_ZERO, GL_CONSTANT_ALPHA);
-            glBlendColor(0.f, 0.f, 0.f, 0.96f);
+            glBlendColor(0.f, 0.f, 0.f, wind_active_layer == WIND_LAYER_CURRENTS ? 0.985f : 0.96f);
             glUseProgram(windFadeProg);
             glBindVertexArray(windFadeVao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
