@@ -67,8 +67,6 @@
 #include <gst/gl/gl.h>
 #include <gst/gl/egl/gstgldisplay_egl.h>
 
-#include "coastline_uv.h"
-
 #define CHECK(cond, msg) do { if (!(cond)) { fprintf(stderr, "fatal: %s (%s)\n", msg, strerror(errno)); exit(1); } } while (0)
 
 static volatile sig_atomic_t running = 1;
@@ -1269,23 +1267,6 @@ static const char *WIND_BLIT_FS_SRC =
     "out vec4 oColor;\n"
     "void main(){ oColor = texture(uTex, vUV); }\n";
 
-/* TEMPORARY debug overlay -- draws coastline_uv.h (NZ coastline, run
-   through fetch_wind.mjs's exact geo_to_uv transform) as bright lines on
-   top of the wind composite, so the geographic alignment can be checked
-   directly against the physical print rather than guessed at from a
-   snapshot. Remove once orientation (MODEL_ROTATION_DEG/FLIP_X/FLIP_Y in
-   fetch_wind.mjs) is confirmed correct on the real hardware. */
-static const char *WIND_COASTLINE_VS_SRC =
-    "#version 300 es\n"
-    "layout(location=0) in vec2 aUV;\n"   /* [0,1], same space as wind particles */
-    "void main(){ gl_Position = vec4(aUV * 2.0 - 1.0, 0.0, 1.0); }\n";
-
-static const char *WIND_COASTLINE_FS_SRC =
-    "#version 300 es\n"
-    "precision mediump float;\n"
-    "out vec4 oColor;\n"
-    "void main(){ oColor = vec4(1.0, 1.0, 0.0, 1.0); }\n"; /* bright yellow */
-
 static const char *WIND_PARTICLE_VS_SRC =
     "#version 300 es\n"
     "layout(location=0) in vec2 aPos;\n"    /* NDC, from wind_particles' UV each frame */
@@ -2355,21 +2336,6 @@ int main(void) {
     GLint uWindBlitVidFlipH = glGetUniformLocation(windBlitProg, "uVidFlipH");
     GLint uWindBlitVidFlipV = glGetUniformLocation(windBlitProg, "uVidFlipV");
 
-    /* TEMPORARY debug overlay -- see WIND_COASTLINE_VS_SRC above. */
-    GLuint windCoastlineProg = glCreateProgram();
-    glAttachShader(windCoastlineProg, compile_shader(GL_VERTEX_SHADER, WIND_COASTLINE_VS_SRC));
-    glAttachShader(windCoastlineProg, compile_shader(GL_FRAGMENT_SHADER, WIND_COASTLINE_FS_SRC));
-    glLinkProgram(windCoastlineProg);
-    GLint windCoastlineLinked = 0; glGetProgramiv(windCoastlineProg, GL_LINK_STATUS, &windCoastlineLinked);
-    if (!windCoastlineLinked) { char log[2048]; glGetProgramInfoLog(windCoastlineProg, sizeof log, NULL, log);
-                                 fprintf(stderr, "wind coastline link: %s\n", log); return 1; }
-    GLuint windCoastlineVao, windCoastlineVbo;
-    glGenVertexArrays(1, &windCoastlineVao); glBindVertexArray(windCoastlineVao);
-    glGenBuffers(1, &windCoastlineVbo); glBindBuffer(GL_ARRAY_BUFFER, windCoastlineVbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof coastline_uv, coastline_uv, GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
-
     GLuint windFadeVao, windFadeVbo;
     glGenVertexArrays(1, &windFadeVao); glBindVertexArray(windFadeVao);
     glGenBuffers(1, &windFadeVbo); glBindBuffer(GL_ARRAY_BUFFER, windFadeVbo);
@@ -2556,12 +2522,7 @@ int main(void) {
             glBindTexture(GL_TEXTURE_2D, windTex);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            /* TEMPORARY debug overlay -- see WIND_COASTLINE_VS_SRC above. */
-            glDisable(GL_BLEND);
-            glUseProgram(windCoastlineProg);
-            glBindVertexArray(windCoastlineVao);
-            glDrawArrays(GL_LINES, 0, COASTLINE_NUM_VERTS);
-
+            glDisable(GL_BLEND); /* the rest of this loop assumes its default-off state */
             glBindVertexArray(vao); /* restore the model's VAO for the draw below */
         }
 

@@ -1,4 +1,8 @@
-/* Generated from earth.nullschool.net's own coastline_50m topojson data, transformed through fetch_wind.mjs's exact geo_to_uv math (CENTER_LON/LAT, HALF_WIDTH/HEIGHT_KM, MODEL_ROTATION_DEG) -- a debug overlay to visually verify that transform against the physical print. See weather/README.md. */
+/* Generated from earth.nullschool.net's own coastline_50m topojson data, transformed through fetch_wind.mjs's exact geo_to_uv math (CENTER_LON/LAT, HALF_WIDTH/HEIGHT_KM, MODEL_ROTATION_DEG) -- kept for reference/re-enabling a
+   debug overlay later; not currently #included by projector.c. Regenerate by
+   re-running the coastline-extraction script described in weather/README.md
+   if fetch_wind.mjs's constants change again. Current values match the
+   confirmed-correct rotation=120, HALF_WIDTH_KM=1014.05, HALF_HEIGHT_KM=518.75. */
 #define COASTLINE_NUM_VERTS 1394
 static const float coastline_uv[COASTLINE_NUM_VERTS * 2] = {
     0.21698f,0.50375f, 0.21871f,0.51242f, 0.21871f,0.51242f, 0.22273f,0.51696f, 0.22273f,0.51696f, 0.23251f,0.53470f, 0.23251f,0.53470f, 0.24229f,0.55244f,

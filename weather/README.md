@@ -34,25 +34,31 @@ fetch_wind.mjs  --(every ~15-30 min)-->  wind_field.bin  --(polled every ~2s)-->
   is currently running -- if it stops, the model just keeps animating
   from the last grid it loaded.
 
-## Before this looks right on the physical print
+## Geographic alignment (confirmed against the physical print)
 
-`fetch_wind.mjs`'s geographic constants (`CENTER_LON`, `CENTER_LAT`,
-`HALF_WIDTH_KM`, `HALF_HEIGHT_KM`) come from `Hikurangi_3Dprint_AOI.shp`
-in the model's QGIS project -- a near-perfect rectangle in NZGD2000 / NZ
-Continental Shelf 2000, rotated exactly 30 deg off the projection's grid
-axes, converted to plain lon/lat. Which km figure is width vs height was
-cross-checked against the OBJ mesh's own local extent ratio (both give
-1 : 1.955), not guessed.
+`fetch_wind.mjs`'s geographic constants: `CENTER_LON`/`CENTER_LAT` come
+from `Hikurangi_3Dprint_AOI.shp` in the model's QGIS project. The
+shapefile rectangle's own ~30 deg tilt turned out to be an artifact of
+the QGIS canvas being rotated when it was drawn, *not* the model's real
+orientation -- `MODEL_ROTATION_DEG` (120) and the `HALF_WIDTH_KM`/
+`HALF_HEIGHT_KM` assignment (1014.05/518.75 -- the *larger* figure goes
+to width) were instead set directly by the model's builder and confirmed
+live against the physical print on 2026-09-15. Don't re-derive these from
+the shapefile edge bearing or the raw OBJ file's own vertex extents --
+both looked plausible but were wrong; `load_obj`'s second axis remap
+((x,y,z) -> (y,x,-z), applied after its up-axis fix) transposes the
+mesh's local X/Y in a way that's easy to miss reading the file cold.
 
-Still genuinely unresolved without seeing this on the physical print:
-the *sign* of the rotation and which real-world corner lands where --
-neither is derivable from the shapefile alone (depends on the OBJ's own
-vertex winding). `FLIP_X`/`FLIP_Y` are the fallback knobs for this, the
-same kind of thing this project already uses for video
-(`uVidRotation`/`uVidFlipH`/`uVidFlipV` in the admin panel) -- if
-particles end up mirrored or off-axis once visible on the real print,
-tune these (or flip `MODEL_ROTATION_DEG`'s sign) rather than the
-rotation math itself.
+If the model geometry or its calibration ever changes enough to need
+re-checking: `coastline_uv.h` in `projector/` (currently unused, kept for
+reference) has NZ's coastline pre-transformed through this same
+`geo_to_uv` math -- wiring it back into a bright-line debug overlay (it
+was previously #included and drawn as `GL_LINES` in wind mode) is a fast
+way to visually re-verify alignment without guessing from the particle
+pattern alone. A real video frame (something already geographically
+registered, like a tsunami simulation) is a much more reliable reference
+for this than a static idle/loading image, which may have its own
+independent orientation quirks unrelated to true geography.
 
 `SPEED_SCALE` and `projector.c`'s `WIND_MAX_SPEED_UV` are pure visual
 tuning (how fast particles appear to drift, and where the calm-to-storm
