@@ -119,6 +119,27 @@ function worldToLocalVelocity(u, v, speedScale) {
  * @param speedScale visual tuning multiplier, see worldToLocalVelocity
  * @param label short tag for console logging, e.g. "fetch_wind"
  */
+function gridHeader(validTime) {
+  const header = Buffer.alloc(4 + 4 + 8)
+  header.writeUInt32LE(GRID_W, 0)
+  header.writeUInt32LE(GRID_H, 4)
+  header.writeDoubleLE(Date.UTC(
+    validTime.year, validTime.month - 1, validTime.day,
+    validTime.hour, validTime.minute, validTime.second
+  ) / 1000, 8)
+  return header
+}
+
+async function writeGridFile(header, data, outputPath, label) {
+  const body = Buffer.from(data.buffer, data.byteOffset, data.byteLength)
+  const out = Buffer.concat([header, body])
+
+  const tmpPath = outputPath + '.tmp'
+  await writeFile(tmpPath, out)
+  await rename(tmpPath, outputPath) // atomic on the same filesystem
+  console.log(`[${label}] wrote ${out.length} bytes to ${outputPath}`)
+}
+
 export async function writeFieldGrid(field, validTime, outputPath, speedScale, label) {
   const data = new Float32Array(GRID_W * GRID_H * 2)
   let nanCount = 0
@@ -141,20 +162,33 @@ export async function writeFieldGrid(field, validTime, outputPath, speedScale, l
   if (nanCount > 0) {
     console.warn(`[${label}] ${nanCount}/${GRID_W * GRID_H} grid cells had no data (out of model coverage?)`)
   }
+  await writeGridFile(gridHeader(validTime), data, outputPath, label)
+}
 
-  const header = Buffer.alloc(4 + 4 + 8)
-  header.writeUInt32LE(GRID_W, 0)
-  header.writeUInt32LE(GRID_H, 4)
-  header.writeDoubleLE(Date.UTC(
-    validTime.year, validTime.month - 1, validTime.day,
-    validTime.hour, validTime.minute, validTime.second
-  ) / 1000, 8)
-
-  const body = Buffer.from(data.buffer, data.byteOffset, data.byteLength)
-  const out = Buffer.concat([header, body])
-
-  const tmpPath = outputPath + '.tmp'
-  await writeFile(tmpPath, out)
-  await rename(tmpPath, outputPath) // atomic on the same filesystem
-  console.log(`[${label}] wrote ${out.length} bytes to ${outputPath}`)
+/**
+ * Same idea as writeFieldGrid but for a scalar field (one value per cell
+ * instead of a (u,v) pair) -- e.g. temperature. `transformValue`, if
+ * given, converts the field's native unit (e.g. Kelvin) into whatever
+ * projector.c's colormap expects (see fetch_temp.mjs).
+ */
+export async function writeScalarGrid(field, validTime, outputPath, transformValue, label) {
+  const data = new Float32Array(GRID_W * GRID_H)
+  let nanCount = 0
+  for (let j = 0; j < GRID_H; j++) {
+    for (let i = 0; i < GRID_W; i++) {
+      const [lon, lat] = gridCellToLonLat(i, j)
+      const raw = field.bilinear(lon, lat)
+      const idx = j * GRID_W + i
+      if (raw == null || Number.isNaN(raw)) {
+        nanCount++
+        data[idx] = 0
+        continue
+      }
+      data[idx] = transformValue ? transformValue(raw) : raw
+    }
+  }
+  if (nanCount > 0) {
+    console.warn(`[${label}] ${nanCount}/${GRID_W * GRID_H} grid cells had no data (out of model coverage?)`)
+  }
+  await writeGridFile(gridHeader(validTime), data, outputPath, label)
 }

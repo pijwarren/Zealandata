@@ -106,6 +106,7 @@ WEATHER_LAYERS = {
     # with its embedded valid_time (see weather_layer_valid_time) rather
     # than presented as current.
     "currents": {"label": "Currents", "file": os.path.join(BASE_DIR, "currents_field.bin")},
+    "temp": {"label": "Temp", "file": os.path.join(BASE_DIR, "temp_field.bin")},
 }
 LIVE_WEATHER_ID = "live-weather"
 DEFAULT_WEATHER_LAYER = "wind"
@@ -1153,7 +1154,7 @@ def _scan_media():
             "path": None,
             "category": "Weather and Climate Hazards",
             "duration": None,
-            "description": "Live wind, waves, and ocean current conditions over New Zealand.",
+            "description": "Live wind, waves, ocean current, and temperature conditions over New Zealand.",
             "is_sequence": False,
             "frame_count": None,
             "thumbnail": "/static/icons/categories/weather-and-climate-hazards-colour.svg",

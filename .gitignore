@@ -19,6 +19,8 @@ waves_field.bin
 waves_field.bin.tmp
 currents_field.bin
 currents_field.bin.tmp
+temp_field.bin
+temp_field.bin.tmp
 
 # Compiled native projector -- built on the Pi from projector.c by its
 # Makefile, and architecture-specific, so it never belongs in the repo.

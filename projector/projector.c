@@ -30,10 +30,13 @@
  * Live layers: an alternative live texture source -- animated particles
  *            rendered natively here (see "wind" further down), advected
  *            each frame from a small vector grid one of weather/fetch_
- *            {wind,waves,currents}.mjs writes periodically. Selected the
- *            same way as everything else, over the IPC socket
- *            (set_property "video-source" "wind"/"waves"/"currents");
- *            any loadfile switches back to normal video/image playback.
+ *            {wind,waves,currents}.mjs writes periodically, or (for
+ *            "temp") a translucent colour overlay from a scalar grid
+ *            weather/fetch_temp.mjs writes (see "scalar (temp)" further
+ *            down). Selected the same way as everything else, over the
+ *            IPC socket (set_property "video-source"
+ *            "wind"/"waves"/"currents"/"temp"); any loadfile switches
+ *            back to normal video/image playback.
  */
 #define _GNU_SOURCE
 #define GST_USE_UNSTABLE_API
@@ -381,6 +384,59 @@ static void sample_wind(float x, float y, float *u_out, float *v_out) {
     *v_out = v0 + (v1 - v0) * ty;
 }
 
+/* ================================================== scalar (temp) === *
+ * A single-value-per-cell grid, same file shape as wind/waves/currents
+ * minus the doubled (u,v) payload -- written by weather/fetch_temp.mjs
+ * (GFS 2m air temperature, already converted to Celsius there) and
+ * polled here the same stat()-and-mtime way wind_field_reload() is.
+ * Rendered as a colour overlay (see the scalar composite pass in the
+ * render loop, gated on live_layer_is_scalar) rather than particles -- projector.c doesn't know or
+ * care that it's temperature specifically, just an abstract scalar over
+ * [0,1]^2, same spirit as the wind/waves/currents comment above. ==== */
+static const char *scalar_field_path = "/home/pj/zealandata/temp_field.bin";
+static struct timespec scalar_field_mtim;
+static bool scalar_field_loaded = false;
+static float *scalar_grid = NULL;    /* grid_w * grid_h floats */
+static int scalar_grid_w = 0, scalar_grid_h = 0;
+
+static void scalar_field_reload(void) {
+    struct stat st;
+    if (stat(scalar_field_path, &st) != 0) return;
+    bool mtime_changed = !scalar_field_loaded ||
+                          st.st_mtim.tv_sec != scalar_field_mtim.tv_sec ||
+                          st.st_mtim.tv_nsec != scalar_field_mtim.tv_nsec;
+    if (!mtime_changed) return;
+    scalar_field_mtim = st.st_mtim;
+
+    FILE *f = fopen(scalar_field_path, "rb");
+    if (!f) return;
+    uint32_t w = 0, h = 0;
+    double valid_time = 0;
+    bool ok = fread(&w, sizeof w, 1, f) == 1 &&
+              fread(&h, sizeof h, 1, f) == 1 &&
+              fread(&valid_time, sizeof valid_time, 1, f) == 1 &&
+              w > 1 && h > 1 && w <= 4096 && h <= 4096;
+    float *buf = NULL;
+    if (ok) {
+        size_t n = (size_t)w * (size_t)h;
+        buf = malloc(n * sizeof(float));
+        ok = buf && fread(buf, sizeof(float), n, f) == n;
+    }
+    fclose(f);
+    if (!ok) {
+        free(buf);
+        fprintf(stderr, "[scalar] failed to read %s\n", scalar_field_path);
+        return;
+    }
+
+    free(scalar_grid);
+    scalar_grid = buf;
+    scalar_grid_w = (int)w;
+    scalar_grid_h = (int)h;
+    scalar_field_loaded = true;
+    printf("[scalar] reloaded %dx%d grid from %s (validTime unix=%.0f)\n", scalar_grid_w, scalar_grid_h, scalar_field_path, valid_time);
+}
+
 /* ---- land mask: rasterised once at startup from coastline_uv (see
    coastline_uv.h) so wind/waves/currents particles can be kept off land,
    sampled the same [0,1]x[0,1] UV space as wind_particle positions.
@@ -459,6 +515,14 @@ static bool land_mask_is_land(float x, float y) {
    expect mostly blue/green until the two are tuned together against what
    the real print actually shows. */
 #define WIND_MAX_SPEED_UV 0.25f
+
+/* Visual tuning for the scalar temperature overlay (see scalarTex below)
+   -- the Celsius range that maps to the colormap's blue..red ends.
+   Chosen to cover this AOI's plausible year-round range (occasional
+   inland/mountain frost through summer highs) rather than derived from
+   any one fetch_temp.mjs run. */
+#define TEMP_MIN_C -5.f
+#define TEMP_MAX_C 30.f
 
 /* px,py: position at the start of this frame, before advection -- kept so
    the render loop can draw a prev->current line segment per particle
@@ -1400,6 +1464,40 @@ static const char *WIND_COASTLINE_FS_SRC =
     "out vec4 oColor;\n"
     "void main(){ oColor = vec4(1.0, 1.0, 1.0, 1.0); }\n";
 
+/* Scalar (temperature) colour overlay: samples scalarTex (see
+   scalar_field_reload()/the render loop's scalar composite pass -- one GL_R8 texel per
+   grid cell, pre-normalised 0..1 against TEMP_MIN_C/TEMP_MAX_C on
+   upload, GL_LINEAR-filtered so the coarse 64x48 grid interpolates
+   smoothly at full quad resolution) through a blue-cyan-yellow-red
+   ramp, distinct from the particle speed ramp (white-yellow-red) so the
+   two layers don't read as the same kind of thing at a glance. Drawn at
+   fixed partial opacity so the model's own idle/base texture still
+   shows through underneath, the same relationship idle_tex has with
+   wind_tex in wind/waves/currents mode -- see WIND_FADE_VS_SRC. */
+static const char *WIND_SCALAR_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec2 aPos;\n"   /* static fullscreen quad, already NDC */
+    "out vec2 vUV;\n"
+    "void main(){\n"
+    "  gl_Position = vec4(aPos, 0.0, 1.0);\n"
+    "  vUV = aPos * 0.5 + 0.5;\n"
+    "}\n";
+
+static const char *WIND_SCALAR_FS_SRC =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "in vec2 vUV;\n"
+    "uniform sampler2D uTex;\n"
+    "out vec4 oColor;\n"
+    "void main(){\n"
+    "  float t = texture(uTex, vUV).r;\n"
+    "  vec3 c;\n"
+    "  if (t < 0.333) { c = mix(vec3(0.05, 0.15, 0.85), vec3(0.05, 0.85, 0.85), t / 0.333); }\n"
+    "  else if (t < 0.666) { c = mix(vec3(0.05, 0.85, 0.85), vec3(1.0, 0.95, 0.1), (t - 0.333) / 0.333); }\n"
+    "  else { c = mix(vec3(1.0, 0.95, 0.1), vec3(0.9, 0.1, 0.1), (t - 0.666) / 0.334); }\n"
+    "  oColor = vec4(c, 0.85);\n"
+    "}\n";
+
 static const char *WIND_PARTICLE_VS_SRC =
     "#version 300 es\n"
     "layout(location=0) in vec2 aPos;\n"    /* NDC, from wind_particles' UV each frame */
@@ -1700,6 +1798,12 @@ static bool   showing_still_image = false;
    flip, since wind_tex/wind_fbo are created once at startup rather than
    needing a fresh decode per switch. */
 static bool   showing_live_layer = false;
+/* True when the live layer is the scalar temperature overlay (see
+   scalar_field_reload() and the render loop's scalar composite pass)
+   rather than a particle layer -- both share showing_live_layer
+   (native-UV, no video-rotation correction) but need very different
+   per-frame work. */
+static bool   live_layer_is_scalar = false;
 /* Set by video_load() (any thread), consumed once by the main thread's
    render loop, since the actual decode + glTexImage2D upload below needs
    the EGL context that's only current there. */
@@ -2205,15 +2309,22 @@ static void *ipc_client_thread(void *arg) {
                mirrors what video_load() already does unconditionally, so
                nothing keeps decoding underneath the live render while
                it's up. */
-            wind_layer_t layer;
-            if (!strcmp(val, "wind")) layer = WIND_LAYER_WIND;
-            else if (!strcmp(val, "waves")) layer = WIND_LAYER_WAVES;
-            else if (!strcmp(val, "currents")) layer = WIND_LAYER_CURRENTS;
-            else layer = WIND_LAYER_COUNT; /* not a recognised layer name */
-            if (layer != WIND_LAYER_COUNT) {
+            if (!strcmp(val, "temp")) {
                 gst_element_set_state(playbin, GST_STATE_NULL);
-                wind_active_layer = layer;
+                live_layer_is_scalar = true;
                 showing_live_layer = true;
+            } else {
+                wind_layer_t layer;
+                if (!strcmp(val, "wind")) layer = WIND_LAYER_WIND;
+                else if (!strcmp(val, "waves")) layer = WIND_LAYER_WAVES;
+                else if (!strcmp(val, "currents")) layer = WIND_LAYER_CURRENTS;
+                else layer = WIND_LAYER_COUNT; /* not a recognised layer name */
+                if (layer != WIND_LAYER_COUNT) {
+                    gst_element_set_state(playbin, GST_STATE_NULL);
+                    wind_active_layer = layer;
+                    live_layer_is_scalar = false;
+                    showing_live_layer = true;
+                }
             }
         }
         /* image-display-duration / keep-open: no native GStreamer/playbin
@@ -2303,6 +2414,7 @@ int main(void) {
     const char *windfile = getenv("ZEALANDATA_WIND_FIELD_FILE");
     const char *wavesfile = getenv("ZEALANDATA_WAVES_FIELD_FILE");
     const char *currentsfile = getenv("ZEALANDATA_CURRENTS_FIELD_FILE");
+    const char *tempfile = getenv("ZEALANDATA_TEMP_FIELD_FILE");
     if (!card)     card = "/dev/dri/card1";
     if (!objpath)  objpath = "/home/pj/zealandata/static/3dPrint_210kFaces.obj";
     if (!sockpath) sockpath = "/tmp/zealandata-mpv.sock";
@@ -2310,6 +2422,7 @@ int main(void) {
     if (windfile)     wind_layer_paths[WIND_LAYER_WIND] = windfile;
     if (wavesfile)    wind_layer_paths[WIND_LAYER_WAVES] = wavesfile;
     if (currentsfile) wind_layer_paths[WIND_LAYER_CURRENTS] = currentsfile;
+    if (tempfile)     scalar_field_path = tempfile;
 
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
@@ -2514,6 +2627,47 @@ int main(void) {
 
     build_land_mask();
 
+    /* ---- scalar (temperature) overlay: small data texture + its own
+       composite target, same idle_tex-then-overlay structure as
+       windCompositeFbo/Tex above but without any per-frame simulation --
+       just re-uploaded whenever scalar_field_reload() sees a new file.
+       See WIND_SCALAR_VS_SRC/FS_SRC. */
+    GLuint scalarTex;
+    glGenTextures(1, &scalarTex);
+    glBindTexture(GL_TEXTURE_2D, scalarTex);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+    GLuint scalarCompositeFbo, scalarCompositeTex;
+    glGenTextures(1, &scalarCompositeTex);
+    glBindTexture(GL_TEXTURE_2D, scalarCompositeTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, WIND_TEX_SIZE, WIND_TEX_SIZE, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glGenFramebuffers(1, &scalarCompositeFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, scalarCompositeFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, scalarCompositeTex, 0);
+    GLenum scalarCompositeFboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (scalarCompositeFboStatus != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "[scalar] composite framebuffer incomplete (0x%x) -- temp mode will show black\n", scalarCompositeFboStatus);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    GLuint windScalarProg = glCreateProgram();
+    glAttachShader(windScalarProg, compile_shader(GL_VERTEX_SHADER, WIND_SCALAR_VS_SRC));
+    glAttachShader(windScalarProg, compile_shader(GL_FRAGMENT_SHADER, WIND_SCALAR_FS_SRC));
+    glLinkProgram(windScalarProg);
+    GLint windScalarLinked = 0; glGetProgramiv(windScalarProg, GL_LINK_STATUS, &windScalarLinked);
+    if (!windScalarLinked) { char log[2048]; glGetProgramInfoLog(windScalarProg, sizeof log, NULL, log);
+                              fprintf(stderr, "wind scalar link: %s\n", log); return 1; }
+    glUseProgram(windScalarProg);
+    glUniform1i(glGetUniformLocation(windScalarProg, "uTex"), 0);
+
     glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
 
 
@@ -2577,7 +2731,7 @@ int main(void) {
            nothing next to a frame, and it avoids an inotify dependency */
         double t = now_sec();
         if (t - last_cal > 0.03) { mapping_reload(); last_cal = t; }
-        if (t - last_wind_poll > 2.0) { wind_field_reload(); last_wind_poll = t; }
+        if (t - last_wind_poll > 2.0) { wind_field_reload(); scalar_field_reload(); last_wind_poll = t; }
 
         double tA = now_sec();
         bus_pump();
@@ -2597,7 +2751,66 @@ int main(void) {
         }
         acc_video += now_sec() - tA;
 
-        if (showing_live_layer) {
+        if (showing_live_layer && live_layer_is_scalar) {
+            /* Re-upload scalarTex only when the underlying grid actually
+               changed, normalising each cell to 0..1 against TEMP_MIN_C/
+               TEMP_MAX_C into a small on-stack byte buffer -- GL_R8 so
+               GL_LINEAR filtering (set at texture creation) is guaranteed
+               core ES3 behaviour, unlike filtering a float texture. */
+            static int scalar_uploaded_w = -1, scalar_uploaded_h = -1;
+            static const float *scalar_uploaded_grid = NULL;
+            if (scalar_grid && (scalar_grid != scalar_uploaded_grid || scalar_grid_w != scalar_uploaded_w || scalar_grid_h != scalar_uploaded_h)) {
+                static uint8_t scalar_upload_buf[4096];
+                int n = scalar_grid_w * scalar_grid_h;
+                if (n <= (int)sizeof scalar_upload_buf) {
+                    for (int i = 0; i < n; i++) {
+                        float t = (scalar_grid[i] - TEMP_MIN_C) / (TEMP_MAX_C - TEMP_MIN_C);
+                        if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
+                        scalar_upload_buf[i] = (uint8_t)(t * 255.f + 0.5f);
+                    }
+                    glBindTexture(GL_TEXTURE_2D, scalarTex);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, scalar_grid_w, scalar_grid_h, 0,
+                                 GL_RED, GL_UNSIGNED_BYTE, scalar_upload_buf);
+                    scalar_uploaded_w = scalar_grid_w;
+                    scalar_uploaded_h = scalar_grid_h;
+                    scalar_uploaded_grid = scalar_grid;
+                } else {
+                    fprintf(stderr, "[scalar] grid too large for upload buffer (%dx%d)\n", scalar_grid_w, scalar_grid_h);
+                }
+            }
+
+            /* Composite pass: idle_tex (opaque base), the colour ramp
+               (its own fixed alpha, see WIND_SCALAR_FS_SRC) on top, then
+               the same coastline reference line wind/waves/currents
+               draw -- see the big comment above WIND_FADE_VS_SRC for why
+               idle_tex needs uVidRotation/uVidFlipH/uVidFlipV correction
+               here despite the overlay itself not needing any. */
+            glBindFramebuffer(GL_FRAMEBUFFER, scalarCompositeFbo);
+            glViewport(0, 0, WIND_TEX_SIZE, WIND_TEX_SIZE);
+            glDisable(GL_DEPTH_TEST);
+            glUseProgram(windBlitProg);
+            glBindVertexArray(windFadeVao);
+            glActiveTexture(GL_TEXTURE0);
+            glDisable(GL_BLEND);
+            glUniform1f(uWindBlitVidRotation, map_cur.vid_rotation * (float)M_PI / 180.f);
+            glUniform1i(uWindBlitVidFlipH, map_cur.vid_flip_h ? 1 : 0);
+            glUniform1i(uWindBlitVidFlipV, map_cur.vid_flip_v ? 1 : 0);
+            glBindTexture(GL_TEXTURE_2D, idle_tex);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glUseProgram(windScalarProg);
+            glBindTexture(GL_TEXTURE_2D, scalarTex);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+
+            glDisable(GL_BLEND);
+            glUseProgram(windCoastlineProg);
+            glBindVertexArray(windCoastlineVao);
+            glDrawArrays(GL_LINES, 0, COASTLINE_NUM_VERTS);
+
+            glBindVertexArray(vao); /* restore the model's VAO for the draw below */
+        } else if (showing_live_layer) {
             double wnow = now_sec();
             float wdt = (float)(wnow - last_wind_frame_t);
             /* Guards against a huge dt right after a long stall (e.g. the
@@ -2868,7 +3081,9 @@ int main(void) {
             }
         }
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_live_layer ? windCompositeTex : showing_still_image ? idle_tex : cur_tex);
+        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex
+            : showing_live_layer ? (live_layer_is_scalar ? scalarCompositeTex : windCompositeTex)
+            : showing_still_image ? idle_tex : cur_tex);
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 

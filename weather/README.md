@@ -1,28 +1,33 @@
-# Live data layers (wind, waves, currents)
+# Live data layers (wind, waves, currents, temp)
 
-Renders animated particles on the physical model, drawn natively by
-`projector.c` (see its own top-of-file comment and the "wind" section
-further down) rather than composited from an image. This directory is
-just the data half: three small scripts fetch current global data and
-write the small binary grid files `projector.c` polls and animates from,
-one per layer, switchable live from the browse UI's "Live Weather" tile.
+Renders live data on the physical model, drawn natively by `projector.c`
+(see its own top-of-file comment and the "wind" section further down)
+rather than composited from an image -- animated particles for the three
+vector layers (wind/waves/currents), a colour overlay for the one scalar
+layer (temp). This directory is just the data half: small scripts fetch
+current global data and write the small binary grid files `projector.c`
+polls and renders from, one per layer, switchable live from the browse
+UI's "Live Weather" tile.
 
 ## How it fits together
 
 ```
 fetch_wind.mjs     --(every ~3h, via the timer)-->  wind_field.bin      --\
-fetch_waves.mjs    --(every ~3h, via the timer)-->  waves_field.bin     ---+--(polled every ~2s)--> projector.c
-fetch_currents.mjs --(run manually, not scheduled)-> currents_field.bin --/     (native particle render,
+fetch_waves.mjs    --(every ~3h, via the timer)-->  waves_field.bin     ---+
+fetch_temp.mjs     --(every ~3h, via the timer)-->  temp_field.bin      ---+--(polled every ~2s)--> projector.c
+fetch_currents.mjs --(run manually, not scheduled)-> currents_field.bin --/     (native render,
    (this dir)                                    (repo root, gitignored)        whichever layer is selected)
 ```
 
 - **`geo_grid.mjs`** is the shared piece: it knows how the model's local
   UV space maps onto real-world lon/lat (`CENTER_LON`/`LAT`,
   `HALF_WIDTH`/`HEIGHT_KM`, `MODEL_ROTATION_DEG` -- see "Geographic
-  alignment" below) and how to sample an already-decoded vector field
-  into the binary grid file format `projector.c` reads. All three fetch
-  scripts are thin wrappers around it: fetch+decode their own data
-  source, then call `writeFieldGrid()`.
+  alignment" below), how to sample an already-decoded vector field into
+  the grid file format the wind/waves/currents layers use
+  (`writeFieldGrid()`), and the scalar equivalent for temp
+  (`writeScalarGrid()`, one value per cell instead of a (u,v) pair). All
+  four fetch scripts are thin wrappers around it: fetch+decode their own
+  data source, then call whichever of those two the layer needs.
 - **`fetch_wind.mjs`** fetches the latest global GFS wind grid from
   `gaia.nullschool.net/data/gfs/...` (NOAA public-domain model data,
   repackaged by earth.nullschool.net -- not a documented public API, but
@@ -45,16 +50,26 @@ fetch_currents.mjs --(run manually, not scheduled)-> currents_field.bin --/     
   presenting it as live; re-run manually
   (`sudo systemctl start zealandata-weather-currents.service`) if the
   catalog ever gets a newer entry again.
+- **`fetch_temp.mjs`** — GFS 2m air temperature, same `gaia.nullschool.net`
+  repackaging and ~3h cadence as wind, decoded with the vendored
+  `scalarProduct.js` (a scalar decoder, vs. the vector ones the other
+  three use) and converted Kelvin -> Celsius before writing
+  `../temp_field.bin`. Not a dedicated sea-surface-temperature product --
+  gaia doesn't mirror one -- but tracks it closely enough over open ocean
+  to read as one on the model, and is also meaningful over land. Rendered
+  by `projector.c` as a translucent colour overlay (blue..red across
+  `TEMP_MIN_C`/`TEMP_MAX_C`, pure visual tuning, see that file), not
+  particles -- there's no flow direction for a scalar field to animate.
 - **`vendor/earth/`** is a small, deliberately minimal subset of
   [cambecc/earth](https://github.com/cambecc/earth) (MIT licensed, the
   actual engine behind earth.nullschool.net) -- just the decode/
-  interpolation modules for these three products, extracted from that
+  interpolation modules for these four products, extracted from that
   site's own published source map (`oscar.js` is further trimmed to just
   its decoder function, `buildOscar` -- see that file's own comment for
   why). See `vendor/earth/LICENSE.md`.
 - **`server.py`**'s `WEATHER_LAYERS` surfaces one "Live Weather" tile in
-  the browse UI whenever at least one of the three files exists, with a
-  layer switcher (Wind/Waves/Currents, reusing the same chip strip a
+  the browse UI whenever at least one of the four files exists, with a
+  layer switcher (Wind/Waves/Currents/Temp, reusing the same chip strip a
   video's own supplementary docs/images use) that only enables layers
   with real data. `/api/weather/select` (optionally `{"layer": "..."}`,
   defaults to wind) / `/api/weather/stop` flip `projector.c`'s texture
@@ -107,9 +122,9 @@ Tune per layer against what actually looks good on the model.
 
 Needs Node.js 18+ on the Pi (no other dependency -- uses Node's built-in
 `fetch`, and everything under `vendor/earth/` is plain JS with no
-`npm install` step). Wind + waves run on a loop via the included systemd
-timer (adjust the `User=`/paths inside both `.service` files first if
-they don't match your install):
+`npm install` step). Wind + waves + temp run on a loop via the included
+systemd timer (adjust the `User=`/paths inside both `.service` files
+first if they don't match your install):
 
 ```bash
 sudo cp weather/zealandata-weather.service weather/zealandata-weather.timer /etc/systemd/system/
