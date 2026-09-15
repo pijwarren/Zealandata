@@ -53,7 +53,7 @@ const CENTER_LON = 172.3178
 const CENTER_LAT = -41.2562
 const HALF_WIDTH_KM = 518.75 // short edge / 2 -> local X
 const HALF_HEIGHT_KM = 1014.05 // long edge / 2 -> local Y
-const MODEL_ROTATION_DEG = 60 // the shapefile's ~30deg tilt is a QGIS canvas-rotation artifact, not the model's real orientation -- testing 60 (equivalently -300) per the model's builder
+const MODEL_ROTATION_DEG = 150 // 60 + 90 CCW: confirmed against a frame grab of Hikurangi Tsunami Simulation.mov (coastline overlay traces the real coastline precisely, including Wellington Harbour and the Cook Strait notch) -- NOTE this does NOT match loading.png's own orientation, so that file appears to have its own independent flip/rotation baked in; trust real video content over it
 const FLIP_X = false
 const FLIP_Y = false
 
