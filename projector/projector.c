@@ -2504,23 +2504,13 @@ int main(void) {
                 sample_wind(p->x, p->y, &u, &v);
                 float speed = sqrtf(u * u + v * v) / WIND_MAX_SPEED_UV; /* ~0..1 */
                 if (speed > 1.f) speed = 1.f;
-                float r, g, b;
-                if (wind_active_layer == WIND_LAYER_CURRENTS) {
-                    /* Calm -> white, moderate -> yellow, strong -> red --
-                       currents render over blue ocean, where the usual
-                       blue "calm" end of the wind/waves ramp below would
-                       vanish into the background. */
-                    r = 1.f;
-                    g = speed < 0.5f ? 1.f : 1.f - (speed - 0.5f) * 2.f;
-                    b = speed < 0.5f ? 1.f - speed * 2.f : 0.f;
-                } else {
-                    /* Calm -> blue, moderate -> green/yellow, strong -> red --
-                       the same rough "cool to hot" ramp weather maps generally
-                       use, so it reads at a glance without a legend. */
-                    r = speed < 0.5f ? 0.f : (speed - 0.5f) * 2.f;
-                    g = speed < 0.5f ? speed * 2.f : 1.f - (speed - 0.5f) * 2.f;
-                    b = speed < 0.5f ? 1.f - speed * 2.f : 0.f;
-                }
+                /* Calm -> white, moderate -> yellow, strong -> red -- used
+                   for all three layers (wind/waves/currents) so calm
+                   particles don't vanish into blue ocean/sky backgrounds
+                   the way the original blue "calm" end did. */
+                float r = 1.f;
+                float g = speed < 0.5f ? 1.f : 1.f - (speed - 0.5f) * 2.f;
+                float b = speed < 0.5f ? 1.f - speed * 2.f : 0.f;
                 wind_vertex *v0 = &wind_vbo_scratch[i * 2];
                 wind_vertex *v1 = &wind_vbo_scratch[i * 2 + 1];
                 v0->x = p->px * 2.f - 1.f;
