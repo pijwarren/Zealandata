@@ -26,6 +26,7 @@ Config via environment variables (see README.md).
 import os
 import json
 import socket
+import struct
 import subprocess
 import threading
 import time
@@ -91,16 +92,53 @@ PROJECTION_OBJ_PATH = os.environ.get(
 )
 MAPPING_FILE = os.path.join(BASE_DIR, "mapping.json")
 
-# Live wind-particle visualization, rendered natively by projector.c from a
-# small grid file weather/fetch_wind.mjs writes on its own schedule (see
-# weather/README.md) -- inert entirely until that file shows up, same
-# "off unless configured" spirit as ZEALANDATA_ADMIN_PIN.
-WIND_FIELD_FILE = os.path.join(BASE_DIR, "wind_field.bin")
+# Live wind/waves/currents particle visualization, rendered natively by
+# projector.c from a small grid file each weather/fetch_{wind,waves,
+# currents}.mjs writes on its own schedule (see weather/README.md) --
+# inert entirely until at least one of these files shows up, same "off
+# unless configured" spirit as ZEALANDATA_ADMIN_PIN. Keys match exactly
+# what projector.c's set_property "video-source" accepts.
+WEATHER_LAYERS = {
+    "wind": {"label": "Wind", "file": os.path.join(BASE_DIR, "wind_field.bin")},
+    "waves": {"label": "Waves", "file": os.path.join(BASE_DIR, "waves_field.bin")},
+    # Not live -- fetch_currents.mjs is a one-shot fetch of OSCAR data that
+    # stopped updating in 2024 (see that script's own comment). Labeled
+    # with its embedded valid_time (see weather_layer_valid_time) rather
+    # than presented as current.
+    "currents": {"label": "Currents", "file": os.path.join(BASE_DIR, "currents_field.bin")},
+}
 LIVE_WEATHER_ID = "live-weather"
+DEFAULT_WEATHER_LAYER = "wind"
+
+
+def weather_layer_available(layer):
+    info = WEATHER_LAYERS.get(layer)
+    return bool(info and os.path.exists(info["file"]))
+
+
+def weather_available_layers():
+    return [name for name in WEATHER_LAYERS if weather_layer_available(name)]
 
 
 def weather_enabled():
-    return os.path.exists(WIND_FIELD_FILE)
+    return len(weather_available_layers()) > 0
+
+
+def weather_layer_valid_time(layer):
+    """Unix timestamp embedded in a grid file's header (see
+    weather/geo_grid.mjs's writeFieldGrid), or None if unavailable/
+    unreadable. Used to label a layer honestly (e.g. currents' "as of
+    <date>") rather than implying everything is equally live."""
+    info = WEATHER_LAYERS.get(layer)
+    if not info or not os.path.exists(info["file"]):
+        return None
+    try:
+        with open(info["file"], "rb") as f:
+            f.seek(8)  # header: uint32 grid_w, uint32 grid_h, then this
+            (unix_ts,) = struct.unpack("<d", f.read(8))
+        return unix_ts
+    except (OSError, struct.error):
+        return None
 MAPPING_NUMERIC = {
     # A multiplier on top of projector.c's SCALE_BASELINE constant, not an
     # absolute size -- 1.0 means "however the model was last actually sized
@@ -409,8 +447,15 @@ mpv_generation = 0  # bumped every time ownership of the persistent mpv
                      # a screensaver session) — lets a stale watcher or
                      # screensaver loop recognize it's been superseded
 
-current_kind = "idle"  # "idle" | "video" | "screensaver" — whatever the
-                        # persistent mpv process is currently showing
+current_kind = "idle"  # "idle" | "video" | "screensaver" | "wind" —
+                        # whatever the persistent mpv process is
+                        # currently showing ("wind" covers all three
+                        # live layers, see current_weather_layer below
+                        # for which one specifically)
+
+current_weather_layer = DEFAULT_WEATHER_LAYER  # which of WEATHER_LAYERS
+                                                # is active when
+                                                # current_kind == "wind"
 
 loop_enabled = LOOP_SELECTED_VIDEO  # global toggle (dock loop button) --
                                      # applied to every subsequent
@@ -1083,27 +1128,38 @@ def _scan_media():
     items.sort(key=lambda i: i["title"].lower())
     if weather_enabled():
         # Not a real file -- rendered natively by projector.c from
-        # wind_field.bin, not played via mpv/loadfile. Play/stop for this
-        # id are special-cased (see api_play, api_weather_select/_stop)
-        # rather than going through the normal file-backed flow; it's
-        # shaped like a normal item so the existing poster grid/hero/
-        # two-step select UI needs no changes to display it. Appended,
-        # not inserted first -- pickHero() in app.js falls back to
-        # allItems[0] as the default homepage hero when nothing's in
-        # progress, and defaulting the whole homepage to this rather than
-        # real library content isn't this change's call to make silently.
+        # {wind,waves,currents}_field.bin, not played via mpv/loadfile.
+        # Play/stop for this id are special-cased (see api_play,
+        # api_weather_select/_stop) rather than going through the normal
+        # file-backed flow; it's shaped like a normal item so the
+        # existing poster grid/hero/two-step select UI needs no changes
+        # to display it. Appended, not inserted first -- pickHero() in
+        # app.js falls back to allItems[0] as the default homepage hero
+        # when nothing's in progress, and defaulting the whole homepage
+        # to this rather than real library content isn't this change's
+        # call to make silently.
+        layers = [
+            {
+                "id": name,
+                "label": info["label"],
+                "available": weather_layer_available(name),
+                "valid_time": weather_layer_valid_time(name),
+            }
+            for name, info in WEATHER_LAYERS.items()
+        ]
         items.append({
             "id": LIVE_WEATHER_ID,
             "title": "Live Weather",
             "path": None,
             "category": "Weather and Climate Hazards",
             "duration": None,
-            "description": "Live wind conditions over New Zealand, updated from current weather model data.",
+            "description": "Live wind, waves, and ocean current conditions over New Zealand.",
             "is_sequence": False,
             "frame_count": None,
             "thumbnail": "/static/icons/categories/weather-and-climate-hazards-colour.svg",
             "attachments": [],
             "is_live_weather": True,
+            "layers": layers,
         })
     return items
 
@@ -1913,19 +1969,25 @@ def api_rescan():
 
 @app.route("/api/weather/select", methods=["POST"])
 def api_weather_select():
-    """Switches projector.c's texture source over to its native wind-
-    particle render, driven by whatever weather/fetch_wind.mjs last wrote
-    to wind_field.bin -- no loadfile, no file on disk to stream, just a
-    property flip on the same IPC socket loadfile/set_property already use
-    (mpv_send/MPV_SOCKET, or projector.c's compatible listener when
-    ZEALANDATA_MPV_EXTERNAL=1)."""
+    """Switches projector.c's texture source over to its native particle
+    render for one of WEATHER_LAYERS, driven by whatever the matching
+    weather/fetch_*.mjs last wrote -- no loadfile, no file on disk to
+    stream, just a property flip on the same IPC socket loadfile/
+    set_property already use (mpv_send/MPV_SOCKET, or projector.c's
+    compatible listener when ZEALANDATA_MPV_EXTERNAL=1)."""
+    global current_weather_layer
     _mark_interaction()
-    if not weather_enabled():
+    body = request.get_json(silent=True) or {}
+    layer = body.get("layer", DEFAULT_WEATHER_LAYER)
+    if layer not in WEATHER_LAYERS:
+        return jsonify({"error": f"unknown layer {layer!r}"}), 400
+    if not weather_layer_available(layer):
         return jsonify({"error": "not available"}), 404
 
+    label = WEATHER_LAYERS[layer]["label"]
     with meta_lock:
         current_media_meta.update({
-            "id": LIVE_WEATHER_ID, "title": "Live Weather",
+            "id": LIVE_WEATHER_ID, "title": f"Live {label}",
             "description": None, "is_sequence": False, "frame_count": None,
             "thumbnail": "/static/icons/categories/weather-and-climate-hazards-colour.svg",
         })
@@ -1933,10 +1995,11 @@ def api_weather_select():
     # Same ordering as api_play: claim the generation before stopping the
     # screensaver, so a mid-transition screensaver pick notices right away.
     _claim_generation("wind")
+    current_weather_layer = layer
     stop_screensaver()
-    mpv_send({"command": ["set_property", "video-source", "wind"]})
+    mpv_send({"command": ["set_property", "video-source", layer]})
 
-    return jsonify({"status": "playing", "id": LIVE_WEATHER_ID, "title": "Live Weather"})
+    return jsonify({"status": "playing", "id": LIVE_WEATHER_ID, "layer": layer, "title": f"Live {label}"})
 
 
 @app.route("/api/weather/stop", methods=["POST"])
@@ -2598,10 +2661,14 @@ def api_status():
         # No position/duration/pause -- it's a live native render, not a
         # file mpv is playing, so the dock hides the scrub bar for it
         # (app.js checks is_live_weather) rather than showing meaningless
-        # zeros.
+        # zeros. valid_time lets the dock show "as of <date>" for a
+        # non-live layer (currently just currents) instead of implying
+        # everything is equally live.
         return jsonify({
             "playing": True, "is_live_weather": True,
             "id": media_id, "title": title, "thumbnail": thumbnail,
+            "layer": current_weather_layer,
+            "valid_time": weather_layer_valid_time(current_weather_layer),
         })
     if current_kind != "video":
         return jsonify({"playing": False, "screensaver": False})

@@ -1557,6 +1557,26 @@ body.admin-mode .settings-grid{
 .dock__doc-chip:hover .dock__doc-chip__thumb{ border-color:var(--color-accent); }
 .dock__doc-chip__thumb--icon{ object-fit:contain; padding:16px; box-sizing:border-box; }
 
+/* Live Weather's layer switcher (Wind/Waves/Currents) reuses this same
+   chip strip -- a text pill instead of a thumbnail square, since there's
+   no image to show. */
+.dock__doc-chip--text{
+  display:flex; align-items:center; justify-content:center;
+  height:68px; padding:0 18px; border-radius:var(--radius-chip);
+  font-family:var(--font-heading); font-size:13px; font-weight:500;
+  color:var(--color-neutral-700);
+  background:var(--color-surface); border:1px solid var(--color-divider);
+  transition:border-color .15s ease, color .15s ease, background .15s ease;
+}
+.dock__doc-chip--text:hover:not(:disabled){ border-color:var(--color-accent); }
+.dock__doc-chip--text.dock__doc-chip--active{
+  background:var(--color-accent); border-color:var(--color-accent); color:#fff;
+}
+.dock__doc-chip--text:disabled{
+  cursor:default; opacity:.4;
+}
+.dock__doc-chip--text:disabled:hover{ transform:none; }
+
 .doc-viewer{
   position:fixed; inset:0; z-index:72;
   display:flex; align-items:center; justify-content:center;

@@ -1,3 +1,7 @@
+// Matches server.py's LIVE_WEATHER_ID exactly -- the synthetic media
+// item's id, not a real file.
+const LIVE_WEATHER_ID = "live-weather";
+
 // ---------------------------------------------------------------- DOM refs
 // The page's one real scroll container -- html/body no longer scroll (see
 // style.css) so mobile Safari's own address bar stops collapsing in
@@ -2024,10 +2028,10 @@ function setSequenceMode(isSequence, frameCount, frameNumber) {
   if (isSequence) paintFrameCounter(frameNumber);
 }
 
-// Live Weather has no timeline at all -- native wind particles rendered
-// continuously by projector.c, not a file with a position/duration. Only
-// Stop is meaningful; everything else dockPlaybackBtns normally enables
-// gets disabled again on top of that.
+// Live Weather has no timeline at all -- native wind/waves/currents
+// particles rendered continuously by projector.c, not a file with a
+// position/duration. Only Stop is meaningful; everything else
+// dockPlaybackBtns normally enables gets disabled again on top of that.
 let currentIsLiveWeather = false;
 function setLiveMode(isLive) {
   currentIsLiveWeather = isLive;
@@ -2036,8 +2040,54 @@ function setLiveMode(isLive) {
     playerScrubControls.classList.add("hidden");
     frameCounter.classList.add("hidden");
     currentFrameCount = null;
+  } else {
+    dockDocsLabel.textContent = "Related files"; // undo paintLayerChips' relabel
   }
   [seekBackBtn, seekFwdBtn, pauseBtn, loopBtn, setHeroBtn].forEach((btn) => { btn.disabled = isLive; });
+}
+
+// Reuses the attachments strip (dockDocs/dockDocsPanel, normally a video's
+// supplementary docs/images -- see paintDocs) as a layer switcher while
+// Live Weather is playing, rather than a bespoke control: same floating
+// chip strip, just text chips instead of thumbnail ones, and clicking
+// switches layers instead of opening the doc viewer.
+function defaultAvailableLayer(layers) {
+  const found = (layers || []).find((l) => l.available);
+  return found ? found.id : "wind";
+}
+
+function paintLayerChips(layers, activeLayer) {
+  const list = layers || [];
+  dockDocsLabel.textContent = "Layer";
+  dockDocs.innerHTML = "";
+  dockDocsPanel.classList.toggle("hidden", list.length === 0);
+  list.forEach((layer) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "dock__doc-chip dock__doc-chip--text";
+    chip.classList.toggle("dock__doc-chip--active", layer.id === activeLayer);
+    chip.disabled = !layer.available;
+    chip.textContent = layer.label;
+    chip.title = layer.available ? layer.label : `${layer.label} — no data yet`;
+    chip.addEventListener("click", () => selectWeatherLayer(layer.id));
+    dockDocs.appendChild(chip);
+  });
+  dockDocsScrollUpdate();
+  updateDocsFade();
+}
+
+async function selectWeatherLayer(layer) {
+  const res = await fetch("/api/weather/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ layer }),
+  });
+  const data = await res.json().catch(() => null);
+  if (data && data.title) playerTitle.textContent = data.title;
+  // Optimistic highlight -- the next pollStatus tick (within ~1s) would
+  // repaint this anyway, but not waiting for it keeps the click feeling
+  // immediate.
+  paintLayerChips((getMediaById(LIVE_WEATHER_ID) || {}).layers, layer);
 }
 
 function paintFrameCounter(frameNumber) {
@@ -2123,6 +2173,7 @@ const dockDocsScrollUpdate = wrapScroller(dockDocs);
 const dockDocsViewport = dockDocs.parentElement;
 dockDocsViewport.classList.add("dock-docs-viewport");
 const dockDocsPanel = document.getElementById("dockDocsPanel");
+const dockDocsLabel = document.getElementById("dockDocsLabel");
 dockDocsPanel.classList.add("hidden");
 
 // Only fades the edge that actually has more chips scrolled past it --
@@ -2243,7 +2294,9 @@ async function playItem(item, { resume = false, restart = false } = {}) {
 
   if (item.is_live_weather) {
     setLiveMode(true);
-    await fetch("/api/weather/select", { method: "POST" });
+    const layer = defaultAvailableLayer(item.layers);
+    paintLayerChips(item.layers, layer);
+    await selectWeatherLayer(layer);
     return;
   }
   setLiveMode(false);
@@ -2372,6 +2425,10 @@ async function pollStatus() {
 
       if (s.is_live_weather) {
         setLiveMode(true);
+        // Keeps chip highlighting in sync even if another tab switched
+        // layers -- cheap enough to just repaint every poll tick rather
+        // than tracking whether s.layer actually changed.
+        paintLayerChips((getMediaById(s.id) || {}).layers, s.layer);
       } else {
         setLiveMode(false);
         setPauseIcon(!!s.paused);
