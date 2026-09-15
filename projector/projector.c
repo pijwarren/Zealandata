@@ -1277,8 +1277,23 @@ static GLuint compile_shader(GLenum type, const char *src) {
 /* GStreamer objects are internally thread-safe (their own GLib locking), so
    playbin/appsink calls are made directly from whichever thread receives
    the IPC command -- only our own small bits of state below need the
-   mutex. */
+   mutex. Seeking is the one exception: see seek_lock below. */
 static pthread_mutex_t play_lock = PTHREAD_MUTEX_INITIALIZER;
+
+/* Every IPC connection gets its own thread (see ipc_server_thread), so a
+   quick re-drag of the scrub bar -- drag, release, immediately drag again
+   to fine-tune, well within normal use -- can land two "seek" commands on
+   two different threads close enough together that the second fires
+   before the first's flush has finished. Reproduced live: that overlap
+   left a kernel thread stuck forever inside the V4L2 driver's HEVC stop
+   routine (D-state, immune to even SIGKILL), which wedged the whole Pi
+   and needed a power cycle -- GStreamer's own thread-safety doesn't cover
+   this, since the race is in the hardware decoder underneath it, not in
+   our calls to the API. video_seek_flags() below is the only place
+   allowed to call gst_element_seek_simple() on playbin, and this mutex
+   plus waiting out each seek before releasing it means the decoder never
+   sees a second flush while it's still handling the first. */
+static pthread_mutex_t seek_lock = PTHREAD_MUTEX_INITIALIZER;
 static GstElement *playbin;
 static GstElement *appsink;
 static GstGLDisplay *gst_display;
@@ -1430,6 +1445,24 @@ static void video_pump(void) {
     }
 }
 
+/* The only caller of gst_element_seek_simple() on playbin -- see seek_lock
+   above for why every flushing seek has to go through here rather than
+   hitting the pipeline directly. Blocks (briefly, and only the caller's
+   own thread) until the seek actually finishes -- an in-progress flush
+   isn't reflected back to gst_element_get_state() as a stable state until
+   the decoder has settled, so this is what makes "wait for the previous
+   seek" true rather than aspirational. Bounded rather than infinite: if
+   the decoder ever does wedge again, this at least fails that one seek
+   instead of holding the lock (and therefore every future seek) forever. */
+static void video_seek_flags(GstSeekFlags precision, gint64 target_ns) {
+    pthread_mutex_lock(&seek_lock);
+    gst_element_seek_simple(playbin, GST_FORMAT_TIME,
+                             GST_SEEK_FLAG_FLUSH | precision, target_ns);
+    GstState state;
+    gst_element_get_state(playbin, &state, NULL, 5 * GST_SECOND);
+    pthread_mutex_unlock(&seek_lock);
+}
+
 /* Bus messages that affect playback state, drained alongside video_pump().
    EOS is where loop-file is actually implemented: mpv's own "loop-file=inf"
    restarts the same file internally, so we replicate that with a seek back
@@ -1443,8 +1476,7 @@ static void bus_pump(void) {
             bool loop = loop_enabled;
             pthread_mutex_unlock(&play_lock);
             if (loop) {
-                gst_element_seek_simple(playbin, GST_FORMAT_TIME,
-                                         GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT, 0);
+                video_seek_flags(GST_SEEK_FLAG_KEY_UNIT, 0);
                 gst_element_set_state(playbin, GST_STATE_PLAYING);
             } else {
                 /* mirrors mpv's keep-open=yes: pause on the last frame
@@ -1574,9 +1606,7 @@ static void video_apply_pending_start(void) {
     GstState state;
     gst_element_get_state(playbin, &state, NULL, 0);
     if (state >= GST_STATE_PAUSED)
-        gst_element_seek_simple(playbin, GST_FORMAT_TIME,
-                                 GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
-                                 (gint64)(start * GST_SECOND));
+        video_seek_flags(GST_SEEK_FLAG_KEY_UNIT, (gint64)(start * GST_SECOND));
 }
 
 static bool video_get_pause(void) {
@@ -1631,9 +1661,7 @@ static double video_get_duration(void) {
 }
 
 static void video_seek(double sec) {
-    gst_element_seek_simple(playbin, GST_FORMAT_TIME,
-                             GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_KEY_UNIT,
-                             (gint64)(sec * GST_SECOND));
+    video_seek_flags(GST_SEEK_FLAG_KEY_UNIT, (gint64)(sec * GST_SECOND));
 }
 
 /* KEY_UNIT above snaps to "the keyframe at or before" the target -- fine
@@ -1646,9 +1674,7 @@ static void video_seek(double sec) {
    regardless, so the cost is the same as KEY_UNIT in practice. Used only by
    video_frame_back_step. */
 static void video_seek_accurate(double sec) {
-    gst_element_seek_simple(playbin, GST_FORMAT_TIME,
-                             GST_SEEK_FLAG_FLUSH | GST_SEEK_FLAG_ACCURATE,
-                             (gint64)(sec * GST_SECOND));
+    video_seek_flags(GST_SEEK_FLAG_ACCURATE, (gint64)(sec * GST_SECOND));
 }
 
 static void video_stop(void) {
