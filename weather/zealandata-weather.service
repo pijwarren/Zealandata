@@ -5,4 +5,4 @@ Description=Zealandata wind field fetch (see weather/README.md)
 Type=oneshot
 User=pj
 WorkingDirectory=/home/pj/zealandata/weather
-ExecStart=/usr/bin/node fetch_wind.mjs
+ExecStart=/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs
