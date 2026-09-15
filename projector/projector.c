@@ -1185,31 +1185,87 @@ static const char *FS_SRC =
     "}\n";
 
 /* ==================================================== wind particles === *
- * Live wind-particle render (see wind_field_reload()/wind_particles below),
- * drawn into its own small offscreen texture (wind_tex/wind_fbo) that then
- * takes cur_tex's place in the normal model draw when showing_wind is set --
- * the warp/keystone/model pass above needs no changes at all for this,
- * since it only ever samples whatever's bound as uTex.
+ * Live wind-particle render (see wind_field_reload()/wind_particles below).
+ * Two small offscreen textures, not one:
+ *   - wind_tex/wind_fbo: the particle trails ONLY, on a transparent
+ *     background (alpha, not just color, fades toward 0 -- see the
+ *     fade pass below) so it can be laid over something else.
+ *   - wind_composite_tex/wind_composite_fbo: idle_tex (whatever the
+ *     still-image path last loaded -- in practice the same loading/idle
+ *     picture normal playback shows) with wind_tex alpha-blended on top,
+ *     so the particles read against real coastline/terrain rather than
+ *     floating on plain black. *This* is what takes cur_tex's place in
+ *     the normal model draw when showing_wind is set -- the
+ *     warp/keystone/model pass above needs no changes at all for this,
+ *     since it only ever samples whatever's bound as uTex.
  *
- * The "trail" effect (particles fading out behind their own motion, the
+ * The trail effect (particles fading out behind their own motion, the
  * classic earth.nullschool look) doesn't need a ping-pong pair of
- * textures/framebuffers: each frame just alpha-blends a plain black quad
- * over wind_tex's *existing* contents (fading everything a little toward
- * black) and then draws this frame's particles on top, all into the same
- * framebuffer -- simpler than sampling a previous frame's texture from a
- * second one, for the same visual result. */
+ * textures/framebuffers for wind_tex itself: each frame just multiplies
+ * its *existing* contents down a little (fading toward fully transparent,
+ * not resampling a previous frame from a second texture) and then draws
+ * this frame's particles on top, all into the same framebuffer. */
 
 static const char *WIND_FADE_VS_SRC =
     "#version 300 es\n"
     "layout(location=0) in vec2 aPos;\n"   /* static fullscreen quad, already NDC */
     "void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }\n";
 
+/* Output color is irrelevant -- see the GL_ZERO source blend factor this is
+   drawn with -- this quad exists purely to trigger a blend op across every
+   pixel of wind_tex, multiplying its existing RGBA (color AND alpha) down
+   by a constant factor each frame via glBlendColor/GL_CONSTANT_ALPHA. That
+   converges an untouched background pixel toward true (0,0,0,0) --
+   plain source-over blending (GL_SRC_ALPHA/GL_ONE_MINUS_SRC_ALPHA) instead
+   would leave background alpha oscillating around a low but non-zero
+   floor forever, which would show up as a faint permanent haze once this
+   is composited over idle_tex below. */
 static const char *WIND_FADE_FS_SRC =
     "#version 300 es\n"
     "precision mediump float;\n"
-    "uniform float uFadeAlpha;\n"
     "out vec4 oColor;\n"
-    "void main(){ oColor = vec4(0.0, 0.0, 0.0, uFadeAlpha); }\n";
+    "void main(){ oColor = vec4(0.0); }\n";
+
+/* Blits one texture into whatever framebuffer is bound, used twice per
+   frame in wind mode to build wind_composite_tex: once for idle_tex
+   (opaque, blending off) and once for wind_tex (blending on, using its
+   own per-pixel alpha) on top of it.
+   idle_tex needs the same uVidRotation/uVidFlipH/uVidFlipV correction the
+   main shader applies when it's shown on its own (see VS_SRC's uvVideo)
+   -- it's a loaded file, oriented the same arbitrary per-export way any
+   video is, not something raw-UV like wind_tex's own particles (which
+   are authored directly against the model's true UV space, see uIsWind).
+   Skipping that correction here would show the loading/idle picture
+   mirrored/rotated relative to how it normally displays, which would
+   directly undermine comparing wind flow against it. Set these uniforms
+   to identity (0, false, false) for the wind_tex draw, and to map_cur's
+   real values for the idle_tex draw -- see the render loop. */
+static const char *WIND_BLIT_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec2 aPos;\n"
+    "uniform float uVidRotation;\n"
+    "uniform bool uVidFlipH;\n"
+    "uniform bool uVidFlipV;\n"
+    "out vec2 vUV;\n"
+    "void main(){\n"
+    "  gl_Position = vec4(aPos, 0.0, 1.0);\n"
+    "  vec2 uv = aPos * 0.5 + 0.5;\n"
+    "  vec2 uvc = uv - 0.5;\n"
+    "  float rc = cos(uVidRotation), rs = sin(uVidRotation);\n"
+    "  uvc = vec2(uvc.x * rc - uvc.y * rs, uvc.x * rs + uvc.y * rc);\n"
+    "  uv = uvc + 0.5;\n"
+    "  if (uVidFlipH) uv.x = 1.0 - uv.x;\n"
+    "  if (uVidFlipV) uv.y = 1.0 - uv.y;\n"
+    "  vUV = uv;\n"
+    "}\n";
+
+static const char *WIND_BLIT_FS_SRC =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "in vec2 vUV;\n"
+    "uniform sampler2D uTex;\n"
+    "out vec4 oColor;\n"
+    "void main(){ oColor = texture(uTex, vUV); }\n";
 
 static const char *WIND_PARTICLE_VS_SRC =
     "#version 300 es\n"
@@ -2221,11 +2277,34 @@ int main(void) {
     if (windFboStatus != GL_FRAMEBUFFER_COMPLETE) {
         fprintf(stderr, "[wind] framebuffer incomplete (0x%x) -- wind mode will show black\n", windFboStatus);
     }
-    /* Cleared once up front so an early "video-source":"wind" (before the
-       first real particle frame renders) shows black rather than
-       whatever undefined contents a fresh GL texture happens to have. */
-    glClearColor(0, 0, 0, 1);
+    /* Cleared once up front, fully transparent, so an early
+       "video-source":"wind" (before the first real particle frame
+       renders) composites as "just idle_tex, no particles yet" rather
+       than showing whatever undefined contents a fresh GL texture
+       happens to have. */
+    glClearColor(0, 0, 0, 0);
     glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    /* wind_composite_tex/fbo: idle_tex + wind_tex blended together --
+       see the big comment above WIND_FADE_VS_SRC. Same size/setup as
+       windTex above. */
+    GLuint windCompositeFbo, windCompositeTex;
+    glGenTextures(1, &windCompositeTex);
+    glBindTexture(GL_TEXTURE_2D, windCompositeTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, WIND_TEX_SIZE, WIND_TEX_SIZE, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glGenFramebuffers(1, &windCompositeFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, windCompositeFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, windCompositeTex, 0);
+    GLenum windCompositeFboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (windCompositeFboStatus != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "[wind] composite framebuffer incomplete (0x%x) -- wind mode will show black\n", windCompositeFboStatus);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     GLuint windFadeProg = glCreateProgram();
@@ -2235,7 +2314,6 @@ int main(void) {
     GLint windFadeLinked = 0; glGetProgramiv(windFadeProg, GL_LINK_STATUS, &windFadeLinked);
     if (!windFadeLinked) { char log[2048]; glGetProgramInfoLog(windFadeProg, sizeof log, NULL, log);
                             fprintf(stderr, "wind fade link: %s\n", log); return 1; }
-    GLint uWindFadeAlpha = glGetUniformLocation(windFadeProg, "uFadeAlpha");
 
     GLuint windParticleProg = glCreateProgram();
     glAttachShader(windParticleProg, compile_shader(GL_VERTEX_SHADER, WIND_PARTICLE_VS_SRC));
@@ -2244,6 +2322,19 @@ int main(void) {
     GLint windParticleLinked = 0; glGetProgramiv(windParticleProg, GL_LINK_STATUS, &windParticleLinked);
     if (!windParticleLinked) { char log[2048]; glGetProgramInfoLog(windParticleProg, sizeof log, NULL, log);
                                fprintf(stderr, "wind particle link: %s\n", log); return 1; }
+
+    GLuint windBlitProg = glCreateProgram();
+    glAttachShader(windBlitProg, compile_shader(GL_VERTEX_SHADER, WIND_BLIT_VS_SRC));
+    glAttachShader(windBlitProg, compile_shader(GL_FRAGMENT_SHADER, WIND_BLIT_FS_SRC));
+    glLinkProgram(windBlitProg);
+    GLint windBlitLinked = 0; glGetProgramiv(windBlitProg, GL_LINK_STATUS, &windBlitLinked);
+    if (!windBlitLinked) { char log[2048]; glGetProgramInfoLog(windBlitProg, sizeof log, NULL, log);
+                            fprintf(stderr, "wind blit link: %s\n", log); return 1; }
+    glUseProgram(windBlitProg);
+    glUniform1i(glGetUniformLocation(windBlitProg, "uTex"), 0);
+    GLint uWindBlitVidRotation = glGetUniformLocation(windBlitProg, "uVidRotation");
+    GLint uWindBlitVidFlipH = glGetUniformLocation(windBlitProg, "uVidFlipH");
+    GLint uWindBlitVidFlipV = glGetUniformLocation(windBlitProg, "uVidFlipV");
 
     GLuint windFadeVao, windFadeVbo;
     glGenVertexArrays(1, &windFadeVao); glBindVertexArray(windFadeVao);
@@ -2383,22 +2474,53 @@ int main(void) {
             glViewport(0, 0, WIND_TEX_SIZE, WIND_TEX_SIZE);
             glDisable(GL_DEPTH_TEST);
             glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-            /* Fade pass: darken whatever's already there a little, rather
-               than clearing it -- this is what leaves each particle a
-               short fading trail behind it instead of a single dot. */
+            /* Fade pass: multiply wind_tex's existing RGBA (color AND
+               alpha) down by a constant factor, rather than clearing it --
+               this is what leaves each particle a short fading trail
+               behind it instead of a single dot, and (via glBlendColor,
+               not the shader) converges an untouched pixel's alpha to true
+               0 rather than a visible non-zero floor -- see the big
+               comment above WIND_FADE_VS_SRC for why that distinction
+               matters once this is composited over idle_tex below. */
+            glBlendFunc(GL_ZERO, GL_CONSTANT_ALPHA);
+            glBlendColor(0.f, 0.f, 0.f, 0.94f);
             glUseProgram(windFadeProg);
-            glUniform1f(uWindFadeAlpha, 0.06f);
             glBindVertexArray(windFadeVao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            /* Particle pass, on top of that same faded content. */
+            /* Particle pass, on top of that same faded content -- plain
+               source-over compositing (each particle drawn fully opaque
+               at alpha 1, see WIND_PARTICLE_FS_SRC). */
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glUseProgram(windParticleProg);
             glBindVertexArray(windParticleVao);
             glBindBuffer(GL_ARRAY_BUFFER, windParticleVbo);
             glBufferSubData(GL_ARRAY_BUFFER, 0, WIND_MAX_PARTICLES * sizeof(wind_vertex), wind_vbo_scratch);
             glDrawArrays(GL_POINTS, 0, WIND_MAX_PARTICLES);
+
+            /* Composite pass: idle_tex (opaque base) then wind_tex (its
+               own alpha) on top, into wind_composite_tex -- see the big
+               comment above WIND_FADE_VS_SRC. Reuses windFadeVao purely
+               for its fullscreen-quad geometry (WIND_BLIT_VS_SRC has the
+               same location-0 vec2 attribute layout). */
+            glBindFramebuffer(GL_FRAMEBUFFER, windCompositeFbo);
+            glUseProgram(windBlitProg);
+            glBindVertexArray(windFadeVao);
+            glActiveTexture(GL_TEXTURE0);
+            glDisable(GL_BLEND);
+            glUniform1f(uWindBlitVidRotation, map_cur.vid_rotation * (float)M_PI / 180.f);
+            glUniform1i(uWindBlitVidFlipH, map_cur.vid_flip_h ? 1 : 0);
+            glUniform1i(uWindBlitVidFlipV, map_cur.vid_flip_v ? 1 : 0);
+            glBindTexture(GL_TEXTURE_2D, idle_tex);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+            glUniform1f(uWindBlitVidRotation, 0.f);
+            glUniform1i(uWindBlitVidFlipH, 0);
+            glUniform1i(uWindBlitVidFlipV, 0);
+            glBindTexture(GL_TEXTURE_2D, windTex);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
 
             glDisable(GL_BLEND); /* the rest of this loop assumes its default-off state */
             glBindVertexArray(vao); /* restore the model's VAO for the draw below */
@@ -2562,7 +2684,7 @@ int main(void) {
             }
         }
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_wind ? windTex : showing_still_image ? idle_tex : cur_tex);
+        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_wind ? windCompositeTex : showing_still_image ? idle_tex : cur_tex);
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 
