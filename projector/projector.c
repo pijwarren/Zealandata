@@ -2248,7 +2248,7 @@ int main(void) {
     GLuint windFadeVao, windFadeVbo;
     glGenVertexArrays(1, &windFadeVao); glBindVertexArray(windFadeVao);
     glGenBuffers(1, &windFadeVbo); glBindBuffer(GL_ARRAY_BUFFER, windFadeVbo);
-    static const float windFadeQuad[8] = { -1,-1,  1,-1,  -1,1,   1,-1,  1,1,  -1,1 };
+    static const float windFadeQuad[12] = { -1,-1,  1,-1,  -1,1,   1,-1,  1,1,  -1,1 };
     glBufferData(GL_ARRAY_BUFFER, sizeof windFadeQuad, windFadeQuad, GL_STATIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
