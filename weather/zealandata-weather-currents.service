@@ -1,0 +1,8 @@
+[Unit]
+Description=Zealandata ocean currents fetch (see weather/README.md) -- run manually, not on a timer
+
+[Service]
+Type=oneshot
+User=pj
+WorkingDirectory=/home/pj/zealandata/weather
+ExecStart=/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_currents.mjs

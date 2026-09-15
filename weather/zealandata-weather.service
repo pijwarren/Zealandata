@@ -1,8 +1,12 @@
 [Unit]
-Description=Zealandata wind field fetch (see weather/README.md)
+Description=Zealandata wind + waves field fetch (see weather/README.md)
 
 [Service]
 Type=oneshot
 User=pj
 WorkingDirectory=/home/pj/zealandata/weather
+# Both refresh on the same ~3h GFS/WW3 cadence, so one timer trigger runs
+# both in sequence -- see zealandata-weather-currents.service for the
+# separate, not-on-a-timer currents fetch (that data doesn't change).
 ExecStart=/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_wind.mjs
+ExecStart=/home/pj/.local/node-v24.21.0-linux-arm64/bin/node fetch_waves.mjs
