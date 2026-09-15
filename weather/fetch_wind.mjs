@@ -53,7 +53,7 @@ const CENTER_LON = 172.3178
 const CENTER_LAT = -41.2562
 const HALF_WIDTH_KM = 518.75 // short edge / 2 -> local X
 const HALF_HEIGHT_KM = 1014.05 // long edge / 2 -> local Y
-const MODEL_ROTATION_DEG = -30 // reverted 2026-09-15: +180 moved the coastline overlay away from the visible terrain ridge in loading.png, so the position math was already correct -- see weather/README.md, this needs more investigation, not a blind sign flip
+const MODEL_ROTATION_DEG = 60 // the shapefile's ~30deg tilt is a QGIS canvas-rotation artifact, not the model's real orientation -- testing 60 (equivalently -300) per the model's builder
 const FLIP_X = false
 const FLIP_Y = false
 
