@@ -1,5 +1,4 @@
-/* Generated from earth.nullschool.net's own coastline_50m topojson data, transformed through fetch_wind.mjs's exact geo_to_uv math (CENTER_LON/LAT, HALF_WIDTH/HEIGHT_KM, MODEL_ROTATION_DEG) -- kept for reference/re-enabling a
-   debug overlay later; not currently #included by projector.c. Regenerate by
+/* Generated from earth.nullschool.net's own coastline_50m topojson data, transformed through fetch_wind.mjs's exact geo_to_uv math (CENTER_LON/LAT, HALF_WIDTH/HEIGHT_KM, MODEL_ROTATION_DEG). Drawn as a white line overlay on the wind/waves/currents composite and rasterised into a land mask that keeps particles off land -- see build_land_mask() and WIND_COASTLINE_VS_SRC in projector.c. Regenerate by
    re-running the coastline-extraction script described in weather/README.md
    if fetch_wind.mjs's constants change again. Current values match the
    confirmed-correct rotation=120, HALF_WIDTH_KM=1014.05, HALF_HEIGHT_KM=518.75. */

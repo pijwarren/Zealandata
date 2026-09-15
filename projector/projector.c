@@ -67,6 +67,8 @@
 #include <gst/gl/gl.h>
 #include <gst/gl/egl/gstgldisplay_egl.h>
 
+#include "coastline_uv.h"
+
 #define CHECK(cond, msg) do { if (!(cond)) { fprintf(stderr, "fatal: %s (%s)\n", msg, strerror(errno)); exit(1); } } while (0)
 
 static volatile sig_atomic_t running = 1;
@@ -379,6 +381,57 @@ static void sample_wind(float x, float y, float *u_out, float *v_out) {
     *v_out = v0 + (v1 - v0) * ty;
 }
 
+/* ---- land mask: rasterised once at startup from coastline_uv (see
+   coastline_uv.h) so wind/waves/currents particles can be kept off land,
+   sampled the same [0,1]x[0,1] UV space as wind_particle positions.
+   Built by a standard even-odd scanline fill: for each mask row, find
+   every coastline segment crossing that row's y, sort the crossing x's,
+   and mark the spans between consecutive pairs as land. This works
+   directly on the flat segment list without needing it grouped into
+   closed contours -- even-odd parity across the whole edge set gives the
+   same answer regardless of which segments belong to which landmass, as
+   long as each contour closes (every vertex has exactly two incident
+   segments), which the source topojson coastline guarantees. */
+#define LAND_MASK_SIZE 512
+static uint8_t land_mask[LAND_MASK_SIZE * LAND_MASK_SIZE];
+
+static int land_mask_x_cmp(const void *a, const void *b) {
+    float fa = *(const float *)a, fb = *(const float *)b;
+    return (fa > fb) - (fa < fb);
+}
+
+static void build_land_mask(void) {
+    memset(land_mask, 0, sizeof land_mask);
+    int num_segs = COASTLINE_NUM_VERTS / 2;
+    float xs[256];
+    for (int j = 0; j < LAND_MASK_SIZE; j++) {
+        float y = ((float)j + 0.5f) / (float)LAND_MASK_SIZE;
+        int n = 0;
+        for (int s = 0; s < num_segs && n < 256; s++) {
+            float x0 = coastline_uv[s * 4 + 0], y0 = coastline_uv[s * 4 + 1];
+            float x1 = coastline_uv[s * 4 + 2], y1 = coastline_uv[s * 4 + 3];
+            if ((y0 <= y && y1 > y) || (y1 <= y && y0 > y)) {
+                xs[n++] = x0 + (y - y0) / (y1 - y0) * (x1 - x0);
+            }
+        }
+        qsort(xs, n, sizeof(float), land_mask_x_cmp);
+        for (int k = 0; k + 1 < n; k += 2) {
+            int xa = (int)(xs[k] * LAND_MASK_SIZE);
+            int xb = (int)(xs[k + 1] * LAND_MASK_SIZE);
+            if (xa < 0) xa = 0;
+            if (xb > LAND_MASK_SIZE) xb = LAND_MASK_SIZE;
+            for (int x = xa; x < xb; x++) land_mask[j * LAND_MASK_SIZE + x] = 1;
+        }
+    }
+}
+
+static bool land_mask_is_land(float x, float y) {
+    if (x < 0.f) x = 0.f; else if (x >= 1.f) x = 0.999999f;
+    if (y < 0.f) y = 0.f; else if (y >= 1.f) y = 0.999999f;
+    int xi = (int)(x * LAND_MASK_SIZE), yi = (int)(y * LAND_MASK_SIZE);
+    return land_mask[yi * LAND_MASK_SIZE + xi] != 0;
+}
+
 /* ---- particle pool: plain CPU update each frame, no compute shader
    needed for a couple thousand points -- see the top-of-file comment on
    why this whole feature stays off the GStreamer/DMA-BUF video path
@@ -413,8 +466,18 @@ static bool wind_particles_seeded = false;
 static float wind_rand01(void) { return (float)rand() / (float)RAND_MAX; }
 
 static void wind_particle_respawn(wind_particle *p, bool stagger_age) {
-    p->x = p->px = wind_rand01();
-    p->y = p->py = wind_rand01();
+    float x, y;
+    int tries = 0;
+    /* Reject land spawns so a respawned particle doesn't sit stranded on
+       the coastline overlay; capped so a mask that's all land (a bad
+       mtime read from generation, or the AOI genuinely being landlocked)
+       can't loop forever -- worst case it spawns on land once. */
+    do {
+        x = wind_rand01();
+        y = wind_rand01();
+    } while (land_mask_is_land(x, y) && ++tries < 30);
+    p->x = p->px = x;
+    p->y = p->py = y;
     p->age = stagger_age ? wind_rand01() * WIND_MAX_AGE_SEC : 0.f;
 }
 
@@ -434,7 +497,14 @@ static void wind_particles_update(float dt) {
         p->x += u * dt;
         p->y += v * dt;
         p->age += dt;
-        if (p->x < 0.f || p->x > 1.f || p->y < 0.f || p->y > 1.f || p->age > WIND_MAX_AGE_SEC) {
+        /* land_mask_is_land last -- cheapest checks first, and it only
+           needs evaluating once the particle is still in-bounds and
+           alive. Respawning immediately (rather than clamping at the
+           shoreline) means px/py both land on the new point, so the
+           particle draws as a point next frame instead of a streak
+           crossing the coastline -- see WIND_PARTICLE_VS_SRC. */
+        if (p->x < 0.f || p->x > 1.f || p->y < 0.f || p->y > 1.f || p->age > WIND_MAX_AGE_SEC ||
+            land_mask_is_land(p->x, p->y)) {
             wind_particle_respawn(p, false);
         }
     }
@@ -1306,6 +1376,22 @@ static const char *WIND_BLIT_FS_SRC =
    "short streak" technique earth.nullschool's own canvas animation uses
    -- crisper and thinner than a fading dot, and it's what the trail-fade
    compositing (see WIND_FADE_FS_SRC) accumulates into a longer tail. */
+/* Coastline overlay: draws coastline_uv (NZ coastline, run through
+   fetch_wind.mjs's exact geo_to_uv transform) as solid white lines on
+   top of the wind/waves/currents composite, both as a visual reference
+   and so it's obvious on the physical print where the land mask (see
+   build_land_mask() above) is keeping particles out. */
+static const char *WIND_COASTLINE_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec2 aUV;\n"   /* [0,1], same space as wind particles */
+    "void main(){ gl_Position = vec4(aUV * 2.0 - 1.0, 0.0, 1.0); }\n";
+
+static const char *WIND_COASTLINE_FS_SRC =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "out vec4 oColor;\n"
+    "void main(){ oColor = vec4(1.0, 1.0, 1.0, 1.0); }\n";
+
 static const char *WIND_PARTICLE_VS_SRC =
     "#version 300 es\n"
     "layout(location=0) in vec2 aPos;\n"    /* NDC, from wind_particles' UV each frame */
@@ -2404,6 +2490,22 @@ int main(void) {
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(wind_vertex), (void *)(2 * sizeof(float)));
     static wind_vertex wind_vbo_scratch[WIND_MAX_PARTICLES * 2];
 
+    GLuint windCoastlineProg = glCreateProgram();
+    glAttachShader(windCoastlineProg, compile_shader(GL_VERTEX_SHADER, WIND_COASTLINE_VS_SRC));
+    glAttachShader(windCoastlineProg, compile_shader(GL_FRAGMENT_SHADER, WIND_COASTLINE_FS_SRC));
+    glLinkProgram(windCoastlineProg);
+    GLint windCoastlineLinked = 0; glGetProgramiv(windCoastlineProg, GL_LINK_STATUS, &windCoastlineLinked);
+    if (!windCoastlineLinked) { char log[2048]; glGetProgramInfoLog(windCoastlineProg, sizeof log, NULL, log);
+                                 fprintf(stderr, "wind coastline link: %s\n", log); return 1; }
+    GLuint windCoastlineVao, windCoastlineVbo;
+    glGenVertexArrays(1, &windCoastlineVao); glBindVertexArray(windCoastlineVao);
+    glGenBuffers(1, &windCoastlineVbo); glBindBuffer(GL_ARRAY_BUFFER, windCoastlineVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof coastline_uv, coastline_uv, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+    build_land_mask();
+
     glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
 
 
@@ -2579,7 +2681,14 @@ int main(void) {
             glBindTexture(GL_TEXTURE_2D, windTex);
             glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            glDisable(GL_BLEND); /* the rest of this loop assumes its default-off state */
+            /* Coastline overlay -- solid white lines, drawn last so it
+               sits on top of the particles rather than fading under
+               them; see WIND_COASTLINE_VS_SRC. */
+            glDisable(GL_BLEND);
+            glUseProgram(windCoastlineProg);
+            glBindVertexArray(windCoastlineVao);
+            glDrawArrays(GL_LINES, 0, COASTLINE_NUM_VERTS);
+
             glBindVertexArray(vao); /* restore the model's VAO for the draw below */
         }
 
