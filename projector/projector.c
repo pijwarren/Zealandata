@@ -27,13 +27,13 @@
  *            spawning an mpv of its own.
  * Calibration: mapping.json is polled and applied live, matching the admin
  *            panel's sliders.
- * Wind mode : an alternative live texture source -- animated wind
- *            particles rendered natively here (see "wind" further down),
- *            advected each frame from a small vector grid weather/
- *            fetch_wind.mjs writes periodically from current GFS data.
- *            Selected the same way as everything else, over the IPC
- *            socket (set_property "video-source" "wind"); any loadfile
- *            switches back to normal video/image playback.
+ * Live layers: an alternative live texture source -- animated particles
+ *            rendered natively here (see "wind" further down), advected
+ *            each frame from a small vector grid one of weather/fetch_
+ *            {wind,waves,currents}.mjs writes periodically. Selected the
+ *            same way as everything else, over the IPC socket
+ *            (set_property "video-source" "wind"/"waves"/"currents");
+ *            any loadfile switches back to normal video/image playback.
  */
 #define _GNU_SOURCE
 #define GST_USE_UNSTABLE_API
@@ -285,26 +285,47 @@ static void mapping_reload(void) {
 }
 
 /* ============================================================== wind === *
- * A small (u,v) wind-vector grid, written by weather/fetch_wind.mjs every
- * ~15-30 min from current GFS data and polled here the same stat()-and-
- * mtime way mapping.json is above -- see that file's own comment for why
- * this is deliberately not a real binary-format parser (one known writer,
- * fixed little-endian layout). Already expressed in the model's own local
- * UV-space units per second by the time it lands here; this file has no
- * geographic knowledge at all, just an abstract vector field over [0,1]^2. */
+ * A small (u,v) vector grid -- wind, waves, or currents, selected via IPC
+ * (see WIND_LAYER_* / wind_active_layer), written by one of
+ * weather/fetch_{wind,waves,currents}.mjs and polled here the same
+ * stat()-and-mtime way mapping.json is above -- see that file's own
+ * comment for why this is deliberately not a real binary-format parser
+ * (one known writer per file, fixed little-endian layout). Already
+ * expressed in the model's own local UV-space units per second by the
+ * time it lands here; these files have no geographic knowledge at all,
+ * just an abstract vector field over [0,1]^2 -- projector.c doesn't care
+ * which physical quantity the vectors represent, only wind_field.bin's
+ * originating comment in weather/geo_grid.mjs does. */
 
-static const char *wind_field_path = "/home/pj/zealandata/wind_field.bin";
-static struct timespec wind_field_mtim;
+typedef enum { WIND_LAYER_WIND, WIND_LAYER_WAVES, WIND_LAYER_CURRENTS, WIND_LAYER_COUNT } wind_layer_t;
+static const char *wind_layer_paths[WIND_LAYER_COUNT] = {
+    "/home/pj/zealandata/wind_field.bin",
+    "/home/pj/zealandata/waves_field.bin",
+    "/home/pj/zealandata/currents_field.bin",
+};
+static wind_layer_t wind_active_layer = WIND_LAYER_WIND;
+/* Per-layer mtime, not one shared value -- switching layers must force an
+   immediate reload even if the newly-selected layer's own file's mtime
+   hasn't changed since it was last polled, which a single shared mtime
+   can't express. wind_last_loaded_layer < 0 forces the very first load
+   regardless of mtime. */
+static struct timespec wind_field_mtim[WIND_LAYER_COUNT];
+static int wind_last_loaded_layer = -1;
 static float *wind_grid = NULL;      /* grid_w * grid_h * 2 floats, (u,v) per cell */
 static int wind_grid_w = 0, wind_grid_h = 0;
 
 static void wind_field_reload(void) {
+    wind_layer_t layer = wind_active_layer;
+    const char *path = wind_layer_paths[layer];
     struct stat st;
-    if (stat(wind_field_path, &st) != 0) return;
-    if (st.st_mtim.tv_sec == wind_field_mtim.tv_sec && st.st_mtim.tv_nsec == wind_field_mtim.tv_nsec) return;
-    wind_field_mtim = st.st_mtim;
+    if (stat(path, &st) != 0) return;
+    bool layer_changed = ((int)layer != wind_last_loaded_layer);
+    bool mtime_changed = st.st_mtim.tv_sec != wind_field_mtim[layer].tv_sec ||
+                          st.st_mtim.tv_nsec != wind_field_mtim[layer].tv_nsec;
+    if (!layer_changed && !mtime_changed) return;
+    wind_field_mtim[layer] = st.st_mtim;
 
-    FILE *f = fopen(wind_field_path, "rb");
+    FILE *f = fopen(path, "rb");
     if (!f) return;
     uint32_t w = 0, h = 0;
     double valid_time = 0;
@@ -321,7 +342,7 @@ static void wind_field_reload(void) {
     fclose(f);
     if (!ok) {
         free(buf);
-        fprintf(stderr, "[wind] failed to read %s\n", wind_field_path);
+        fprintf(stderr, "[wind] failed to read %s\n", path);
         return;
     }
 
@@ -329,7 +350,8 @@ static void wind_field_reload(void) {
     wind_grid = buf;
     wind_grid_w = (int)w;
     wind_grid_h = (int)h;
-    printf("[wind] reloaded %dx%d grid (validTime unix=%.0f)\n", wind_grid_w, wind_grid_h, valid_time);
+    wind_last_loaded_layer = layer;
+    printf("[wind] reloaded %dx%d grid from %s (validTime unix=%.0f)\n", wind_grid_w, wind_grid_h, path, valid_time);
 }
 
 /* Bilinear-samples (u,v) at a normalised [0,1]x[0,1] position, clamped at
@@ -1012,7 +1034,7 @@ static const char *VS_SRC =
     "uniform bool uVidFlipH;\n"
     "uniform bool uVidFlipV;\n"
     /* True while showing the native wind-particle render (see
-       wind_field_reload()/showing_wind) instead of video/idle-image
+       wind_field_reload()/showing_live_layer) instead of video/idle-image
        content. That texture's orientation is already fully corrected in
        weather/fetch_wind.mjs's own geographic math (rotation + optional
        flips, tuned against the physical print directly) -- stacking the
@@ -1207,7 +1229,7 @@ static const char *FS_SRC =
  *     picture normal playback shows) with wind_tex alpha-blended on top,
  *     so the particles read against real coastline/terrain rather than
  *     floating on plain black. *This* is what takes cur_tex's place in
- *     the normal model draw when showing_wind is set -- the
+ *     the normal model draw when showing_live_layer is set -- the
  *     warp/keystone/model pass above needs no changes at all for this,
  *     since it only ever samples whatever's bound as uTex.
  *
@@ -1575,13 +1597,15 @@ static int cur_tex_w = 1, cur_tex_h = 1;
 static GLuint idle_tex;
 static bool   showing_still_image = false;
 
-/* Live wind-particle render (see wind_field_reload()/wind_particles_update()
-   above) -- its own offscreen texture, filled in the render loop and bound
-   in place of cur_tex/idle_tex at draw time when this is set. Unlike the
-   still image above, no deferred-to-main-thread dance is needed: entering/
-   leaving this mode is just a flag flip, since wind_tex/wind_fbo are
-   created once at startup rather than needing a fresh decode per switch. */
-static bool   showing_wind = false;
+/* Live wind/waves/currents particle render (see
+   wind_field_reload()/wind_particles_update() above, and
+   wind_active_layer for which one) -- its own offscreen texture, filled
+   in the render loop and bound in place of cur_tex/idle_tex at draw time
+   when this is set. Unlike the still image above, no deferred-to-main-
+   thread dance is needed: entering/leaving this mode is just a flag
+   flip, since wind_tex/wind_fbo are created once at startup rather than
+   needing a fresh decode per switch. */
+static bool   showing_live_layer = false;
 /* Set by video_load() (any thread), consumed once by the main thread's
    render loop, since the actual decode + glTexImage2D upload below needs
    the EGL context that's only current there. */
@@ -1820,11 +1844,11 @@ static void video_pipeline_init(void) {
 }
 
 static void video_load(const char *path, double start_sec) {
-    /* Any loadfile -- video or still image -- exits wind mode, same as it
-       already exits the still-image case below; server.py only ever needs
-       to ask for wind mode explicitly (via set_property "video-source"),
-       never to explicitly leave it. */
-    showing_wind = false;
+    /* Any loadfile -- video or still image -- exits wind/waves/currents
+       mode, same as it already exits the still-image case below;
+       server.py only ever needs to ask for a live layer explicitly (via
+       set_property "video-source"), never to explicitly leave it. */
+    showing_live_layer = false;
 
     /* Stopping playbin unconditionally, even for a still image, matters:
        without it a real video already playing when the idle image loads
@@ -2081,14 +2105,21 @@ static void *ipc_client_thread(void *arg) {
             pthread_mutex_unlock(&play_lock);
         } else if (!strcmp(name, "video-source")) {
             /* server.py's /api/weather/select -- the only caller, since
-               leaving wind mode happens implicitly through the normal
-               loadfile path (see video_load()) rather than a separate
-               "video"/"idle" value here. Stopping playbin mirrors what
-               video_load() already does unconditionally, so nothing keeps
-               decoding underneath the wind render while it's up. */
-            if (!strcmp(val, "wind")) {
+               leaving live-layer mode happens implicitly through the
+               normal loadfile path (see video_load()) rather than a
+               separate "video"/"idle" value here. Stopping playbin
+               mirrors what video_load() already does unconditionally, so
+               nothing keeps decoding underneath the live render while
+               it's up. */
+            wind_layer_t layer;
+            if (!strcmp(val, "wind")) layer = WIND_LAYER_WIND;
+            else if (!strcmp(val, "waves")) layer = WIND_LAYER_WAVES;
+            else if (!strcmp(val, "currents")) layer = WIND_LAYER_CURRENTS;
+            else layer = WIND_LAYER_COUNT; /* not a recognised layer name */
+            if (layer != WIND_LAYER_COUNT) {
                 gst_element_set_state(playbin, GST_STATE_NULL);
-                showing_wind = true;
+                wind_active_layer = layer;
+                showing_live_layer = true;
             }
         }
         /* image-display-duration / keep-open: no native GStreamer/playbin
@@ -2176,11 +2207,15 @@ int main(void) {
     const char *mapfile = getenv("ZEALANDATA_MAPPING_FILE");
     const char *idleimg = getenv("ZEALANDATA_LOADING_IMAGE");
     const char *windfile = getenv("ZEALANDATA_WIND_FIELD_FILE");
+    const char *wavesfile = getenv("ZEALANDATA_WAVES_FIELD_FILE");
+    const char *currentsfile = getenv("ZEALANDATA_CURRENTS_FIELD_FILE");
     if (!card)     card = "/dev/dri/card1";
     if (!objpath)  objpath = "/home/pj/zealandata/static/3dPrint_210kFaces.obj";
     if (!sockpath) sockpath = "/tmp/zealandata-mpv.sock";
     if (mapfile)   mapping_path = mapfile;
-    if (windfile)  wind_field_path = windfile;
+    if (windfile)     wind_layer_paths[WIND_LAYER_WIND] = windfile;
+    if (wavesfile)    wind_layer_paths[WIND_LAYER_WAVES] = wavesfile;
+    if (currentsfile) wind_layer_paths[WIND_LAYER_CURRENTS] = currentsfile;
 
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
@@ -2452,7 +2487,7 @@ int main(void) {
         }
         acc_video += now_sec() - tA;
 
-        if (showing_wind) {
+        if (showing_live_layer) {
             double wnow = now_sec();
             float wdt = (float)(wnow - last_wind_frame_t);
             /* Guards against a huge dt right after a long stall (e.g. the
@@ -2677,7 +2712,7 @@ int main(void) {
         glUniform1f(uVidRotation, map_cur.vid_rotation * (float)M_PI / 180.f);
         glUniform1i(uVidFlipH, map_cur.vid_flip_h ? 1 : 0);
         glUniform1i(uVidFlipV, map_cur.vid_flip_v ? 1 : 0);
-        glUniform1i(uIsWind, showing_wind ? 1 : 0);
+        glUniform1i(uIsWind, showing_live_layer ? 1 : 0);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         /* Keystone corner marker -- see MARKER_INSET_FRAC_X's comment above
            and FS_SRC's uMarkerUV comment: computed here alongside the
@@ -2702,7 +2737,7 @@ int main(void) {
             }
         }
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_wind ? windCompositeTex : showing_still_image ? idle_tex : cur_tex);
+        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_live_layer ? windCompositeTex : showing_still_image ? idle_tex : cur_tex);
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 
