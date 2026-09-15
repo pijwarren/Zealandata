@@ -53,7 +53,7 @@ const CENTER_LON = 172.3178
 const CENTER_LAT = -41.2562
 const HALF_WIDTH_KM = 518.75 // short edge / 2 -> local X
 const HALF_HEIGHT_KM = 1014.05 // long edge / 2 -> local Y
-const MODEL_ROTATION_DEG = 150 // -30 + 180: confirmed live against the physical print on 2026-09-15 (was showing 180 off)
+const MODEL_ROTATION_DEG = -30 // reverted 2026-09-15: +180 moved the coastline overlay away from the visible terrain ridge in loading.png, so the position math was already correct -- see weather/README.md, this needs more investigation, not a blind sign flip
 const FLIP_X = false
 const FLIP_Y = false
 
