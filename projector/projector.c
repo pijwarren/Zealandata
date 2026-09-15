@@ -27,15 +27,18 @@
  *            spawning an mpv of its own.
  * Calibration: mapping.json is polled and applied live, matching the admin
  *            panel's sliders.
- * Live layers: an alternative live texture source -- animated particles
- *            rendered natively here (see "wind" further down), advected
+ * Live layers: two independent live texture sources composited together
+ *            (see "wind" further down) -- animated particles, advected
  *            each frame from a small vector grid one of weather/fetch_
- *            {wind,waves,currents}.mjs writes periodically, or (for
- *            "temp") a translucent colour overlay from a scalar grid
- *            weather/fetch_temp.mjs writes (see "scalar (temp)" further
- *            down). Selected the same way as everything else, over the
- *            IPC socket (set_property "video-source"
- *            "wind"/"waves"/"currents"/"temp"); any loadfile switches
+ *            {wind,waves,currents}.mjs writes periodically (wind further
+ *            choosable by altitude/pressure level, see "wind-level"
+ *            below and weather/fetch_wind.mjs), and/or a translucent
+ *            scalar colour overlay from a grid weather/fetch_temp.mjs
+ *            writes (see "scalar (temp)" further down). Selected the
+ *            same way as everything else, over the IPC socket
+ *            (set_property "video-source" "wind"/"waves"/"currents"/
+ *            "none", "wind-level" one of wind_level_names, "overlay-
+ *            source" "temp"/"none"); any loadfile switches both off and
  *            back to normal video/image playback.
  */
 #define _GNU_SOURCE
@@ -304,31 +307,60 @@ static void mapping_reload(void) {
 
 typedef enum { WIND_LAYER_WIND, WIND_LAYER_WAVES, WIND_LAYER_CURRENTS, WIND_LAYER_COUNT } wind_layer_t;
 static const char *wind_layer_paths[WIND_LAYER_COUNT] = {
-    "/home/pj/zealandata/wind_field.bin",
+    NULL, /* WIND_LAYER_WIND: unused -- see wind_level_paths/wind_active_level below instead */
     "/home/pj/zealandata/waves_field.bin",
     "/home/pj/zealandata/currents_field.bin",
 };
 static wind_layer_t wind_active_layer = WIND_LAYER_WIND;
-/* Per-layer mtime, not one shared value -- switching layers must force an
-   immediate reload even if the newly-selected layer's own file's mtime
+
+/* The wind layer alone comes at a choice of altitude/pressure level
+   (surface, then GFS's standard isobaric levels), same set
+   earth.nullschool's own UI offers -- see weather/fetch_wind.mjs and the
+   "wind-level" IPC property below. Waves/currents have no equivalent
+   concept (a single value at the surface each), hence this living
+   separately from wind_layer_paths rather than folding it in there. */
+typedef enum { WIND_LEVEL_SURFACE, WIND_LEVEL_1000HPA, WIND_LEVEL_850HPA, WIND_LEVEL_700HPA,
+               WIND_LEVEL_500HPA, WIND_LEVEL_250HPA, WIND_LEVEL_70HPA, WIND_LEVEL_10HPA,
+               WIND_LEVEL_COUNT } wind_level_t;
+static const char *wind_level_names[WIND_LEVEL_COUNT] = {
+    "surface", "1000hPa", "850hPa", "700hPa", "500hPa", "250hPa", "70hPa", "10hPa",
+};
+static const char *wind_level_paths[WIND_LEVEL_COUNT] = {
+    "/home/pj/zealandata/wind_field_surface.bin",
+    "/home/pj/zealandata/wind_field_1000hPa.bin",
+    "/home/pj/zealandata/wind_field.bin", /* 850hPa -- the original/default level, filename predates the others */
+    "/home/pj/zealandata/wind_field_700hPa.bin",
+    "/home/pj/zealandata/wind_field_500hPa.bin",
+    "/home/pj/zealandata/wind_field_250hPa.bin",
+    "/home/pj/zealandata/wind_field_70hPa.bin",
+    "/home/pj/zealandata/wind_field_10hPa.bin",
+};
+static wind_level_t wind_active_level = WIND_LEVEL_850HPA;
+
+/* Per-layer/level mtime, not one shared value -- switching either must
+   force an immediate reload even if the newly-selected file's mtime
    hasn't changed since it was last polled, which a single shared mtime
-   can't express. wind_last_loaded_layer < 0 forces the very first load
+   can't express. The *_last_loaded_* < 0 forms force the very first load
    regardless of mtime. */
 static struct timespec wind_field_mtim[WIND_LAYER_COUNT];
+static struct timespec wind_level_mtim[WIND_LEVEL_COUNT];
 static int wind_last_loaded_layer = -1;
+static int wind_last_loaded_level = -1;
 static float *wind_grid = NULL;      /* grid_w * grid_h * 2 floats, (u,v) per cell */
 static int wind_grid_w = 0, wind_grid_h = 0;
 
 static void wind_field_reload(void) {
     wind_layer_t layer = wind_active_layer;
-    const char *path = wind_layer_paths[layer];
+    bool is_wind = (layer == WIND_LAYER_WIND);
+    const char *path = is_wind ? wind_level_paths[wind_active_level] : wind_layer_paths[layer];
+    struct timespec *mtim = is_wind ? &wind_level_mtim[wind_active_level] : &wind_field_mtim[layer];
     struct stat st;
     if (stat(path, &st) != 0) return;
-    bool layer_changed = ((int)layer != wind_last_loaded_layer);
-    bool mtime_changed = st.st_mtim.tv_sec != wind_field_mtim[layer].tv_sec ||
-                          st.st_mtim.tv_nsec != wind_field_mtim[layer].tv_nsec;
+    bool layer_changed = ((int)layer != wind_last_loaded_layer) ||
+                          (is_wind && (int)wind_active_level != wind_last_loaded_level);
+    bool mtime_changed = st.st_mtim.tv_sec != mtim->tv_sec || st.st_mtim.tv_nsec != mtim->tv_nsec;
     if (!layer_changed && !mtime_changed) return;
-    wind_field_mtim[layer] = st.st_mtim;
+    *mtim = st.st_mtim;
 
     FILE *f = fopen(path, "rb");
     if (!f) return;
@@ -356,6 +388,7 @@ static void wind_field_reload(void) {
     wind_grid_w = (int)w;
     wind_grid_h = (int)h;
     wind_last_loaded_layer = layer;
+    if (is_wind) wind_last_loaded_level = (int)wind_active_level;
     printf("[wind] reloaded %dx%d grid from %s (validTime unix=%.0f)\n", wind_grid_w, wind_grid_h, path, valid_time);
 }
 
@@ -390,7 +423,8 @@ static void sample_wind(float x, float y, float *u_out, float *v_out) {
  * (GFS 2m air temperature, already converted to Celsius there) and
  * polled here the same stat()-and-mtime way wind_field_reload() is.
  * Rendered as a colour overlay (see the scalar composite pass in the
- * render loop, gated on live_layer_is_scalar) rather than particles -- projector.c doesn't know or
+ * render loop, gated on scalar_overlay_enabled) rather than particles --
+ * projector.c doesn't know or
  * care that it's temperature specifically, just an abstract scalar over
  * [0,1]^2, same spirit as the wind/waves/currents comment above. ==== */
 static const char *scalar_field_path = "/home/pj/zealandata/temp_field.bin";
@@ -1175,9 +1209,10 @@ static const char *VS_SRC =
     "uniform float uVidRotation;\n"
     "uniform bool uVidFlipH;\n"
     "uniform bool uVidFlipV;\n"
-    /* True while showing the native wind-particle render (see
-       wind_field_reload()/showing_live_layer) instead of video/idle-image
-       content. That texture's orientation is already fully corrected in
+    /* True while showing the native wind-particle render or scalar
+       overlay (see wind_field_reload()/particles_enabled/
+       scalar_overlay_enabled) instead of video/idle-image content. That
+       texture's orientation is already fully corrected in
        weather/fetch_wind.mjs's own geographic math (rotation + optional
        flips, tuned against the physical print directly) -- stacking the
        video-orientation controls above on top of it would double-correct
@@ -1371,7 +1406,8 @@ static const char *FS_SRC =
  *     picture normal playback shows) with wind_tex alpha-blended on top,
  *     so the particles read against real coastline/terrain rather than
  *     floating on plain black. *This* is what takes cur_tex's place in
- *     the normal model draw when showing_live_layer is set -- the
+ *     the normal model draw when particles_enabled or
+ *     scalar_overlay_enabled is set -- the
  *     warp/keystone/model pass above needs no changes at all for this,
  *     since it only ever samples whatever's bound as uTex.
  *
@@ -1793,17 +1829,19 @@ static bool   showing_still_image = false;
    wind_field_reload()/wind_particles_update() above, and
    wind_active_layer for which one) -- its own offscreen texture, filled
    in the render loop and bound in place of cur_tex/idle_tex at draw time
-   when this is set. Unlike the still image above, no deferred-to-main-
-   thread dance is needed: entering/leaving this mode is just a flag
-   flip, since wind_tex/wind_fbo are created once at startup rather than
-   needing a fresh decode per switch. */
-static bool   showing_live_layer = false;
-/* True when the live layer is the scalar temperature overlay (see
-   scalar_field_reload() and the render loop's scalar composite pass)
-   rather than a particle layer -- both share showing_live_layer
-   (native-UV, no video-rotation correction) but need very different
-   per-frame work. */
-static bool   live_layer_is_scalar = false;
+   when either this or scalar_overlay_enabled below is set. Unlike the
+   still image above, no deferred-to-main-thread dance is needed:
+   entering/leaving this mode is just a flag flip, since wind_tex/
+   wind_fbo are created once at startup rather than needing a fresh
+   decode per switch. Independent of scalar_overlay_enabled -- both can
+   be on at once, composited base-then-overlay-then-particles in the
+   render loop, so e.g. wind particles can animate on top of the temp
+   colour wash. */
+static bool   particles_enabled = false;
+/* The scalar temperature overlay (see scalar_field_reload() and the
+   render loop's scalar composite pass) -- see particles_enabled above
+   for how the two combine. */
+static bool   scalar_overlay_enabled = false;
 /* Set by video_load() (any thread), consumed once by the main thread's
    render loop, since the actual decode + glTexImage2D upload below needs
    the EGL context that's only current there. */
@@ -2043,10 +2081,12 @@ static void video_pipeline_init(void) {
 
 static void video_load(const char *path, double start_sec) {
     /* Any loadfile -- video or still image -- exits wind/waves/currents
-       mode, same as it already exits the still-image case below;
-       server.py only ever needs to ask for a live layer explicitly (via
-       set_property "video-source"), never to explicitly leave it. */
-    showing_live_layer = false;
+       and the scalar overlay both, same as it already exits the
+       still-image case below; server.py only ever needs to ask for a
+       live layer explicitly (via set_property "video-source"/
+       "overlay-source"), never to explicitly leave it. */
+    particles_enabled = false;
+    scalar_overlay_enabled = false;
 
     /* Stopping playbin unconditionally, even for a still image, matters:
        without it a real video already playing when the idle image loads
@@ -2308,11 +2348,13 @@ static void *ipc_client_thread(void *arg) {
                separate "video"/"idle" value here. Stopping playbin
                mirrors what video_load() already does unconditionally, so
                nothing keeps decoding underneath the live render while
-               it's up. */
-            if (!strcmp(val, "temp")) {
-                gst_element_set_state(playbin, GST_STATE_NULL);
-                live_layer_is_scalar = true;
-                showing_live_layer = true;
+               it's up. Particles and the scalar overlay (see
+               "overlay-source" below) are independent -- this property
+               only ever touches particles_enabled/wind_active_layer, so
+               an overlay already on stays on underneath whichever
+               particle layer (or none) this switches to. */
+            if (!strcmp(val, "none")) {
+                particles_enabled = false;
             } else {
                 wind_layer_t layer;
                 if (!strcmp(val, "wind")) layer = WIND_LAYER_WIND;
@@ -2322,9 +2364,27 @@ static void *ipc_client_thread(void *arg) {
                 if (layer != WIND_LAYER_COUNT) {
                     gst_element_set_state(playbin, GST_STATE_NULL);
                     wind_active_layer = layer;
-                    live_layer_is_scalar = false;
-                    showing_live_layer = true;
+                    particles_enabled = true;
                 }
+            }
+        } else if (!strcmp(name, "overlay-source")) {
+            /* Independent of "video-source" -- see the big comment
+               above. server.py's own new endpoint for this (see
+               /api/weather/overlay/select) is the only caller. */
+            if (!strcmp(val, "none")) {
+                scalar_overlay_enabled = false;
+            } else if (!strcmp(val, "temp")) {
+                gst_element_set_state(playbin, GST_STATE_NULL);
+                scalar_overlay_enabled = true;
+            }
+        } else if (!strcmp(name, "wind-level")) {
+            /* Which altitude/pressure level wind_field_reload() polls
+               when wind_active_layer == WIND_LAYER_WIND -- see
+               wind_level_t. Orthogonal to which particle layer (if any)
+               is currently selected; takes effect next time wind
+               becomes/stays the active particle layer. */
+            for (int i = 0; i < WIND_LEVEL_COUNT; i++) {
+                if (!strcmp(val, wind_level_names[i])) { wind_active_level = (wind_level_t)i; break; }
             }
         }
         /* image-display-duration / keep-open: no native GStreamer/playbin
@@ -2419,7 +2479,7 @@ int main(void) {
     if (!objpath)  objpath = "/home/pj/zealandata/static/3dPrint_210kFaces.obj";
     if (!sockpath) sockpath = "/tmp/zealandata-mpv.sock";
     if (mapfile)   mapping_path = mapfile;
-    if (windfile)     wind_layer_paths[WIND_LAYER_WIND] = windfile;
+    if (windfile)     wind_level_paths[WIND_LEVEL_850HPA] = windfile;
     if (wavesfile)    wind_layer_paths[WIND_LAYER_WAVES] = wavesfile;
     if (currentsfile) wind_layer_paths[WIND_LAYER_CURRENTS] = currentsfile;
     if (tempfile)     scalar_field_path = tempfile;
@@ -2627,11 +2687,12 @@ int main(void) {
 
     build_land_mask();
 
-    /* ---- scalar (temperature) overlay: small data texture + its own
-       composite target, same idle_tex-then-overlay structure as
-       windCompositeFbo/Tex above but without any per-frame simulation --
-       just re-uploaded whenever scalar_field_reload() sees a new file.
-       See WIND_SCALAR_VS_SRC/FS_SRC. */
+    /* ---- scalar (temperature) overlay: just the small data texture --
+       composited into the shared windCompositeFbo/Tex above (see the
+       render loop) rather than its own target, so it can combine with
+       particles. Re-uploaded whenever scalar_field_reload() sees a new
+       file; no per-frame simulation of its own. See
+       WIND_SCALAR_VS_SRC/FS_SRC. */
     GLuint scalarTex;
     glGenTextures(1, &scalarTex);
     glBindTexture(GL_TEXTURE_2D, scalarTex);
@@ -2639,24 +2700,6 @@ int main(void) {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-
-    GLuint scalarCompositeFbo, scalarCompositeTex;
-    glGenTextures(1, &scalarCompositeTex);
-    glBindTexture(GL_TEXTURE_2D, scalarCompositeTex);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, WIND_TEX_SIZE, WIND_TEX_SIZE, 0,
-                 GL_RGBA, GL_UNSIGNED_BYTE, NULL);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glGenFramebuffers(1, &scalarCompositeFbo);
-    glBindFramebuffer(GL_FRAMEBUFFER, scalarCompositeFbo);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, scalarCompositeTex, 0);
-    GLenum scalarCompositeFboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
-    if (scalarCompositeFboStatus != GL_FRAMEBUFFER_COMPLETE) {
-        fprintf(stderr, "[scalar] composite framebuffer incomplete (0x%x) -- temp mode will show black\n", scalarCompositeFboStatus);
-    }
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
     GLuint windScalarProg = glCreateProgram();
     glAttachShader(windScalarProg, compile_shader(GL_VERTEX_SHADER, WIND_SCALAR_VS_SRC));
@@ -2751,149 +2794,18 @@ int main(void) {
         }
         acc_video += now_sec() - tA;
 
-        if (showing_live_layer && live_layer_is_scalar) {
-            /* Re-upload scalarTex only when the underlying grid actually
-               changed, normalising each cell to 0..1 against TEMP_MIN_C/
-               TEMP_MAX_C into a small on-stack byte buffer -- GL_R8 so
-               GL_LINEAR filtering (set at texture creation) is guaranteed
-               core ES3 behaviour, unlike filtering a float texture. */
-            static int scalar_uploaded_w = -1, scalar_uploaded_h = -1;
-            static const float *scalar_uploaded_grid = NULL;
-            if (scalar_grid && (scalar_grid != scalar_uploaded_grid || scalar_grid_w != scalar_uploaded_w || scalar_grid_h != scalar_uploaded_h)) {
-                static uint8_t scalar_upload_buf[4096];
-                int n = scalar_grid_w * scalar_grid_h;
-                if (n <= (int)sizeof scalar_upload_buf) {
-                    for (int i = 0; i < n; i++) {
-                        float t = (scalar_grid[i] - TEMP_MIN_C) / (TEMP_MAX_C - TEMP_MIN_C);
-                        if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
-                        scalar_upload_buf[i] = (uint8_t)(t * 255.f + 0.5f);
-                    }
-                    glBindTexture(GL_TEXTURE_2D, scalarTex);
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, scalar_grid_w, scalar_grid_h, 0,
-                                 GL_RED, GL_UNSIGNED_BYTE, scalar_upload_buf);
-                    scalar_uploaded_w = scalar_grid_w;
-                    scalar_uploaded_h = scalar_grid_h;
-                    scalar_uploaded_grid = scalar_grid;
-                } else {
-                    fprintf(stderr, "[scalar] grid too large for upload buffer (%dx%d)\n", scalar_grid_w, scalar_grid_h);
-                }
-            }
-
-            /* Composite pass: idle_tex (opaque base), the colour ramp
-               (its own fixed alpha, see WIND_SCALAR_FS_SRC) on top, then
-               the same coastline reference line wind/waves/currents
-               draw -- see the big comment above WIND_FADE_VS_SRC for why
-               idle_tex needs uVidRotation/uVidFlipH/uVidFlipV correction
-               here despite the overlay itself not needing any. */
-            glBindFramebuffer(GL_FRAMEBUFFER, scalarCompositeFbo);
+        if (particles_enabled || scalar_overlay_enabled) {
+            /* Shared composite target regardless of which of the two are
+               on -- idle_tex base, then the scalar colour wash (if
+               enabled), then particles (if enabled) on top of that, then
+               the coastline reference line always on top. Building both
+               into the same windCompositeFbo/Tex, rather than each into
+               its own like the two used to, is what lets e.g. wind
+               particles animate over the temp colour wash instead of one
+               replacing the other. */
             glViewport(0, 0, WIND_TEX_SIZE, WIND_TEX_SIZE);
             glDisable(GL_DEPTH_TEST);
-            glUseProgram(windBlitProg);
-            glBindVertexArray(windFadeVao);
-            glActiveTexture(GL_TEXTURE0);
-            glDisable(GL_BLEND);
-            glUniform1f(uWindBlitVidRotation, map_cur.vid_rotation * (float)M_PI / 180.f);
-            glUniform1i(uWindBlitVidFlipH, map_cur.vid_flip_h ? 1 : 0);
-            glUniform1i(uWindBlitVidFlipV, map_cur.vid_flip_v ? 1 : 0);
-            glBindTexture(GL_TEXTURE_2D, idle_tex);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
 
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glUseProgram(windScalarProg);
-            glBindTexture(GL_TEXTURE_2D, scalarTex);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-
-            glDisable(GL_BLEND);
-            glUseProgram(windCoastlineProg);
-            glBindVertexArray(windCoastlineVao);
-            glDrawArrays(GL_LINES, 0, COASTLINE_NUM_VERTS);
-
-            glBindVertexArray(vao); /* restore the model's VAO for the draw below */
-        } else if (showing_live_layer) {
-            double wnow = now_sec();
-            float wdt = (float)(wnow - last_wind_frame_t);
-            /* Guards against a huge dt right after a long stall (e.g. the
-               very first frame back from a slow mode switch) flinging every
-               particle off in one step. */
-            if (wdt < 0.f) wdt = 0.f;
-            if (wdt > 0.25f) wdt = 0.25f;
-            last_wind_frame_t = wnow;
-            wind_particles_update(wdt);
-
-            for (int i = 0; i < WIND_MAX_PARTICLES; i++) {
-                const wind_particle *p = &wind_particles[i];
-                float u, v;
-                sample_wind(p->x, p->y, &u, &v);
-                float speed = sqrtf(u * u + v * v) / WIND_MAX_SPEED_UV; /* ~0..1 */
-                if (speed > 1.f) speed = 1.f;
-                /* Calm -> white, moderate -> yellow, strong -> red -- used
-                   for all three layers (wind/waves/currents) so calm
-                   particles don't vanish into blue ocean/sky backgrounds
-                   the way the original blue "calm" end did. */
-                float r = 1.f;
-                float g = speed < 0.5f ? 1.f : 1.f - (speed - 0.5f) * 2.f;
-                float b = speed < 0.5f ? 1.f - speed * 2.f : 0.f;
-                /* Wind is the one layer allowed to drift over the
-                   coastline mask (see wind_particles_update) -- dim it
-                   there instead, rather than either hiding it flat or
-                   letting it look identical to open-sea wind. Waves/
-                   currents never land on land in the first place, so
-                   they always get full opacity. */
-                float a = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->x, p->y)) ? 0.65f : 1.f;
-                float pa = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->px, p->py)) ? 0.65f : 1.f;
-                wind_vertex *v0 = &wind_vbo_scratch[i * 2];
-                wind_vertex *v1 = &wind_vbo_scratch[i * 2 + 1];
-                v0->x = p->px * 2.f - 1.f;
-                v0->y = p->py * 2.f - 1.f;
-                v1->x = p->x * 2.f - 1.f;
-                v1->y = p->y * 2.f - 1.f;
-                v0->r = v1->r = r;
-                v0->g = v1->g = g;
-                v0->b = v1->b = b;
-                v0->a = pa;
-                v1->a = a;
-            }
-
-            glBindFramebuffer(GL_FRAMEBUFFER, windFbo);
-            glViewport(0, 0, WIND_TEX_SIZE, WIND_TEX_SIZE);
-            glDisable(GL_DEPTH_TEST);
-            glEnable(GL_BLEND);
-
-            /* Fade pass: multiply wind_tex's existing RGBA (color AND
-               alpha) down by a constant factor, rather than clearing it --
-               this is what extends each particle's own per-frame line
-               segment (see WIND_PARTICLE_VS_SRC) into a longer tail, and
-               (via glBlendColor, not the shader) converges an untouched
-               pixel's alpha to true 0 rather than a visible non-zero
-               floor -- see the big comment above WIND_FADE_VS_SRC for why
-               that distinction matters once this is composited over
-               idle_tex below. Higher = longer tail (0.96 ~= twice the
-               persistence of the original 0.94/single-dot version).
-               Currents get a longer tail than wind/waves (0.985 vs 0.96)
-               -- ocean currents move slowly enough that the short wind
-               tail read as disconnected dashes rather than a flow. */
-            glBlendFunc(GL_ZERO, GL_CONSTANT_ALPHA);
-            glBlendColor(0.f, 0.f, 0.f, wind_active_layer == WIND_LAYER_CURRENTS ? 0.985f : 0.96f);
-            glUseProgram(windFadeProg);
-            glBindVertexArray(windFadeVao);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
-
-            /* Particle pass, on top of that same faded content -- plain
-               source-over compositing (each particle drawn fully opaque
-               at alpha 1, see WIND_PARTICLE_FS_SRC). */
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glUseProgram(windParticleProg);
-            glBindVertexArray(windParticleVao);
-            glBindBuffer(GL_ARRAY_BUFFER, windParticleVbo);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, WIND_MAX_PARTICLES * 2 * sizeof(wind_vertex), wind_vbo_scratch);
-            glDrawArrays(GL_LINES, 0, WIND_MAX_PARTICLES * 2);
-
-            /* Composite pass: idle_tex (opaque base) then wind_tex (its
-               own alpha) on top, into wind_composite_tex -- see the big
-               comment above WIND_FADE_VS_SRC. Reuses windFadeVao purely
-               for its fullscreen-quad geometry (WIND_BLIT_VS_SRC has the
-               same location-0 vec2 attribute layout). */
             glBindFramebuffer(GL_FRAMEBUFFER, windCompositeFbo);
             glUseProgram(windBlitProg);
             glBindVertexArray(windFadeVao);
@@ -2904,17 +2816,150 @@ int main(void) {
             glUniform1i(uWindBlitVidFlipV, map_cur.vid_flip_v ? 1 : 0);
             glBindTexture(GL_TEXTURE_2D, idle_tex);
             glDrawArrays(GL_TRIANGLES, 0, 6);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
             glUniform1f(uWindBlitVidRotation, 0.f);
             glUniform1i(uWindBlitVidFlipH, 0);
             glUniform1i(uWindBlitVidFlipV, 0);
-            glBindTexture(GL_TEXTURE_2D, windTex);
-            glDrawArrays(GL_TRIANGLES, 0, 6);
+
+            if (scalar_overlay_enabled) {
+                /* Re-upload scalarTex only when the underlying grid
+                   actually changed, normalising each cell to 0..1
+                   against TEMP_MIN_C/TEMP_MAX_C into a small on-stack
+                   byte buffer -- GL_R8 so GL_LINEAR filtering (set at
+                   texture creation) is guaranteed core ES3 behaviour,
+                   unlike filtering a float texture. */
+                static int scalar_uploaded_w = -1, scalar_uploaded_h = -1;
+                static const float *scalar_uploaded_grid = NULL;
+                if (scalar_grid && (scalar_grid != scalar_uploaded_grid || scalar_grid_w != scalar_uploaded_w || scalar_grid_h != scalar_uploaded_h)) {
+                    static uint8_t scalar_upload_buf[4096];
+                    int n = scalar_grid_w * scalar_grid_h;
+                    if (n <= (int)sizeof scalar_upload_buf) {
+                        for (int i = 0; i < n; i++) {
+                            float t = (scalar_grid[i] - TEMP_MIN_C) / (TEMP_MAX_C - TEMP_MIN_C);
+                            if (t < 0.f) t = 0.f; else if (t > 1.f) t = 1.f;
+                            scalar_upload_buf[i] = (uint8_t)(t * 255.f + 0.5f);
+                        }
+                        glBindTexture(GL_TEXTURE_2D, scalarTex);
+                        glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, scalar_grid_w, scalar_grid_h, 0,
+                                     GL_RED, GL_UNSIGNED_BYTE, scalar_upload_buf);
+                        scalar_uploaded_w = scalar_grid_w;
+                        scalar_uploaded_h = scalar_grid_h;
+                        scalar_uploaded_grid = scalar_grid;
+                    } else {
+                        fprintf(stderr, "[scalar] grid too large for upload buffer (%dx%d)\n", scalar_grid_w, scalar_grid_h);
+                    }
+                }
+
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glUseProgram(windScalarProg);
+                glBindVertexArray(windFadeVao);
+                glBindTexture(GL_TEXTURE_2D, scalarTex);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+                glDisable(GL_BLEND);
+            }
+
+            if (particles_enabled) {
+                double wnow = now_sec();
+                float wdt = (float)(wnow - last_wind_frame_t);
+                /* Guards against a huge dt right after a long stall (e.g.
+                   the very first frame back from a slow mode switch)
+                   flinging every particle off in one step. */
+                if (wdt < 0.f) wdt = 0.f;
+                if (wdt > 0.25f) wdt = 0.25f;
+                last_wind_frame_t = wnow;
+                wind_particles_update(wdt);
+
+                for (int i = 0; i < WIND_MAX_PARTICLES; i++) {
+                    const wind_particle *p = &wind_particles[i];
+                    float u, v;
+                    sample_wind(p->x, p->y, &u, &v);
+                    float speed = sqrtf(u * u + v * v) / WIND_MAX_SPEED_UV; /* ~0..1 */
+                    if (speed > 1.f) speed = 1.f;
+                    /* Calm -> white, moderate -> yellow, strong -> red --
+                       used for all three layers (wind/waves/currents) so
+                       calm particles don't vanish into blue ocean/sky
+                       backgrounds the way the original blue "calm" end
+                       did. */
+                    float r = 1.f;
+                    float g = speed < 0.5f ? 1.f : 1.f - (speed - 0.5f) * 2.f;
+                    float b = speed < 0.5f ? 1.f - speed * 2.f : 0.f;
+                    /* Wind is the one layer allowed to drift over the
+                       coastline mask (see wind_particles_update) -- dim
+                       it there instead, rather than either hiding it
+                       flat or letting it look identical to open-sea
+                       wind. Waves/currents never land on land in the
+                       first place, so they always get full opacity. */
+                    float a = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->x, p->y)) ? 0.65f : 1.f;
+                    float pa = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->px, p->py)) ? 0.65f : 1.f;
+                    wind_vertex *v0 = &wind_vbo_scratch[i * 2];
+                    wind_vertex *v1 = &wind_vbo_scratch[i * 2 + 1];
+                    v0->x = p->px * 2.f - 1.f;
+                    v0->y = p->py * 2.f - 1.f;
+                    v1->x = p->x * 2.f - 1.f;
+                    v1->y = p->y * 2.f - 1.f;
+                    v0->r = v1->r = r;
+                    v0->g = v1->g = g;
+                    v0->b = v1->b = b;
+                    v0->a = pa;
+                    v1->a = a;
+                }
+
+                glBindFramebuffer(GL_FRAMEBUFFER, windFbo);
+                glViewport(0, 0, WIND_TEX_SIZE, WIND_TEX_SIZE);
+                glEnable(GL_BLEND);
+
+                /* Fade pass: multiply wind_tex's existing RGBA (color AND
+                   alpha) down by a constant factor, rather than clearing
+                   it -- this is what extends each particle's own
+                   per-frame line segment (see WIND_PARTICLE_VS_SRC) into
+                   a longer tail, and (via glBlendColor, not the shader)
+                   converges an untouched pixel's alpha to true 0 rather
+                   than a visible non-zero floor -- see the big comment
+                   above WIND_FADE_VS_SRC for why that distinction
+                   matters once this is composited over idle_tex below.
+                   Higher = longer tail (0.96 ~= twice the persistence of
+                   the original 0.94/single-dot version). Currents get a
+                   longer tail than wind/waves (0.985 vs 0.96) -- ocean
+                   currents move slowly enough that the short wind tail
+                   read as disconnected dashes rather than a flow. */
+                glBlendFunc(GL_ZERO, GL_CONSTANT_ALPHA);
+                glBlendColor(0.f, 0.f, 0.f, wind_active_layer == WIND_LAYER_CURRENTS ? 0.985f : 0.96f);
+                glUseProgram(windFadeProg);
+                glBindVertexArray(windFadeVao);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+
+                /* Particle pass, on top of that same faded content --
+                   plain source-over compositing (each particle drawn
+                   fully opaque at alpha 1, see WIND_PARTICLE_FS_SRC). */
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glUseProgram(windParticleProg);
+                glBindVertexArray(windParticleVao);
+                glBindBuffer(GL_ARRAY_BUFFER, windParticleVbo);
+                glBufferSubData(GL_ARRAY_BUFFER, 0, WIND_MAX_PARTICLES * 2 * sizeof(wind_vertex), wind_vbo_scratch);
+                glDrawArrays(GL_LINES, 0, WIND_MAX_PARTICLES * 2);
+
+                /* Blit wind_tex (its own alpha) on top of whatever's
+                   already in the shared composite (idle_tex, plus the
+                   scalar wash if that's also on) -- see the big comment
+                   above WIND_FADE_VS_SRC. Reuses windFadeVao purely for
+                   its fullscreen-quad geometry (WIND_BLIT_VS_SRC has the
+                   same location-0 vec2 attribute layout). */
+                glBindFramebuffer(GL_FRAMEBUFFER, windCompositeFbo);
+                glViewport(0, 0, WIND_TEX_SIZE, WIND_TEX_SIZE);
+                glUseProgram(windBlitProg);
+                glBindVertexArray(windFadeVao);
+                glActiveTexture(GL_TEXTURE0);
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glBindTexture(GL_TEXTURE_2D, windTex);
+                glDrawArrays(GL_TRIANGLES, 0, 6);
+                glDisable(GL_BLEND);
+            }
 
             /* Coastline overlay -- solid white lines, drawn last so it
-               sits on top of the particles rather than fading under
-               them; see WIND_COASTLINE_VS_SRC. */
+               sits on top of the particles/overlay rather than fading
+               under them; see WIND_COASTLINE_VS_SRC. */
+            glBindFramebuffer(GL_FRAMEBUFFER, windCompositeFbo);
             glDisable(GL_BLEND);
             glUseProgram(windCoastlineProg);
             glBindVertexArray(windCoastlineVao);
@@ -3056,7 +3101,7 @@ int main(void) {
         glUniform1f(uVidRotation, map_cur.vid_rotation * (float)M_PI / 180.f);
         glUniform1i(uVidFlipH, map_cur.vid_flip_h ? 1 : 0);
         glUniform1i(uVidFlipV, map_cur.vid_flip_v ? 1 : 0);
-        glUniform1i(uIsWind, showing_live_layer ? 1 : 0);
+        glUniform1i(uIsWind, (particles_enabled || scalar_overlay_enabled) ? 1 : 0);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         /* Keystone corner marker -- see MARKER_INSET_FRAC_X's comment above
            and FS_SRC's uMarkerUV comment: computed here alongside the
@@ -3082,7 +3127,7 @@ int main(void) {
         }
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex
-            : showing_live_layer ? (live_layer_is_scalar ? scalarCompositeTex : windCompositeTex)
+            : (particles_enabled || scalar_overlay_enabled) ? windCompositeTex
             : showing_still_image ? idle_tex : cur_tex);
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);

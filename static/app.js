@@ -85,6 +85,9 @@ const categoryRows = document.getElementById("categoryRows");
 const dockPreviewWrap = document.getElementById("dockPreviewWrap");
 const dockPreview = document.getElementById("dockPreview");
 const dockDocs = document.getElementById("dockDocs");
+const windLevelRow = document.getElementById("windLevelRow");
+const windLevelSlider = document.getElementById("windLevelSlider");
+const windLevelLabel = document.getElementById("windLevelLabel");
 const docScrim = document.getElementById("docScrim");
 const docViewer = document.getElementById("docViewer");
 const docViewerClose = document.getElementById("docViewerClose");
@@ -2042,6 +2045,7 @@ function setLiveMode(isLive) {
     currentFrameCount = null;
   } else {
     dockDocsLabel.textContent = "Related files"; // undo paintLayerChips' relabel
+    windLevelRow.classList.add("hidden"); // undo paintWindLevelRow's reveal
   }
   [seekBackBtn, seekFwdBtn, pauseBtn, loopBtn, setHeroBtn].forEach((btn) => { btn.disabled = isLive; });
 }
@@ -2051,17 +2055,55 @@ function setLiveMode(isLive) {
 // Live Weather is playing, rather than a bespoke control: same floating
 // chip strip, just text chips instead of thumbnail ones, and clicking
 // switches layers instead of opening the doc viewer.
+//
+// Two independent axes, both driven from this one strip: the particle
+// layers (Wind/Waves/Currents, mutually exclusive, clicking the active
+// one turns particles off entirely) and the scalar overlay(s) (currently
+// just Temp, its own on/off not exclusive with the particle layer -- see
+// server.py's api_weather_select vs. api_weather_overlay_select). Wind
+// alone also gets an altitude/pressure level slider, see
+// paintWindLevelRow.
 function defaultAvailableLayer(layers) {
   const found = (layers || []).find((l) => l.available);
   return found ? found.id : "wind";
 }
 
-function paintLayerChips(layers, activeLayer) {
-  const list = layers || [];
+// Tracks both axes client-side between server round-trips -- each POST
+// only reports the axis it just changed, not the other one, so this is
+// what lets a click on one axis's chip repaint without clobbering
+// whatever the other axis is currently showing. pollStatus overwrites it
+// wholesale from the server's own authoritative state every tick.
+let liveLayerState = { layer: null, overlay: null, windLevel: null };
+
+// Same order as server.py's WIND_LEVELS / projector.c's wind_level_names.
+const WIND_LEVEL_DISPLAY = {
+  surface: "Surface", "1000hPa": "1000 hPa", "850hPa": "850 hPa", "700hPa": "700 hPa",
+  "500hPa": "500 hPa", "250hPa": "250 hPa", "70hPa": "70 hPa", "10hPa": "10 hPa",
+};
+let windLevelIds = []; // index-addressed by the slider's own value
+
+function paintWindLevelRow(windLevels, activeLayer, activeLevel) {
+  windLevelIds = (windLevels || []).map((l) => l.id);
+  const show = activeLayer === "wind" && windLevelIds.length > 0;
+  windLevelRow.classList.toggle("hidden", !show);
+  if (!show) return;
+  const idx = Math.max(0, windLevelIds.indexOf(activeLevel));
+  windLevelSlider.max = String(windLevelIds.length - 1);
+  windLevelSlider.value = String(idx);
+  windLevelLabel.textContent = WIND_LEVEL_DISPLAY[windLevelIds[idx]] || windLevelIds[idx];
+}
+
+function paintLayerChips(item) {
+  const layers = (item && item.layers) || [];
+  const scalarLayers = (item && item.scalar_layers) || [];
+  const windLevels = (item && item.wind_levels) || [];
+  const { layer: activeLayer, overlay: activeOverlay, windLevel: activeLevel } = liveLayerState;
+
   dockDocsLabel.textContent = "Layer";
   dockDocs.innerHTML = "";
-  dockDocsPanel.classList.toggle("hidden", list.length === 0);
-  list.forEach((layer) => {
+  dockDocsPanel.classList.toggle("hidden", layers.length === 0 && scalarLayers.length === 0);
+
+  layers.forEach((layer) => {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "dock__doc-chip dock__doc-chip--text";
@@ -2069,26 +2111,81 @@ function paintLayerChips(layers, activeLayer) {
     chip.disabled = !layer.available;
     chip.textContent = layer.label;
     chip.title = layer.available ? layer.label : `${layer.label} — no data yet`;
-    chip.addEventListener("click", () => selectWeatherLayer(layer.id));
+    chip.addEventListener("click", () => selectWeatherLayer(layer.id === activeLayer ? "none" : layer.id));
     dockDocs.appendChild(chip);
   });
+
+  // Independent of the particle chips above -- rendered into the same
+  // strip but never exclusive with them (see selectWeatherOverlay).
+  scalarLayers.forEach((overlay) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "dock__doc-chip dock__doc-chip--text";
+    chip.classList.toggle("dock__doc-chip--active", overlay.id === activeOverlay);
+    chip.disabled = !overlay.available;
+    chip.textContent = overlay.label;
+    chip.title = overlay.available ? overlay.label : `${overlay.label} — no data yet`;
+    chip.addEventListener("click", () => selectWeatherOverlay(overlay.id === activeOverlay ? "none" : overlay.id));
+    dockDocs.appendChild(chip);
+  });
+
+  paintWindLevelRow(windLevels, activeLayer, activeLevel);
   dockDocsScrollUpdate();
   updateDocsFade();
 }
 
 async function selectWeatherLayer(layer) {
+  // Optimistic highlight -- the next pollStatus tick (within ~1s) would
+  // repaint this anyway, but not waiting for it keeps the click feeling
+  // immediate.
+  liveLayerState.layer = layer === "none" ? null : layer;
+  paintLayerChips(getMediaById(LIVE_WEATHER_ID));
   const res = await fetch("/api/weather/select", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ layer }),
   });
   const data = await res.json().catch(() => null);
-  if (data && data.title) playerTitle.textContent = data.title;
-  // Optimistic highlight -- the next pollStatus tick (within ~1s) would
-  // repaint this anyway, but not waiting for it keeps the click feeling
-  // immediate.
-  paintLayerChips((getMediaById(LIVE_WEATHER_ID) || {}).layers, layer);
+  playerTitle.textContent = (data && data.title) || "Nothing playing";
 }
+
+async function selectWeatherOverlay(overlay) {
+  liveLayerState.overlay = overlay === "none" ? null : overlay;
+  paintLayerChips(getMediaById(LIVE_WEATHER_ID));
+  const res = await fetch("/api/weather/overlay/select", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ overlay }),
+  });
+  const data = await res.json().catch(() => null);
+  playerTitle.textContent = (data && data.title) || "Nothing playing";
+}
+
+async function setWindLevel(level) {
+  liveLayerState.layer = "wind";
+  liveLayerState.windLevel = level;
+  paintLayerChips(getMediaById(LIVE_WEATHER_ID));
+  const res = await fetch("/api/weather/wind-level", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ level }),
+  });
+  const data = await res.json().catch(() => null);
+  if (data && data.title) playerTitle.textContent = data.title;
+}
+
+// "input" fires continuously while dragging (just updates the label, no
+// network); "change" fires once on release, which is when the level
+// actually gets sent -- dragging shouldn't spam the server or the Pi's
+// wind-level reload with a request per pixel of travel.
+windLevelSlider.addEventListener("input", () => {
+  const level = windLevelIds[Number(windLevelSlider.value)];
+  if (level) windLevelLabel.textContent = WIND_LEVEL_DISPLAY[level] || level;
+});
+windLevelSlider.addEventListener("change", () => {
+  const level = windLevelIds[Number(windLevelSlider.value)];
+  if (level) setWindLevel(level);
+});
 
 function paintFrameCounter(frameNumber) {
   const shown = frameNumber != null ? frameNumber + 1 : "—";
@@ -2294,8 +2391,8 @@ async function playItem(item, { resume = false, restart = false } = {}) {
 
   if (item.is_live_weather) {
     setLiveMode(true);
+    liveLayerState = { layer: null, overlay: null, windLevel: null };
     const layer = defaultAvailableLayer(item.layers);
-    paintLayerChips(item.layers, layer);
     await selectWeatherLayer(layer);
     return;
   }
@@ -2425,10 +2522,11 @@ async function pollStatus() {
 
       if (s.is_live_weather) {
         setLiveMode(true);
-        // Keeps chip highlighting in sync even if another tab switched
+        // Keeps chip/slider state in sync even if another tab switched
         // layers -- cheap enough to just repaint every poll tick rather
-        // than tracking whether s.layer actually changed.
-        paintLayerChips((getMediaById(s.id) || {}).layers, s.layer);
+        // than tracking whether anything actually changed.
+        liveLayerState = { layer: s.layer || null, overlay: s.overlay || null, windLevel: s.wind_level || null };
+        paintLayerChips(getMediaById(s.id));
       } else {
         setLiveMode(false);
         setPauseIcon(!!s.paused);

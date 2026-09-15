@@ -15,6 +15,8 @@ mapping.json
 admin_pin.json
 wind_field.bin
 wind_field.bin.tmp
+wind_field_*.bin
+wind_field_*.bin.tmp
 waves_field.bin
 waves_field.bin.tmp
 currents_field.bin

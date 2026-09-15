@@ -97,7 +97,8 @@ MAPPING_FILE = os.path.join(BASE_DIR, "mapping.json")
 # currents}.mjs writes on its own schedule (see weather/README.md) --
 # inert entirely until at least one of these files shows up, same "off
 # unless configured" spirit as ZEALANDATA_ADMIN_PIN. Keys match exactly
-# what projector.c's set_property "video-source" accepts.
+# what projector.c's set_property "video-source" accepts (or "none" to
+# turn particles off without touching the scalar overlay below).
 WEATHER_LAYERS = {
     "wind": {"label": "Wind", "file": os.path.join(BASE_DIR, "wind_field.bin")},
     "waves": {"label": "Waves", "file": os.path.join(BASE_DIR, "waves_field.bin")},
@@ -106,36 +107,76 @@ WEATHER_LAYERS = {
     # with its embedded valid_time (see weather_layer_valid_time) rather
     # than presented as current.
     "currents": {"label": "Currents", "file": os.path.join(BASE_DIR, "currents_field.bin")},
+}
+
+# Scalar overlays -- a separate axis from the particle layers above,
+# composited together rather than exclusive (see projector.c's
+# "overlay-source" IPC property and scalar_overlay_enabled/
+# particles_enabled). Currently just temperature; same dict shape as
+# WEATHER_LAYERS so weather_layer_available()/weather_layer_valid_time()
+# below work for either by passing which dict to check.
+SCALAR_LAYERS = {
     "temp": {"label": "Temp", "file": os.path.join(BASE_DIR, "temp_field.bin")},
 }
+
+# Wind alone comes at a choice of altitude/pressure level -- see
+# weather/fetch_wind.mjs and projector.c's wind_level_t/"wind-level"
+# property. wind_field.bin (no suffix) is 850hPa, the original/default
+# level from before other levels existed.
+WIND_LEVELS = ["surface", "1000hPa", "850hPa", "700hPa", "500hPa", "250hPa", "70hPa", "10hPa"]
+DEFAULT_WIND_LEVEL = "850hPa"
+
+
+def _wind_level_file(level):
+    return os.path.join(BASE_DIR, "wind_field.bin" if level == DEFAULT_WIND_LEVEL else f"wind_field_{level}.bin")
+
+
 LIVE_WEATHER_ID = "live-weather"
 DEFAULT_WEATHER_LAYER = "wind"
 
 
-def weather_layer_available(layer):
-    info = WEATHER_LAYERS.get(layer)
+def weather_layer_available(layer, layers=WEATHER_LAYERS):
+    info = layers.get(layer)
     return bool(info and os.path.exists(info["file"]))
 
 
-def weather_available_layers():
-    return [name for name in WEATHER_LAYERS if weather_layer_available(name)]
+def weather_available_layers(layers=WEATHER_LAYERS):
+    return [name for name in layers if weather_layer_available(name, layers)]
 
 
 def weather_enabled():
-    return len(weather_available_layers()) > 0
+    return len(weather_available_layers()) > 0 or len(weather_available_layers(SCALAR_LAYERS)) > 0
 
 
-def weather_layer_valid_time(layer):
+def wind_level_available(level):
+    return os.path.exists(_wind_level_file(level))
+
+
+def weather_layer_valid_time(layer, layers=WEATHER_LAYERS):
     """Unix timestamp embedded in a grid file's header (see
-    weather/geo_grid.mjs's writeFieldGrid), or None if unavailable/
-    unreadable. Used to label a layer honestly (e.g. currents' "as of
-    <date>") rather than implying everything is equally live."""
-    info = WEATHER_LAYERS.get(layer)
+    weather/geo_grid.mjs's writeFieldGrid/writeScalarGrid), or None if
+    unavailable/unreadable. Used to label a layer honestly (e.g.
+    currents' "as of <date>") rather than implying everything is equally
+    live."""
+    info = layers.get(layer)
     if not info or not os.path.exists(info["file"]):
         return None
     try:
         with open(info["file"], "rb") as f:
             f.seek(8)  # header: uint32 grid_w, uint32 grid_h, then this
+            (unix_ts,) = struct.unpack("<d", f.read(8))
+        return unix_ts
+    except (OSError, struct.error):
+        return None
+
+
+def wind_level_valid_time(level):
+    path = _wind_level_file(level)
+    if not os.path.exists(path):
+        return None
+    try:
+        with open(path, "rb") as f:
+            f.seek(8)
             (unix_ts,) = struct.unpack("<d", f.read(8))
         return unix_ts
     except (OSError, struct.error):
@@ -450,13 +491,22 @@ mpv_generation = 0  # bumped every time ownership of the persistent mpv
 
 current_kind = "idle"  # "idle" | "video" | "screensaver" | "wind" —
                         # whatever the persistent mpv process is
-                        # currently showing ("wind" covers all three
-                        # live layers, see current_weather_layer below
-                        # for which one specifically)
+                        # currently showing ("wind" covers particles
+                        # and/or the scalar overlay, both independently
+                        # on/off -- see current_weather_layer/
+                        # current_scalar_layer below for which)
 
-current_weather_layer = DEFAULT_WEATHER_LAYER  # which of WEATHER_LAYERS
-                                                # is active when
-                                                # current_kind == "wind"
+current_weather_layer = None  # which of WEATHER_LAYERS' particle layers
+                               # is active, or None if particles are off
+                               # (current_kind can still be "wind" with
+                               # this None, if the scalar overlay alone
+                               # is on)
+current_scalar_layer = None   # which of SCALAR_LAYERS is active, or None
+current_wind_level = DEFAULT_WIND_LEVEL  # projector.c's wind_active_level
+                                          # -- meaningful only while
+                                          # current_weather_layer == "wind",
+                                          # but remembered regardless so
+                                          # re-selecting wind resumes it
 
 loop_enabled = LOOP_SELECTED_VIDEO  # global toggle (dock loop button) --
                                      # applied to every subsequent
@@ -1148,6 +1198,24 @@ def _scan_media():
             }
             for name, info in WEATHER_LAYERS.items()
         ]
+        # Independent of the particle layers above -- can be on at the
+        # same time as one of them, or on its own. See SCALAR_LAYERS.
+        scalar_layers = [
+            {
+                "id": name,
+                "label": info["label"],
+                "available": weather_layer_available(name, SCALAR_LAYERS),
+                "valid_time": weather_layer_valid_time(name, SCALAR_LAYERS),
+            }
+            for name, info in SCALAR_LAYERS.items()
+        ]
+        # Only meaningful while the "wind" particle layer is selected,
+        # but listed regardless so the UI can show/build the level
+        # control before wind is actually picked.
+        wind_levels = [
+            {"id": level, "available": wind_level_available(level), "valid_time": wind_level_valid_time(level)}
+            for level in WIND_LEVELS
+        ]
         items.append({
             "id": LIVE_WEATHER_ID,
             "title": "Live Weather",
@@ -1161,6 +1229,8 @@ def _scan_media():
             "attachments": [],
             "is_live_weather": True,
             "layers": layers,
+            "scalar_layers": scalar_layers,
+            "wind_levels": wind_levels,
         })
     return items
 
@@ -1968,46 +2038,151 @@ def api_rescan():
     return api_media()
 
 
-@app.route("/api/weather/select", methods=["POST"])
-def api_weather_select():
-    """Switches projector.c's texture source over to its native particle
-    render for one of WEATHER_LAYERS, driven by whatever the matching
-    weather/fetch_*.mjs last wrote -- no loadfile, no file on disk to
-    stream, just a property flip on the same IPC socket loadfile/
-    set_property already use (mpv_send/MPV_SOCKET, or projector.c's
-    compatible listener when ZEALANDATA_MPV_EXTERNAL=1)."""
-    global current_weather_layer
-    _mark_interaction()
-    body = request.get_json(silent=True) or {}
-    layer = body.get("layer", DEFAULT_WEATHER_LAYER)
-    if layer not in WEATHER_LAYERS:
-        return jsonify({"error": f"unknown layer {layer!r}"}), 400
-    if not weather_layer_available(layer):
-        return jsonify({"error": "not available"}), 404
+def _weather_title():
+    """'Live Wind', 'Live Temp', 'Live Wind + Temp', etc. -- whichever of
+    the particle layer and scalar overlay are currently on, since the two
+    are independent (see api_weather_select/api_weather_overlay_select).
+    None if neither is."""
+    parts = []
+    if current_weather_layer:
+        parts.append(WEATHER_LAYERS[current_weather_layer]["label"])
+    if current_scalar_layer:
+        parts.append(SCALAR_LAYERS[current_scalar_layer]["label"])
+    return f"Live {' + '.join(parts)}" if parts else None
 
-    label = WEATHER_LAYERS[layer]["label"]
+
+def _weather_active():
+    return bool(current_weather_layer or current_scalar_layer)
+
+
+def _weather_update_meta():
     with meta_lock:
         current_media_meta.update({
-            "id": LIVE_WEATHER_ID, "title": f"Live {label}",
+            "id": LIVE_WEATHER_ID, "title": _weather_title(),
             "description": None, "is_sequence": False, "frame_count": None,
             "thumbnail": "/static/icons/categories/weather-and-climate-hazards-colour.svg",
         })
 
-    # Same ordering as api_play: claim the generation before stopping the
-    # screensaver, so a mid-transition screensaver pick notices right away.
-    _claim_generation("wind")
-    current_weather_layer = layer
-    stop_screensaver()
-    mpv_send({"command": ["set_property", "video-source", layer]})
 
-    return jsonify({"status": "playing", "id": LIVE_WEATHER_ID, "layer": layer, "title": f"Live {label}"})
+@app.route("/api/weather/select", methods=["POST"])
+def api_weather_select():
+    """Switches projector.c's particle render on, off (layer:"none"), or
+    between one of WEATHER_LAYERS, driven by whatever the matching
+    weather/fetch_*.mjs last wrote -- no loadfile, no file on disk to
+    stream, just a property flip on the same IPC socket loadfile/
+    set_property already use (mpv_send/MPV_SOCKET, or projector.c's
+    compatible listener when ZEALANDATA_MPV_EXTERNAL=1). Independent of
+    the scalar overlay (see api_weather_overlay_select) -- switching
+    layers or turning particles off here leaves an active overlay
+    untouched, only going idle if that leaves nothing on at all."""
+    global current_weather_layer
+    _mark_interaction()
+    body = request.get_json(silent=True) or {}
+    layer = body.get("layer", DEFAULT_WEATHER_LAYER)
+    if layer != "none" and layer not in WEATHER_LAYERS:
+        return jsonify({"error": f"unknown layer {layer!r}"}), 400
+    if layer != "none" and not weather_layer_available(layer):
+        return jsonify({"error": "not available"}), 404
+
+    if layer == "none":
+        current_weather_layer = None
+        if not _weather_active():
+            _enter_idle_state()
+            return jsonify({"status": "ok"})
+        _claim_generation("wind")
+        mpv_send({"command": ["set_property", "video-source", "none"]})
+    else:
+        current_weather_layer = layer
+        # Same ordering as api_play: claim the generation before stopping
+        # the screensaver, so a mid-transition screensaver pick notices
+        # right away.
+        _claim_generation("wind")
+        stop_screensaver()
+        if layer == "wind":
+            # wind_active_level defaults to 850hPa on the C side too, but
+            # setting it explicitly keeps this endpoint's own remembered
+            # current_wind_level (e.g. from a previous session) in sync
+            # after a fresh projector.c restart.
+            mpv_send({"command": ["set_property", "wind-level", current_wind_level]})
+        mpv_send({"command": ["set_property", "video-source", layer]})
+
+    _weather_update_meta()
+    return jsonify({"status": "playing" if layer != "none" else "ok",
+                     "id": LIVE_WEATHER_ID, "layer": current_weather_layer, "title": _weather_title()})
+
+
+@app.route("/api/weather/overlay/select", methods=["POST"])
+def api_weather_overlay_select():
+    """Independent of api_weather_select -- turns the scalar overlay
+    (currently just "temp") on or off (overlay:"none") without touching
+    whichever particle layer (if any) is currently selected. See
+    projector.c's "overlay-source" IPC property /
+    scalar_overlay_enabled."""
+    global current_scalar_layer
+    _mark_interaction()
+    body = request.get_json(silent=True) or {}
+    overlay = body.get("overlay", "none")
+    if overlay != "none" and overlay not in SCALAR_LAYERS:
+        return jsonify({"error": f"unknown overlay {overlay!r}"}), 400
+    if overlay != "none" and not weather_layer_available(overlay, SCALAR_LAYERS):
+        return jsonify({"error": "not available"}), 404
+
+    if overlay == "none":
+        current_scalar_layer = None
+        if not _weather_active():
+            _enter_idle_state()
+            return jsonify({"status": "ok"})
+        _claim_generation("wind")
+        mpv_send({"command": ["set_property", "overlay-source", "none"]})
+    else:
+        current_scalar_layer = overlay
+        _claim_generation("wind")
+        stop_screensaver()
+        mpv_send({"command": ["set_property", "overlay-source", overlay]})
+
+    _weather_update_meta()
+    return jsonify({"status": "playing" if overlay != "none" else "ok",
+                     "id": LIVE_WEATHER_ID, "overlay": current_scalar_layer, "title": _weather_title()})
+
+
+@app.route("/api/weather/wind-level", methods=["POST"])
+def api_weather_wind_level():
+    """Sets which altitude/pressure level the "wind" particle layer reads
+    (see weather/fetch_wind.mjs / projector.c's wind_level_t) and makes
+    wind the active particle layer if it wasn't already -- same as
+    earth.nullschool's own height slider, changing it always shows
+    wind."""
+    global current_weather_layer, current_wind_level
+    _mark_interaction()
+    body = request.get_json(silent=True) or {}
+    level = body.get("level")
+    if level not in WIND_LEVELS:
+        return jsonify({"error": f"unknown level {level!r}"}), 400
+    if not wind_level_available(level):
+        return jsonify({"error": "not available"}), 404
+
+    current_wind_level = level
+    current_weather_layer = "wind"
+    _claim_generation("wind")
+    stop_screensaver()
+    mpv_send({"command": ["set_property", "wind-level", level]})
+    mpv_send({"command": ["set_property", "video-source", "wind"]})
+
+    _weather_update_meta()
+    return jsonify({"status": "playing", "id": LIVE_WEATHER_ID, "layer": "wind", "level": level, "title": _weather_title()})
 
 
 @app.route("/api/weather/stop", methods=["POST"])
 def api_weather_stop():
+    """The dock's Stop button -- unlike api_weather_select/
+    api_weather_overlay_select (which only go idle if the *other* axis is
+    also off), this always turns both off."""
+    global current_weather_layer, current_scalar_layer
     _mark_interaction()
     if current_kind != "wind":
         return jsonify({"status": "ok"})
+    current_weather_layer = None
+    current_scalar_layer = None
     # loadfile-ing the idle image (inside _enter_idle_state -> _go_idle)
     # is what actually flips projector.c's texture source back off "wind"
     # -- video_load()/loadfile already force the mode back to
@@ -2670,6 +2845,10 @@ def api_status():
             "id": media_id, "title": title, "thumbnail": thumbnail,
             "layer": current_weather_layer,
             "valid_time": weather_layer_valid_time(current_weather_layer),
+            "wind_level": current_wind_level if current_weather_layer == "wind" else None,
+            # Independent of "layer" above -- see api_weather_overlay_select.
+            "overlay": current_scalar_layer,
+            "overlay_valid_time": weather_layer_valid_time(current_scalar_layer, SCALAR_LAYERS),
         })
     if current_kind != "video":
         return jsonify({"playing": False, "screensaver": False})

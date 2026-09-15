@@ -1577,6 +1577,27 @@ body.admin-mode .settings-grid{
 }
 .dock__doc-chip--text:disabled:hover{ transform:none; }
 
+/* Wind's altitude/pressure level slider -- only shown while "Wind" is
+   the active particle layer (see paintWindLevelRow in app.js), sitting
+   under the layer chips in the same panel rather than a chip of its own
+   since it's a continuous-feeling control (8 discrete stops) not a
+   pick-one-of-many list. */
+.dock__wind-level.hidden{ display:none; }
+.dock__wind-level{
+  display:flex; align-items:center; gap:12px;
+  margin-top:12px; padding-top:12px;
+  border-top:1px solid var(--color-divider);
+}
+.dock__wind-level-label{
+  font-family:var(--font-heading); font-size:12px; font-weight:500;
+  color:var(--color-neutral-700);
+  min-width:64px; text-align:right;
+  font-variant-numeric:tabular-nums;
+}
+.dock__wind-level-slider{
+  flex:1; accent-color:var(--color-accent);
+}
+
 .doc-viewer{
   position:fixed; inset:0; z-index:72;
   display:flex; align-items:center; justify-content:center;

@@ -6,17 +6,24 @@ rather than composited from an image -- animated particles for the three
 vector layers (wind/waves/currents), a colour overlay for the one scalar
 layer (temp). This directory is just the data half: small scripts fetch
 current global data and write the small binary grid files `projector.c`
-polls and renders from, one per layer, switchable live from the browse
-UI's "Live Weather" tile.
+polls and renders from, switchable live from the browse UI's "Live
+Weather" tile.
+
+Two independent axes, not one exclusive layer picker: a particle layer
+(wind/waves/currents, or none) and the scalar overlay (temp, or none) can
+both be on at once -- e.g. wind particles animating over the temp colour
+wash -- see "Two independent axes" below. Wind additionally comes at a
+choice of altitude/pressure level (a slider in the UI); waves/currents
+have no equivalent, being single-level by nature.
 
 ## How it fits together
 
 ```
-fetch_wind.mjs     --(every ~3h, via the timer)-->  wind_field.bin      --\
-fetch_waves.mjs    --(every ~3h, via the timer)-->  waves_field.bin     ---+
-fetch_temp.mjs     --(every ~3h, via the timer)-->  temp_field.bin      ---+--(polled every ~2s)--> projector.c
-fetch_currents.mjs --(run manually, not scheduled)-> currents_field.bin --/     (native render,
-   (this dir)                                    (repo root, gitignored)        whichever layer is selected)
+fetch_wind.mjs     --(every ~3h, via the timer, once per level)--> wind_field.bin / wind_field_<level>.bin --\
+fetch_waves.mjs    --(every ~3h, via the timer)-->  waves_field.bin                                          |
+fetch_temp.mjs     --(every ~3h, via the timer)-->  temp_field.bin                                           +--(polled every ~2s)--> projector.c
+fetch_currents.mjs --(run manually, not scheduled)-> currents_field.bin                                      /     (native render, whichever
+   (this dir)                                    (repo root, gitignored)                                          particle layer + overlay are on)
 ```
 
 - **`geo_grid.mjs`** is the shared piece: it knows how the model's local
@@ -33,6 +40,12 @@ fetch_currents.mjs --(run manually, not scheduled)-> currents_field.bin --/     
   repackaged by earth.nullschool.net -- not a documented public API, but
   a stable-looking, long-lived path), decodes it with the vendored
   `vendor/earth/product/gfs/gfs-wind.js`, and writes `../wind_field.bin`.
+  Takes an optional altitude/pressure level argument (`node
+  fetch_wind.mjs 500hPa`; default `850hPa`, the original/only level
+  before others existed, still written to the unsuffixed
+  `wind_field.bin`) -- `surface`, `1000hPa`, `700hPa`, `500hPa`,
+  `250hPa`, `70hPa`, `10hPa` each write their own `wind_field_<level>.bin`
+  instead. `zealandata-weather.service` runs one invocation per level.
 - **`fetch_waves.mjs`** — same pattern, WaveWatch III primary wave data
   from `gaia.nullschool.net/data/ww3/...`, decoded with
   `vendor/earth/product/ww3/ww3-primary.js` (converts wave direction +
@@ -67,20 +80,29 @@ fetch_currents.mjs --(run manually, not scheduled)-> currents_field.bin --/     
   site's own published source map (`oscar.js` is further trimmed to just
   its decoder function, `buildOscar` -- see that file's own comment for
   why). See `vendor/earth/LICENSE.md`.
-- **`server.py`**'s `WEATHER_LAYERS` surfaces one "Live Weather" tile in
-  the browse UI whenever at least one of the four files exists, with a
-  layer switcher (Wind/Waves/Currents/Temp, reusing the same chip strip a
-  video's own supplementary docs/images use) that only enables layers
-  with real data. `/api/weather/select` (optionally `{"layer": "..."}`,
-  defaults to wind) / `/api/weather/stop` flip `projector.c`'s texture
-  source over the same IPC socket playback control already uses -- it
-  never touches the grid files themselves.
-- **`projector.c`** polls whichever layer's file is currently selected
-  and does the actual particle simulation/rendering -- entirely
-  data-agnostic (it doesn't know or care whether it's animating wind,
-  waves, or currents, just an abstract (u,v) grid), and independent of
-  whether the matching fetch script is currently running: if it stops,
-  the model just keeps animating from the last grid it loaded.
+- **`server.py`**'s `WEATHER_LAYERS`/`SCALAR_LAYERS` surface one "Live
+  Weather" tile in the browse UI whenever at least one file from either
+  exists, with a chip strip (reusing the same strip a video's own
+  supplementary docs/images use) that only enables layers with real
+  data: particle chips (Wind/Waves/Currents, mutually exclusive --
+  clicking the active one turns particles off) plus an independent Temp
+  toggle, and a level slider under the chips while Wind is active.
+  `/api/weather/select` ({"layer": "wind"/"waves"/"currents"/"none"}) and
+  `/api/weather/overlay/select` ({"overlay": "temp"/"none"}) are the two
+  independent axes; `/api/weather/wind-level` ({"level": "..."}) sets the
+  altitude/pressure level and switches to wind if it wasn't already
+  active; `/api/weather/stop` turns both axes off at once. All of these
+  flip `projector.c`'s texture source over the same IPC socket playback
+  control already uses -- none of them touch the grid files themselves.
+- **`projector.c`** polls whichever files are currently selected (one
+  particle layer, one scalar overlay, either/both/neither) and does the
+  actual particle simulation/colour-overlay rendering, compositing both
+  into one texture when both are on -- entirely data-agnostic (it
+  doesn't know or care whether it's animating wind, waves, or currents,
+  or whether the overlay is temperature specifically, just abstract
+  (u,v)/scalar grids), and independent of whether the matching fetch
+  script is currently running: if it stops, the model just keeps
+  rendering from the last grid it loaded.
 
 ## Geographic alignment (confirmed against the physical print)
 
