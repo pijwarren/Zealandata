@@ -2627,8 +2627,8 @@ int main(void) {
                    letting it look identical to open-sea wind. Waves/
                    currents never land on land in the first place, so
                    they always get full opacity. */
-                float a = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->x, p->y)) ? 0.35f : 1.f;
-                float pa = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->px, p->py)) ? 0.35f : 1.f;
+                float a = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->x, p->y)) ? 0.65f : 1.f;
+                float pa = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->px, p->py)) ? 0.65f : 1.f;
                 wind_vertex *v0 = &wind_vbo_scratch[i * 2];
                 wind_vertex *v1 = &wind_vbo_scratch[i * 2 + 1];
                 v0->x = p->px * 2.f - 1.f;
