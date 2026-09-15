@@ -475,11 +475,13 @@ static void wind_particle_respawn(wind_particle *p, bool stagger_age) {
     /* Reject land spawns so a respawned particle doesn't sit stranded on
        the coastline overlay; capped so a mask that's all land (a bad
        mtime read from generation, or the AOI genuinely being landlocked)
-       can't loop forever -- worst case it spawns on land once. */
+       can't loop forever -- worst case it spawns on land once. Wind
+       blows over land as much as sea, so it alone is exempt -- only
+       waves/currents particles are kept off land. */
     do {
         x = wind_rand01();
         y = wind_rand01();
-    } while (land_mask_is_land(x, y) && ++tries < 30);
+    } while (wind_active_layer != WIND_LAYER_WIND && land_mask_is_land(x, y) && ++tries < 30);
     p->x = p->px = x;
     p->y = p->py = y;
     p->age = stagger_age ? wind_rand01() * WIND_MAX_AGE_SEC : 0.f;
@@ -506,9 +508,11 @@ static void wind_particles_update(float dt) {
            alive. Respawning immediately (rather than clamping at the
            shoreline) means px/py both land on the new point, so the
            particle draws as a point next frame instead of a streak
-           crossing the coastline -- see WIND_PARTICLE_VS_SRC. */
+           crossing the coastline -- see WIND_PARTICLE_VS_SRC. Wind is
+           exempt -- it flows over land as freely as sea, unlike
+           waves/currents. */
         if (p->x < 0.f || p->x > 1.f || p->y < 0.f || p->y > 1.f || p->age > WIND_MAX_AGE_SEC ||
-            land_mask_is_land(p->x, p->y)) {
+            (wind_active_layer != WIND_LAYER_WIND && land_mask_is_land(p->x, p->y))) {
             wind_particle_respawn(p, false);
         }
     }
@@ -1399,8 +1403,8 @@ static const char *WIND_COASTLINE_FS_SRC =
 static const char *WIND_PARTICLE_VS_SRC =
     "#version 300 es\n"
     "layout(location=0) in vec2 aPos;\n"    /* NDC, from wind_particles' UV each frame */
-    "layout(location=1) in vec3 aColor;\n"  /* speed-ramp color, computed on the CPU */
-    "out vec3 vColor;\n"
+    "layout(location=1) in vec4 aColor;\n"  /* speed-ramp RGB + land-mask alpha, computed on the CPU */
+    "out vec4 vColor;\n"
     "void main(){\n"
     "  gl_Position = vec4(aPos, 0.0, 1.0);\n"
     "  vColor = aColor;\n"
@@ -1409,9 +1413,9 @@ static const char *WIND_PARTICLE_VS_SRC =
 static const char *WIND_PARTICLE_FS_SRC =
     "#version 300 es\n"
     "precision mediump float;\n"
-    "in vec3 vColor;\n"
+    "in vec4 vColor;\n"
     "out vec4 oColor;\n"
-    "void main(){ oColor = vec4(vColor, 1.0); }\n";
+    "void main(){ oColor = vColor; }\n";
 
 /* ================================================ calibration gizmo === *
  * Three colored rings -- one per rotation axis, red/green/blue for X/Y/Z
@@ -2483,7 +2487,7 @@ int main(void) {
        wind mode is active (see the render loop below). Two vertices per
        particle (previous position, current position) so each one draws
        as a short GL_LINES segment rather than a single point. */
-    typedef struct { float x, y, r, g, b; } wind_vertex;
+    typedef struct { float x, y, r, g, b, a; } wind_vertex;
     GLuint windParticleVao, windParticleVbo;
     glGenVertexArrays(1, &windParticleVao); glBindVertexArray(windParticleVao);
     glGenBuffers(1, &windParticleVbo); glBindBuffer(GL_ARRAY_BUFFER, windParticleVbo);
@@ -2491,7 +2495,7 @@ int main(void) {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(wind_vertex), (void *)0);
     glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(wind_vertex), (void *)(2 * sizeof(float)));
+    glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(wind_vertex), (void *)(2 * sizeof(float)));
     static wind_vertex wind_vbo_scratch[WIND_MAX_PARTICLES * 2];
 
     GLuint windCoastlineProg = glCreateProgram();
@@ -2617,6 +2621,14 @@ int main(void) {
                 float r = 1.f;
                 float g = speed < 0.5f ? 1.f : 1.f - (speed - 0.5f) * 2.f;
                 float b = speed < 0.5f ? 1.f - speed * 2.f : 0.f;
+                /* Wind is the one layer allowed to drift over the
+                   coastline mask (see wind_particles_update) -- dim it
+                   there instead, rather than either hiding it flat or
+                   letting it look identical to open-sea wind. Waves/
+                   currents never land on land in the first place, so
+                   they always get full opacity. */
+                float a = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->x, p->y)) ? 0.35f : 1.f;
+                float pa = (wind_active_layer == WIND_LAYER_WIND && land_mask_is_land(p->px, p->py)) ? 0.35f : 1.f;
                 wind_vertex *v0 = &wind_vbo_scratch[i * 2];
                 wind_vertex *v1 = &wind_vbo_scratch[i * 2 + 1];
                 v0->x = p->px * 2.f - 1.f;
@@ -2626,6 +2638,8 @@ int main(void) {
                 v0->r = v1->r = r;
                 v0->g = v1->g = g;
                 v0->b = v1->b = b;
+                v0->a = pa;
+                v1->a = a;
             }
 
             glBindFramebuffer(GL_FRAMEBUFFER, windFbo);
