@@ -27,6 +27,13 @@
  *            spawning an mpv of its own.
  * Calibration: mapping.json is polled and applied live, matching the admin
  *            panel's sliders.
+ * Wind mode : an alternative live texture source -- animated wind
+ *            particles rendered natively here (see "wind" further down),
+ *            advected each frame from a small vector grid weather/
+ *            fetch_wind.mjs writes periodically from current GFS data.
+ *            Selected the same way as everything else, over the IPC
+ *            socket (set_property "video-source" "wind"); any loadfile
+ *            switches back to normal video/image playback.
  */
 #define _GNU_SOURCE
 #define GST_USE_UNSTABLE_API
@@ -35,6 +42,7 @@
 #include <string.h>
 #include <strings.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <math.h>
 #include <time.h>
 #include <errno.h>
@@ -274,6 +282,128 @@ static void mapping_reload(void) {
            map_cur.ks_bl_x, map_cur.ks_bl_y, map_cur.ks_br_x, map_cur.ks_br_y,
            map_cur.keystone_corner[0] ? map_cur.keystone_corner : "-",
            map_cur.vid_rotation, map_cur.vid_flip_h, map_cur.vid_flip_v);
+}
+
+/* ============================================================== wind === *
+ * A small (u,v) wind-vector grid, written by weather/fetch_wind.mjs every
+ * ~15-30 min from current GFS data and polled here the same stat()-and-
+ * mtime way mapping.json is above -- see that file's own comment for why
+ * this is deliberately not a real binary-format parser (one known writer,
+ * fixed little-endian layout). Already expressed in the model's own local
+ * UV-space units per second by the time it lands here; this file has no
+ * geographic knowledge at all, just an abstract vector field over [0,1]^2. */
+
+static const char *wind_field_path = "/home/pj/zealandata/wind_field.bin";
+static struct timespec wind_field_mtim;
+static float *wind_grid = NULL;      /* grid_w * grid_h * 2 floats, (u,v) per cell */
+static int wind_grid_w = 0, wind_grid_h = 0;
+
+static void wind_field_reload(void) {
+    struct stat st;
+    if (stat(wind_field_path, &st) != 0) return;
+    if (st.st_mtim.tv_sec == wind_field_mtim.tv_sec && st.st_mtim.tv_nsec == wind_field_mtim.tv_nsec) return;
+    wind_field_mtim = st.st_mtim;
+
+    FILE *f = fopen(wind_field_path, "rb");
+    if (!f) return;
+    uint32_t w = 0, h = 0;
+    double valid_time = 0;
+    bool ok = fread(&w, sizeof w, 1, f) == 1 &&
+              fread(&h, sizeof h, 1, f) == 1 &&
+              fread(&valid_time, sizeof valid_time, 1, f) == 1 &&
+              w > 1 && h > 1 && w <= 4096 && h <= 4096;
+    float *buf = NULL;
+    if (ok) {
+        size_t n = (size_t)w * (size_t)h * 2;
+        buf = malloc(n * sizeof(float));
+        ok = buf && fread(buf, sizeof(float), n, f) == n;
+    }
+    fclose(f);
+    if (!ok) {
+        free(buf);
+        fprintf(stderr, "[wind] failed to read %s\n", wind_field_path);
+        return;
+    }
+
+    free(wind_grid);
+    wind_grid = buf;
+    wind_grid_w = (int)w;
+    wind_grid_h = (int)h;
+    printf("[wind] reloaded %dx%d grid (validTime unix=%.0f)\n", wind_grid_w, wind_grid_h, valid_time);
+}
+
+/* Bilinear-samples (u,v) at a normalised [0,1]x[0,1] position, clamped at
+   the edges. (0,0,0) with no grid loaded yet, rather than NaN, so
+   particles just sit still until wind_field.bin first appears. */
+static void sample_wind(float x, float y, float *u_out, float *v_out) {
+    if (!wind_grid || wind_grid_w < 2 || wind_grid_h < 2) { *u_out = 0; *v_out = 0; return; }
+    if (x < 0.f) x = 0.f; else if (x > 1.f) x = 1.f;
+    if (y < 0.f) y = 0.f; else if (y > 1.f) y = 1.f;
+    float fx = x * (float)(wind_grid_w - 1);
+    float fy = y * (float)(wind_grid_h - 1);
+    int x0 = (int)fx, y0 = (int)fy;
+    int x1 = (x0 + 1 < wind_grid_w) ? x0 + 1 : x0;
+    int y1 = (y0 + 1 < wind_grid_h) ? y0 + 1 : y0;
+    float tx = fx - (float)x0, ty = fy - (float)y0;
+    const float *g = wind_grid;
+    int w = wind_grid_w;
+    float u00 = g[(y0 * w + x0) * 2 + 0], v00 = g[(y0 * w + x0) * 2 + 1];
+    float u10 = g[(y0 * w + x1) * 2 + 0], v10 = g[(y0 * w + x1) * 2 + 1];
+    float u01 = g[(y1 * w + x0) * 2 + 0], v01 = g[(y1 * w + x0) * 2 + 1];
+    float u11 = g[(y1 * w + x1) * 2 + 0], v11 = g[(y1 * w + x1) * 2 + 1];
+    float u0 = u00 + (u10 - u00) * tx, u1 = u01 + (u11 - u01) * tx;
+    float v0 = v00 + (v10 - v00) * tx, v1 = v01 + (v11 - v01) * tx;
+    *u_out = u0 + (u1 - u0) * ty;
+    *v_out = v0 + (v1 - v0) * ty;
+}
+
+/* ---- particle pool: plain CPU update each frame, no compute shader
+   needed for a couple thousand points -- see the top-of-file comment on
+   why this whole feature stays off the GStreamer/DMA-BUF video path
+   entirely. ---- */
+#define WIND_MAX_PARTICLES 1500
+#define WIND_MAX_AGE_SEC 8.0f
+#define WIND_TEX_SIZE 1024
+/* Visual only -- not physical accuracy, just clamps how fast a particle
+   is ever drawn moving so a rare extreme grid cell (e.g. a bad sample)
+   can't make one streak clear across the model in a single frame. Also
+   doubles as the render loop's speed->color normalisation range (0 = calm
+   blue, this value = storm red) -- with fetch_wind.mjs's own SPEED_SCALE
+   left at its starting default, real data rarely gets close to this, so
+   expect mostly blue/green until the two are tuned together against what
+   the real print actually shows. */
+#define WIND_MAX_SPEED_UV 0.25f
+
+typedef struct { float x, y, age; } wind_particle;
+static wind_particle wind_particles[WIND_MAX_PARTICLES];
+static bool wind_particles_seeded = false;
+
+static float wind_rand01(void) { return (float)rand() / (float)RAND_MAX; }
+
+static void wind_particle_respawn(wind_particle *p, bool stagger_age) {
+    p->x = wind_rand01();
+    p->y = wind_rand01();
+    p->age = stagger_age ? wind_rand01() * WIND_MAX_AGE_SEC : 0.f;
+}
+
+static void wind_particles_update(float dt) {
+    if (!wind_particles_seeded) {
+        for (int i = 0; i < WIND_MAX_PARTICLES; i++) wind_particle_respawn(&wind_particles[i], true);
+        wind_particles_seeded = true;
+    }
+    for (int i = 0; i < WIND_MAX_PARTICLES; i++) {
+        wind_particle *p = &wind_particles[i];
+        float u, v;
+        sample_wind(p->x, p->y, &u, &v);
+        if (u > WIND_MAX_SPEED_UV) u = WIND_MAX_SPEED_UV; else if (u < -WIND_MAX_SPEED_UV) u = -WIND_MAX_SPEED_UV;
+        if (v > WIND_MAX_SPEED_UV) v = WIND_MAX_SPEED_UV; else if (v < -WIND_MAX_SPEED_UV) v = -WIND_MAX_SPEED_UV;
+        p->x += u * dt;
+        p->y += v * dt;
+        p->age += dt;
+        if (p->x < 0.f || p->x > 1.f || p->y < 0.f || p->y > 1.f || p->age > WIND_MAX_AGE_SEC) {
+            wind_particle_respawn(p, false);
+        }
+    }
 }
 
 /* ============================================================ DRM / KMS == */
@@ -869,6 +999,14 @@ static const char *VS_SRC =
     "uniform float uVidRotation;\n"
     "uniform bool uVidFlipH;\n"
     "uniform bool uVidFlipV;\n"
+    /* True while showing the native wind-particle render (see
+       wind_field_reload()/showing_wind) instead of video/idle-image
+       content. That texture's orientation is already fully corrected in
+       weather/fetch_wind.mjs's own geographic math (rotation + optional
+       flips, tuned against the physical print directly) -- stacking the
+       video-orientation controls above on top of it would double-correct
+       and fight those two independent corrections against each other. */
+    "uniform bool uIsWind;\n"
     "out vec2 vUV;\n"
     /* Raw model-surface UV, before uVidRotation/uVidFlipH/uVidFlipV -- for
        the keystone corner marker (see FS_SRC's uMarkerUV comment), which
@@ -917,10 +1055,10 @@ static const char *VS_SRC =
     "  vec2 uvc = uv - 0.5;\n"
     "  float rc = cos(uVidRotation), rs = sin(uVidRotation);\n"
     "  uvc = vec2(uvc.x * rc - uvc.y * rs, uvc.x * rs + uvc.y * rc);\n"
-    "  uv = uvc + 0.5;\n"
-    "  if (uVidFlipH) uv.x = 1.0 - uv.x;\n"
-    "  if (uVidFlipV) uv.y = 1.0 - uv.y;\n"
-    "  vUV = uv;\n"
+    "  vec2 uvVideo = uvc + 0.5;\n"
+    "  if (uVidFlipH) uvVideo.x = 1.0 - uvVideo.x;\n"
+    "  if (uVidFlipV) uvVideo.y = 1.0 - uvVideo.y;\n"
+    "  vUV = uIsWind ? uv : uvVideo;\n"
     "  vNrm = mat3(uModel) * aNrm;\n"
     "  vPos = (uModel * vec4(aPos,1.0)).xyz;\n"
     "}\n";
@@ -1044,6 +1182,57 @@ static const char *FS_SRC =
     "    }\n"
     "  }\n"
     "  oColor = vec4(c.rgb, 1.0);\n"
+    "}\n";
+
+/* ==================================================== wind particles === *
+ * Live wind-particle render (see wind_field_reload()/wind_particles below),
+ * drawn into its own small offscreen texture (wind_tex/wind_fbo) that then
+ * takes cur_tex's place in the normal model draw when showing_wind is set --
+ * the warp/keystone/model pass above needs no changes at all for this,
+ * since it only ever samples whatever's bound as uTex.
+ *
+ * The "trail" effect (particles fading out behind their own motion, the
+ * classic earth.nullschool look) doesn't need a ping-pong pair of
+ * textures/framebuffers: each frame just alpha-blends a plain black quad
+ * over wind_tex's *existing* contents (fading everything a little toward
+ * black) and then draws this frame's particles on top, all into the same
+ * framebuffer -- simpler than sampling a previous frame's texture from a
+ * second one, for the same visual result. */
+
+static const char *WIND_FADE_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec2 aPos;\n"   /* static fullscreen quad, already NDC */
+    "void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }\n";
+
+static const char *WIND_FADE_FS_SRC =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "uniform float uFadeAlpha;\n"
+    "out vec4 oColor;\n"
+    "void main(){ oColor = vec4(0.0, 0.0, 0.0, uFadeAlpha); }\n";
+
+static const char *WIND_PARTICLE_VS_SRC =
+    "#version 300 es\n"
+    "layout(location=0) in vec2 aPos;\n"    /* NDC, from wind_particles' UV each frame */
+    "layout(location=1) in vec3 aColor;\n"  /* speed-ramp color, computed on the CPU */
+    "out vec3 vColor;\n"
+    "void main(){\n"
+    "  gl_Position = vec4(aPos, 0.0, 1.0);\n"
+    "  gl_PointSize = 3.0;\n"
+    "  vColor = aColor;\n"
+    "}\n";
+
+static const char *WIND_PARTICLE_FS_SRC =
+    "#version 300 es\n"
+    "precision mediump float;\n"
+    "in vec3 vColor;\n"
+    "out vec4 oColor;\n"
+    "void main(){\n"
+    /* Round point instead of GL's default square, same trick as the
+       gizmo/HUD glyphs below use for their own dots. */
+    "  vec2 d = gl_PointCoord - vec2(0.5);\n"
+    "  if (dot(d, d) > 0.25) discard;\n"
+    "  oColor = vec4(vColor, 1.0);\n"
     "}\n";
 
 /* ================================================ calibration gizmo === *
@@ -1319,6 +1508,14 @@ static int cur_tex_w = 1, cur_tex_h = 1;
    permanent texture instead of cur_tex. */
 static GLuint idle_tex;
 static bool   showing_still_image = false;
+
+/* Live wind-particle render (see wind_field_reload()/wind_particles_update()
+   above) -- its own offscreen texture, filled in the render loop and bound
+   in place of cur_tex/idle_tex at draw time when this is set. Unlike the
+   still image above, no deferred-to-main-thread dance is needed: entering/
+   leaving this mode is just a flag flip, since wind_tex/wind_fbo are
+   created once at startup rather than needing a fresh decode per switch. */
+static bool   showing_wind = false;
 /* Set by video_load() (any thread), consumed once by the main thread's
    render loop, since the actual decode + glTexImage2D upload below needs
    the EGL context that's only current there. */
@@ -1557,6 +1754,12 @@ static void video_pipeline_init(void) {
 }
 
 static void video_load(const char *path, double start_sec) {
+    /* Any loadfile -- video or still image -- exits wind mode, same as it
+       already exits the still-image case below; server.py only ever needs
+       to ask for wind mode explicitly (via set_property "video-source"),
+       never to explicitly leave it. */
+    showing_wind = false;
+
     /* Stopping playbin unconditionally, even for a still image, matters:
        without it a real video already playing when the idle image loads
        would keep decoding (and showing, until superseded) underneath it. */
@@ -1810,6 +2013,17 @@ static void *ipc_client_thread(void *arg) {
             pending_start = atof(val);
             have_pending_start = pending_start > 0;
             pthread_mutex_unlock(&play_lock);
+        } else if (!strcmp(name, "video-source")) {
+            /* server.py's /api/weather/select -- the only caller, since
+               leaving wind mode happens implicitly through the normal
+               loadfile path (see video_load()) rather than a separate
+               "video"/"idle" value here. Stopping playbin mirrors what
+               video_load() already does unconditionally, so nothing keeps
+               decoding underneath the wind render while it's up. */
+            if (!strcmp(val, "wind")) {
+                gst_element_set_state(playbin, GST_STATE_NULL);
+                showing_wind = true;
+            }
         }
         /* image-display-duration / keep-open: no native GStreamer/playbin
            equivalent is needed -- keep-open's "pause on end" behaviour is
@@ -1895,10 +2109,12 @@ int main(void) {
     const char *sockpath= getenv("ZEALANDATA_MPV_SOCKET");
     const char *mapfile = getenv("ZEALANDATA_MAPPING_FILE");
     const char *idleimg = getenv("ZEALANDATA_LOADING_IMAGE");
+    const char *windfile = getenv("ZEALANDATA_WIND_FIELD_FILE");
     if (!card)     card = "/dev/dri/card1";
     if (!objpath)  objpath = "/home/pj/zealandata/static/3dPrint_210kFaces.obj";
     if (!sockpath) sockpath = "/tmp/zealandata-mpv.sock";
     if (mapfile)   mapping_path = mapfile;
+    if (windfile)  wind_field_path = windfile;
 
     signal(SIGINT, on_signal);
     signal(SIGTERM, on_signal);
@@ -1934,6 +2150,7 @@ int main(void) {
     GLint uVidRotation = glGetUniformLocation(prog, "uVidRotation");
     GLint uVidFlipH = glGetUniformLocation(prog, "uVidFlipH");
     GLint uVidFlipV = glGetUniformLocation(prog, "uVidFlipV");
+    GLint uIsWind = glGetUniformLocation(prog, "uIsWind");
     GLint uShading = glGetUniformLocation(prog, "uShading");
     GLint uKeystone = glGetUniformLocation(prog, "uKeystone");
     GLint uMarkerUV = glGetUniformLocation(prog, "uMarkerUV");
@@ -1985,6 +2202,70 @@ int main(void) {
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(label_vert), (void *)(2 * sizeof(float)));
 
+    /* ---- wind particles: offscreen trail texture + its two small
+       programs (fade quad, particle points) -- see the comment above
+       WIND_FADE_VS_SRC for why one texture is enough (no ping-pong). ---- */
+    GLuint windFbo, windTex;
+    glGenTextures(1, &windTex);
+    glBindTexture(GL_TEXTURE_2D, windTex);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, WIND_TEX_SIZE, WIND_TEX_SIZE, 0,
+                 GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glGenFramebuffers(1, &windFbo);
+    glBindFramebuffer(GL_FRAMEBUFFER, windFbo);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, windTex, 0);
+    GLenum windFboStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (windFboStatus != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "[wind] framebuffer incomplete (0x%x) -- wind mode will show black\n", windFboStatus);
+    }
+    /* Cleared once up front so an early "video-source":"wind" (before the
+       first real particle frame renders) shows black rather than
+       whatever undefined contents a fresh GL texture happens to have. */
+    glClearColor(0, 0, 0, 1);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+    GLuint windFadeProg = glCreateProgram();
+    glAttachShader(windFadeProg, compile_shader(GL_VERTEX_SHADER, WIND_FADE_VS_SRC));
+    glAttachShader(windFadeProg, compile_shader(GL_FRAGMENT_SHADER, WIND_FADE_FS_SRC));
+    glLinkProgram(windFadeProg);
+    GLint windFadeLinked = 0; glGetProgramiv(windFadeProg, GL_LINK_STATUS, &windFadeLinked);
+    if (!windFadeLinked) { char log[2048]; glGetProgramInfoLog(windFadeProg, sizeof log, NULL, log);
+                            fprintf(stderr, "wind fade link: %s\n", log); return 1; }
+    GLint uWindFadeAlpha = glGetUniformLocation(windFadeProg, "uFadeAlpha");
+
+    GLuint windParticleProg = glCreateProgram();
+    glAttachShader(windParticleProg, compile_shader(GL_VERTEX_SHADER, WIND_PARTICLE_VS_SRC));
+    glAttachShader(windParticleProg, compile_shader(GL_FRAGMENT_SHADER, WIND_PARTICLE_FS_SRC));
+    glLinkProgram(windParticleProg);
+    GLint windParticleLinked = 0; glGetProgramiv(windParticleProg, GL_LINK_STATUS, &windParticleLinked);
+    if (!windParticleLinked) { char log[2048]; glGetProgramInfoLog(windParticleProg, sizeof log, NULL, log);
+                               fprintf(stderr, "wind particle link: %s\n", log); return 1; }
+
+    GLuint windFadeVao, windFadeVbo;
+    glGenVertexArrays(1, &windFadeVao); glBindVertexArray(windFadeVao);
+    glGenBuffers(1, &windFadeVbo); glBindBuffer(GL_ARRAY_BUFFER, windFadeVbo);
+    static const float windFadeQuad[8] = { -1,-1,  1,-1,  -1,1,   1,-1,  1,1,  -1,1 };
+    glBufferData(GL_ARRAY_BUFFER, sizeof windFadeQuad, windFadeQuad, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
+
+    /* Per-particle: NDC x,y + RGB color, rewritten in full every frame
+       wind mode is active (see the render loop below). */
+    typedef struct { float x, y, r, g, b; } wind_vertex;
+    GLuint windParticleVao, windParticleVbo;
+    glGenVertexArrays(1, &windParticleVao); glBindVertexArray(windParticleVao);
+    glGenBuffers(1, &windParticleVbo); glBindBuffer(GL_ARRAY_BUFFER, windParticleVbo);
+    glBufferData(GL_ARRAY_BUFFER, WIND_MAX_PARTICLES * sizeof(wind_vertex), NULL, GL_DYNAMIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(wind_vertex), (void *)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(wind_vertex), (void *)(2 * sizeof(float)));
+    static wind_vertex wind_vbo_scratch[WIND_MAX_PARTICLES];
+
     glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
 
 
@@ -2027,6 +2308,11 @@ int main(void) {
 
     /* ---- render loop ---- */
     double last_cal = 0, last_fps = now_sec();
+    /* wind_field.bin only ever changes every ~15-30 min (see
+       weather/fetch_wind.mjs), so this is polled far less often than
+       mapping.json above -- no point stat()-ing it every 30ms. */
+    double last_wind_poll = 0;
+    double last_wind_frame_t = now_sec();
     /* Separate from the 5-second logging window above: the on-screen
        readout needs to react while someone is watching it, but averaging
        over a short window is what stops it flickering between two numbers
@@ -2043,6 +2329,7 @@ int main(void) {
            nothing next to a frame, and it avoids an inotify dependency */
         double t = now_sec();
         if (t - last_cal > 0.03) { mapping_reload(); last_cal = t; }
+        if (t - last_wind_poll > 2.0) { wind_field_reload(); last_wind_poll = t; }
 
         double tA = now_sec();
         bus_pump();
@@ -2061,6 +2348,61 @@ int main(void) {
             if (need_img) load_idle_image_now(img);
         }
         acc_video += now_sec() - tA;
+
+        if (showing_wind) {
+            double wnow = now_sec();
+            float wdt = (float)(wnow - last_wind_frame_t);
+            /* Guards against a huge dt right after a long stall (e.g. the
+               very first frame back from a slow mode switch) flinging every
+               particle off in one step. */
+            if (wdt < 0.f) wdt = 0.f;
+            if (wdt > 0.25f) wdt = 0.25f;
+            last_wind_frame_t = wnow;
+            wind_particles_update(wdt);
+
+            for (int i = 0; i < WIND_MAX_PARTICLES; i++) {
+                const wind_particle *p = &wind_particles[i];
+                float u, v;
+                sample_wind(p->x, p->y, &u, &v);
+                float speed = sqrtf(u * u + v * v) / WIND_MAX_SPEED_UV; /* ~0..1 */
+                if (speed > 1.f) speed = 1.f;
+                /* Calm -> blue, moderate -> green/yellow, strong -> red --
+                   the same rough "cool to hot" ramp weather maps generally
+                   use, so it reads at a glance without a legend. */
+                float r = speed < 0.5f ? 0.f : (speed - 0.5f) * 2.f;
+                float g = speed < 0.5f ? speed * 2.f : 1.f - (speed - 0.5f) * 2.f;
+                float b = speed < 0.5f ? 1.f - speed * 2.f : 0.f;
+                wind_vbo_scratch[i].x = p->x * 2.f - 1.f;
+                wind_vbo_scratch[i].y = p->y * 2.f - 1.f;
+                wind_vbo_scratch[i].r = r;
+                wind_vbo_scratch[i].g = g;
+                wind_vbo_scratch[i].b = b;
+            }
+
+            glBindFramebuffer(GL_FRAMEBUFFER, windFbo);
+            glViewport(0, 0, WIND_TEX_SIZE, WIND_TEX_SIZE);
+            glDisable(GL_DEPTH_TEST);
+            glEnable(GL_BLEND);
+            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+            /* Fade pass: darken whatever's already there a little, rather
+               than clearing it -- this is what leaves each particle a
+               short fading trail behind it instead of a single dot. */
+            glUseProgram(windFadeProg);
+            glUniform1f(uWindFadeAlpha, 0.06f);
+            glBindVertexArray(windFadeVao);
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+
+            /* Particle pass, on top of that same faded content. */
+            glUseProgram(windParticleProg);
+            glBindVertexArray(windParticleVao);
+            glBindBuffer(GL_ARRAY_BUFFER, windParticleVbo);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, WIND_MAX_PARTICLES * sizeof(wind_vertex), wind_vbo_scratch);
+            glDrawArrays(GL_POINTS, 0, WIND_MAX_PARTICLES);
+
+            glDisable(GL_BLEND); /* the rest of this loop assumes its default-off state */
+            glBindVertexArray(vao); /* restore the model's VAO for the draw below */
+        }
 
 
 
@@ -2195,6 +2537,7 @@ int main(void) {
         glUniform1f(uVidRotation, map_cur.vid_rotation * (float)M_PI / 180.f);
         glUniform1i(uVidFlipH, map_cur.vid_flip_h ? 1 : 0);
         glUniform1i(uVidFlipV, map_cur.vid_flip_v ? 1 : 0);
+        glUniform1i(uIsWind, showing_wind ? 1 : 0);
         glUniform1i(uShading, map_cur.shading ? 1 : 0);
         /* Keystone corner marker -- see MARKER_INSET_FRAC_X's comment above
            and FS_SRC's uMarkerUV comment: computed here alongside the
@@ -2219,7 +2562,7 @@ int main(void) {
             }
         }
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_still_image ? idle_tex : cur_tex);
+        glBindTexture(GL_TEXTURE_2D, test_pattern ? checkerTex : showing_wind ? windTex : showing_still_image ? idle_tex : cur_tex);
         glBindVertexArray(vao);
         glDrawElements(GL_TRIANGLES, (GLsizei)m_nidx, GL_UNSIGNED_INT, 0);
 

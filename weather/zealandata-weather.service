@@ -1,0 +1,8 @@
+[Unit]
+Description=Zealandata wind field fetch (see weather/README.md)
+
+[Service]
+Type=oneshot
+User=pj
+WorkingDirectory=/home/pj/zealandata/weather
+ExecStart=/usr/bin/node fetch_wind.mjs

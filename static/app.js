@@ -93,6 +93,7 @@ const setHeroBtn = document.getElementById("setHeroBtn");
 const loopBtn = document.getElementById("loopBtn");
 const playerTitle = document.getElementById("playerTitle");
 const frameCounter = document.getElementById("frameCounter");
+const liveBadge = document.getElementById("liveBadge");
 const playerScrubControls = document.getElementById("playerScrubControls");
 const playerPos = document.getElementById("playerPos");
 const playerDur = document.getElementById("playerDur");
@@ -2023,6 +2024,22 @@ function setSequenceMode(isSequence, frameCount, frameNumber) {
   if (isSequence) paintFrameCounter(frameNumber);
 }
 
+// Live Weather has no timeline at all -- native wind particles rendered
+// continuously by projector.c, not a file with a position/duration. Only
+// Stop is meaningful; everything else dockPlaybackBtns normally enables
+// gets disabled again on top of that.
+let currentIsLiveWeather = false;
+function setLiveMode(isLive) {
+  currentIsLiveWeather = isLive;
+  liveBadge.classList.toggle("hidden", !isLive);
+  if (isLive) {
+    playerScrubControls.classList.add("hidden");
+    frameCounter.classList.add("hidden");
+    currentFrameCount = null;
+  }
+  [seekBackBtn, seekFwdBtn, pauseBtn, loopBtn, setHeroBtn].forEach((btn) => { btn.disabled = isLive; });
+}
+
 function paintFrameCounter(frameNumber) {
   const shown = frameNumber != null ? frameNumber + 1 : "—";
   const total = currentFrameCount != null ? currentFrameCount : "—";
@@ -2162,6 +2179,7 @@ function paintDockIdle(screensaverTitle) {
   playerScrubControls.classList.add("hidden");
   frameCounter.classList.add("hidden");
   currentFrameCount = null;
+  setLiveMode(false);
   setPauseIcon(false);
   paintLoopBtn(false);
   paintSetHeroBtn();
@@ -2223,6 +2241,13 @@ async function playItem(item, { resume = false, restart = false } = {}) {
   paintSetHeroBtn();
   dockPlaybackBtns.forEach((btn) => { btn.disabled = false; });
 
+  if (item.is_live_weather) {
+    setLiveMode(true);
+    await fetch("/api/weather/select", { method: "POST" });
+    return;
+  }
+  setLiveMode(false);
+
   await fetch(`/api/play/${item.id}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -2231,7 +2256,11 @@ async function playItem(item, { resume = false, restart = false } = {}) {
 }
 
 async function stopPlayback() {
-  await control("stop");
+  if (currentIsLiveWeather) {
+    await fetch("/api/weather/stop", { method: "POST" });
+  } else {
+    await control("stop");
+  }
   paintDockIdle();
   setTimeout(loadMedia, 600);
 }
@@ -2340,20 +2369,26 @@ async function pollStatus() {
       if (s.thumbnail && dockPreview.getAttribute("src") !== s.thumbnail) {
         paintPreview(s.thumbnail);
       }
-      setPauseIcon(!!s.paused);
-      paintLoopBtn(!!s.looping);
 
-      if (s.is_sequence !== (currentFrameCount != null)) {
-        setSequenceMode(!!s.is_sequence, s.frame_count, s.frame_number);
-      } else if (s.is_sequence) {
-        paintFrameCounter(s.frame_number);
+      if (s.is_live_weather) {
+        setLiveMode(true);
       } else {
-        knownDuration = s.duration || 0;
-        if (!scrubbing) {
-          playerPos.textContent = fmtTime(s.position);
-          paintScrub(s.duration ? Math.min(1, s.position / s.duration) : 0);
+        setLiveMode(false);
+        setPauseIcon(!!s.paused);
+        paintLoopBtn(!!s.looping);
+
+        if (s.is_sequence !== (currentFrameCount != null)) {
+          setSequenceMode(!!s.is_sequence, s.frame_count, s.frame_number);
+        } else if (s.is_sequence) {
+          paintFrameCounter(s.frame_number);
+        } else {
+          knownDuration = s.duration || 0;
+          if (!scrubbing) {
+            playerPos.textContent = fmtTime(s.position);
+            paintScrub(s.duration ? Math.min(1, s.position / s.duration) : 0);
+          }
+          playerDur.textContent = fmtTime(s.duration);
         }
-        playerDur.textContent = fmtTime(s.duration);
       }
     } else {
       if (wasPlaying) {

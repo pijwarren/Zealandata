@@ -1,0 +1,9 @@
+[Unit]
+Description=Run zealandata-weather periodically (see weather/README.md)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=20min
+
+[Install]
+WantedBy=timers.target

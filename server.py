@@ -90,6 +90,17 @@ PROJECTION_OBJ_PATH = os.environ.get(
     "ZEALANDATA_PROJECTION_OBJ", os.path.join(BASE_DIR, "static", "projection_model.obj")
 )
 MAPPING_FILE = os.path.join(BASE_DIR, "mapping.json")
+
+# Live wind-particle visualization, rendered natively by projector.c from a
+# small grid file weather/fetch_wind.mjs writes on its own schedule (see
+# weather/README.md) -- inert entirely until that file shows up, same
+# "off unless configured" spirit as ZEALANDATA_ADMIN_PIN.
+WIND_FIELD_FILE = os.path.join(BASE_DIR, "wind_field.bin")
+LIVE_WEATHER_ID = "live-weather"
+
+
+def weather_enabled():
+    return os.path.exists(WIND_FIELD_FILE)
 MAPPING_NUMERIC = {
     # A multiplier on top of projector.c's SCALE_BASELINE constant, not an
     # absolute size -- 1.0 means "however the model was last actually sized
@@ -563,7 +574,15 @@ def backend_control(action, value=None, wait=True, timeout=1.5):
         mpv_mapping = {
             "toggle_pause": {"command": ["cycle", "pause"]},
             "stop": {"command": ["stop"]},
-            "seek": {"command": ["seek", value, "absolute"]},
+            # "absolute" alone defaults to an exact (hr-seek) seek, which
+            # decodes every frame from the previous keyframe up to the
+            # target -- on the Pi's hardware decoder this can hang the
+            # V4L2 driver mid-scrub and take the whole HDMI output down
+            # with it, since mpv owns DRM directly here. The scrub bar
+            # doesn't need frame accuracy, so ask for a fast keyframe
+            # seek instead; the ±1 frame buttons already get exact
+            # positioning via frame_step/frame_back_step below.
+            "seek": {"command": ["seek", value, "absolute+keyframes"]},
             "frame_step": {"command": ["frame-step"]},
             "frame_back_step": {"command": ["frame-back-step"]},
             "toggle_loop": {"command": ["cycle-values", "loop-file", "inf", "no"]},
@@ -1062,6 +1081,30 @@ def _scan_media():
     _media_metadata_paths.clear()
     _scan_dir(MEDIA_DIR, items, is_root=True)
     items.sort(key=lambda i: i["title"].lower())
+    if weather_enabled():
+        # Not a real file -- rendered natively by projector.c from
+        # wind_field.bin, not played via mpv/loadfile. Play/stop for this
+        # id are special-cased (see api_play, api_weather_select/_stop)
+        # rather than going through the normal file-backed flow; it's
+        # shaped like a normal item so the existing poster grid/hero/
+        # two-step select UI needs no changes to display it. Appended,
+        # not inserted first -- pickHero() in app.js falls back to
+        # allItems[0] as the default homepage hero when nothing's in
+        # progress, and defaulting the whole homepage to this rather than
+        # real library content isn't this change's call to make silently.
+        items.append({
+            "id": LIVE_WEATHER_ID,
+            "title": "Live Weather",
+            "path": None,
+            "category": "Weather and Climate Hazards",
+            "duration": None,
+            "description": "Live wind conditions over New Zealand, updated from current weather model data.",
+            "is_sequence": False,
+            "frame_count": None,
+            "thumbnail": "/static/icons/categories/weather-and-climate-hazards-colour.svg",
+            "attachments": [],
+            "is_live_weather": True,
+        })
     return items
 
 
@@ -1531,7 +1574,7 @@ def _is_foreground_playing():
     """True if something's been explicitly selected and is playing/paused —
     as opposed to the screensaver's own ambient picks, which don't count
     here."""
-    return current_kind == "video"
+    return current_kind in ("video", "wind")
 
 
 # --------------------------------------------------------------- routes ---
@@ -1866,6 +1909,47 @@ def api_most_popular():
 def api_rescan():
     get_media(force=True)
     return api_media()
+
+
+@app.route("/api/weather/select", methods=["POST"])
+def api_weather_select():
+    """Switches projector.c's texture source over to its native wind-
+    particle render, driven by whatever weather/fetch_wind.mjs last wrote
+    to wind_field.bin -- no loadfile, no file on disk to stream, just a
+    property flip on the same IPC socket loadfile/set_property already use
+    (mpv_send/MPV_SOCKET, or projector.c's compatible listener when
+    ZEALANDATA_MPV_EXTERNAL=1)."""
+    _mark_interaction()
+    if not weather_enabled():
+        return jsonify({"error": "not available"}), 404
+
+    with meta_lock:
+        current_media_meta.update({
+            "id": LIVE_WEATHER_ID, "title": "Live Weather",
+            "description": None, "is_sequence": False, "frame_count": None,
+            "thumbnail": "/static/icons/categories/weather-and-climate-hazards-colour.svg",
+        })
+
+    # Same ordering as api_play: claim the generation before stopping the
+    # screensaver, so a mid-transition screensaver pick notices right away.
+    _claim_generation("wind")
+    stop_screensaver()
+    mpv_send({"command": ["set_property", "video-source", "wind"]})
+
+    return jsonify({"status": "playing", "id": LIVE_WEATHER_ID, "title": "Live Weather"})
+
+
+@app.route("/api/weather/stop", methods=["POST"])
+def api_weather_stop():
+    _mark_interaction()
+    if current_kind != "wind":
+        return jsonify({"status": "ok"})
+    # loadfile-ing the idle image (inside _enter_idle_state -> _go_idle)
+    # is what actually flips projector.c's texture source back off "wind"
+    # -- video_load()/loadfile already force the mode back to
+    # video/idle on the C side, so no separate revert command is needed.
+    _enter_idle_state()
+    return jsonify({"status": "ok"})
 
 
 @app.route("/thumbnails/<path:filename>")
@@ -2396,6 +2480,12 @@ def api_set_thumbnail(media_id):
 @app.route("/api/play/<media_id>", methods=["POST"])
 def api_play(media_id):
     _mark_interaction()
+    if media_id == LIVE_WEATHER_ID:
+        # Defensive -- app.js special-cases this id to call
+        # /api/weather/select directly, since it isn't a real file
+        # mpv can loadfile, but route it correctly here too rather than
+        # 404ing if something ever calls the generic endpoint on it.
+        return api_weather_select()
     match = get_media_by_id(media_id)
     if not match:
         return jsonify({"error": "not found"}), 404
@@ -2500,6 +2590,19 @@ def api_status():
         with screensaver_meta_lock:
             title = current_screensaver_title
         return jsonify({"playing": False, "screensaver": True, "screensaver_title": title})
+    if current_kind == "wind":
+        with meta_lock:
+            title = current_media_meta.get("title")
+            thumbnail = current_media_meta.get("thumbnail")
+            media_id = current_media_meta.get("id")
+        # No position/duration/pause -- it's a live native render, not a
+        # file mpv is playing, so the dock hides the scrub bar for it
+        # (app.js checks is_live_weather) rather than showing meaningless
+        # zeros.
+        return jsonify({
+            "playing": True, "is_live_weather": True,
+            "id": media_id, "title": title, "thumbnail": thumbnail,
+        })
     if current_kind != "video":
         return jsonify({"playing": False, "screensaver": False})
 
