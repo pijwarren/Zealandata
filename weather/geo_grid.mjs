@@ -66,6 +66,21 @@ function rotateCCW(x, y, deg) {
   return [x * c - y * s, x * s + y * c]
 }
 
+// Inverse of gridCellToLonLat, generalised to real (u, v) in [0,1] rather
+// than integer grid cells -- used to project arbitrary geographic points
+// (e.g. coastline vertices, see gen_coastline.mjs) into the model's local
+// UV space rather than sampling a fixed-size grid.
+export function lonLatToUV(lon, lat) {
+  const dE = (lon - CENTER_LON) * KM_PER_DEG_LAT * Math.cos(deg2rad(CENTER_LAT))
+  const dN = (lat - CENTER_LAT) * KM_PER_DEG_LAT
+  let [lx, ly] = rotateCCW(dE, dN, MODEL_ROTATION_DEG)
+  if (FLIP_X) lx = -lx
+  if (FLIP_Y) ly = -ly
+  const u = lx / (2 * HALF_WIDTH_KM) + 0.5
+  const v = ly / (2 * HALF_HEIGHT_KM) + 0.5
+  return [u, v]
+}
+
 function gridCellToLonLat(i, j) {
   let lx = (i / (GRID_W - 1) - 0.5) * 2 * HALF_WIDTH_KM
   let ly = (j / (GRID_H - 1) - 0.5) * 2 * HALF_HEIGHT_KM

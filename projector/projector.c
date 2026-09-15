@@ -403,11 +403,15 @@ static int land_mask_x_cmp(const void *a, const void *b) {
 static void build_land_mask(void) {
     memset(land_mask, 0, sizeof land_mask);
     int num_segs = COASTLINE_NUM_VERTS / 2;
-    float xs[256];
+    /* Sized well past any plausible per-row crossing count -- the 10m
+       coastline (Marlborough Sounds' fjord-like inlets especially) can
+       cross a single scanline far more often than the original 50m data
+       did. */
+    float xs[1024];
     for (int j = 0; j < LAND_MASK_SIZE; j++) {
         float y = ((float)j + 0.5f) / (float)LAND_MASK_SIZE;
         int n = 0;
-        for (int s = 0; s < num_segs && n < 256; s++) {
+        for (int s = 0; s < num_segs && n < 1024; s++) {
             float x0 = coastline_uv[s * 4 + 0], y0 = coastline_uv[s * 4 + 1];
             float x1 = coastline_uv[s * 4 + 2], y1 = coastline_uv[s * 4 + 3];
             if ((y0 <= y && y1 > y) || (y1 <= y && y0 > y)) {

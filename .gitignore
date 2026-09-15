@@ -27,6 +27,10 @@ projector/projector
 # Runtime logs
 *.log
 
+# Cached upstream Natural Earth data for weather/gen_coastline.mjs --
+# ~10MB, regenerate coastline_uv.h from it rather than tracking the source.
+weather/vendor/natural_earth/
+
 # Python
 __pycache__/
 *.pyc
