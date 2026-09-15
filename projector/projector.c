@@ -381,15 +381,18 @@ static void sample_wind(float x, float y, float *u_out, float *v_out) {
    the real print actually shows. */
 #define WIND_MAX_SPEED_UV 0.25f
 
-typedef struct { float x, y, age; } wind_particle;
+/* px,py: position at the start of this frame, before advection -- kept so
+   the render loop can draw a prev->current line segment per particle
+   instead of a single point (see WIND_PARTICLE_VS_SRC). */
+typedef struct { float x, y, px, py, age; } wind_particle;
 static wind_particle wind_particles[WIND_MAX_PARTICLES];
 static bool wind_particles_seeded = false;
 
 static float wind_rand01(void) { return (float)rand() / (float)RAND_MAX; }
 
 static void wind_particle_respawn(wind_particle *p, bool stagger_age) {
-    p->x = wind_rand01();
-    p->y = wind_rand01();
+    p->x = p->px = wind_rand01();
+    p->y = p->py = wind_rand01();
     p->age = stagger_age ? wind_rand01() * WIND_MAX_AGE_SEC : 0.f;
 }
 
@@ -400,6 +403,8 @@ static void wind_particles_update(float dt) {
     }
     for (int i = 0; i < WIND_MAX_PARTICLES; i++) {
         wind_particle *p = &wind_particles[i];
+        p->px = p->x;
+        p->py = p->y;
         float u, v;
         sample_wind(p->x, p->y, &u, &v);
         if (u > WIND_MAX_SPEED_UV) u = WIND_MAX_SPEED_UV; else if (u < -WIND_MAX_SPEED_UV) u = -WIND_MAX_SPEED_UV;
@@ -1274,6 +1279,11 @@ static const char *WIND_BLIT_FS_SRC =
     "out vec4 oColor;\n"
     "void main(){ oColor = texture(uTex, vUV); }\n";
 
+/* Each particle contributes one GL_LINES segment per frame (previous
+   position -> current position, see wind_particle's px/py), the same
+   "short streak" technique earth.nullschool's own canvas animation uses
+   -- crisper and thinner than a fading dot, and it's what the trail-fade
+   compositing (see WIND_FADE_FS_SRC) accumulates into a longer tail. */
 static const char *WIND_PARTICLE_VS_SRC =
     "#version 300 es\n"
     "layout(location=0) in vec2 aPos;\n"    /* NDC, from wind_particles' UV each frame */
@@ -1281,7 +1291,6 @@ static const char *WIND_PARTICLE_VS_SRC =
     "out vec3 vColor;\n"
     "void main(){\n"
     "  gl_Position = vec4(aPos, 0.0, 1.0);\n"
-    "  gl_PointSize = 3.0;\n"
     "  vColor = aColor;\n"
     "}\n";
 
@@ -1290,13 +1299,7 @@ static const char *WIND_PARTICLE_FS_SRC =
     "precision mediump float;\n"
     "in vec3 vColor;\n"
     "out vec4 oColor;\n"
-    "void main(){\n"
-    /* Round point instead of GL's default square, same trick as the
-       gizmo/HUD glyphs below use for their own dots. */
-    "  vec2 d = gl_PointCoord - vec2(0.5);\n"
-    "  if (dot(d, d) > 0.25) discard;\n"
-    "  oColor = vec4(vColor, 1.0);\n"
-    "}\n";
+    "void main(){ oColor = vec4(vColor, 1.0); }\n";
 
 /* ================================================ calibration gizmo === *
  * Three colored rings -- one per rotation axis, red/green/blue for X/Y/Z
@@ -2352,17 +2355,19 @@ int main(void) {
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 0, 0);
 
     /* Per-particle: NDC x,y + RGB color, rewritten in full every frame
-       wind mode is active (see the render loop below). */
+       wind mode is active (see the render loop below). Two vertices per
+       particle (previous position, current position) so each one draws
+       as a short GL_LINES segment rather than a single point. */
     typedef struct { float x, y, r, g, b; } wind_vertex;
     GLuint windParticleVao, windParticleVbo;
     glGenVertexArrays(1, &windParticleVao); glBindVertexArray(windParticleVao);
     glGenBuffers(1, &windParticleVbo); glBindBuffer(GL_ARRAY_BUFFER, windParticleVbo);
-    glBufferData(GL_ARRAY_BUFFER, WIND_MAX_PARTICLES * sizeof(wind_vertex), NULL, GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, WIND_MAX_PARTICLES * 2 * sizeof(wind_vertex), NULL, GL_DYNAMIC_DRAW);
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(wind_vertex), (void *)0);
     glEnableVertexAttribArray(1);
     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(wind_vertex), (void *)(2 * sizeof(float)));
-    static wind_vertex wind_vbo_scratch[WIND_MAX_PARTICLES];
+    static wind_vertex wind_vbo_scratch[WIND_MAX_PARTICLES * 2];
 
     glBindVertexArray(vao);   /* leave the model's VAO bound, matching prior behaviour */
 
@@ -2470,11 +2475,15 @@ int main(void) {
                 float r = speed < 0.5f ? 0.f : (speed - 0.5f) * 2.f;
                 float g = speed < 0.5f ? speed * 2.f : 1.f - (speed - 0.5f) * 2.f;
                 float b = speed < 0.5f ? 1.f - speed * 2.f : 0.f;
-                wind_vbo_scratch[i].x = p->x * 2.f - 1.f;
-                wind_vbo_scratch[i].y = p->y * 2.f - 1.f;
-                wind_vbo_scratch[i].r = r;
-                wind_vbo_scratch[i].g = g;
-                wind_vbo_scratch[i].b = b;
+                wind_vertex *v0 = &wind_vbo_scratch[i * 2];
+                wind_vertex *v1 = &wind_vbo_scratch[i * 2 + 1];
+                v0->x = p->px * 2.f - 1.f;
+                v0->y = p->py * 2.f - 1.f;
+                v1->x = p->x * 2.f - 1.f;
+                v1->y = p->y * 2.f - 1.f;
+                v0->r = v1->r = r;
+                v0->g = v1->g = g;
+                v0->b = v1->b = b;
             }
 
             glBindFramebuffer(GL_FRAMEBUFFER, windFbo);
@@ -2484,14 +2493,16 @@ int main(void) {
 
             /* Fade pass: multiply wind_tex's existing RGBA (color AND
                alpha) down by a constant factor, rather than clearing it --
-               this is what leaves each particle a short fading trail
-               behind it instead of a single dot, and (via glBlendColor,
-               not the shader) converges an untouched pixel's alpha to true
-               0 rather than a visible non-zero floor -- see the big
-               comment above WIND_FADE_VS_SRC for why that distinction
-               matters once this is composited over idle_tex below. */
+               this is what extends each particle's own per-frame line
+               segment (see WIND_PARTICLE_VS_SRC) into a longer tail, and
+               (via glBlendColor, not the shader) converges an untouched
+               pixel's alpha to true 0 rather than a visible non-zero
+               floor -- see the big comment above WIND_FADE_VS_SRC for why
+               that distinction matters once this is composited over
+               idle_tex below. Higher = longer tail (0.96 ~= twice the
+               persistence of the original 0.94/single-dot version). */
             glBlendFunc(GL_ZERO, GL_CONSTANT_ALPHA);
-            glBlendColor(0.f, 0.f, 0.f, 0.94f);
+            glBlendColor(0.f, 0.f, 0.f, 0.96f);
             glUseProgram(windFadeProg);
             glBindVertexArray(windFadeVao);
             glDrawArrays(GL_TRIANGLES, 0, 6);
@@ -2503,8 +2514,8 @@ int main(void) {
             glUseProgram(windParticleProg);
             glBindVertexArray(windParticleVao);
             glBindBuffer(GL_ARRAY_BUFFER, windParticleVbo);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, WIND_MAX_PARTICLES * sizeof(wind_vertex), wind_vbo_scratch);
-            glDrawArrays(GL_POINTS, 0, WIND_MAX_PARTICLES);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, WIND_MAX_PARTICLES * 2 * sizeof(wind_vertex), wind_vbo_scratch);
+            glDrawArrays(GL_LINES, 0, WIND_MAX_PARTICLES * 2);
 
             /* Composite pass: idle_tex (opaque base) then wind_tex (its
                own alpha) on top, into wind_composite_tex -- see the big
