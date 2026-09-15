@@ -360,8 +360,15 @@ static void sample_wind(float x, float y, float *u_out, float *v_out) {
 /* ---- particle pool: plain CPU update each frame, no compute shader
    needed for a couple thousand points -- see the top-of-file comment on
    why this whole feature stays off the GStreamer/DMA-BUF video path
-   entirely. ---- */
-#define WIND_MAX_PARTICLES 1500
+   entirely.
+   6000 measured live on the Pi (2026-09-15): a rock-solid 30fps (draw
+   ~24ms, ~7ms of headroom left in the frame budget) for a sustained
+   35s run. 8000 already drifts down to ~29.5fps over the same window,
+   and 15000 falls off a cliff to a sustained ~21fps -- not a gradual
+   slope, so there's real risk in creeping this number up without
+   re-measuring the same way (long enough to see drift, not just a
+   first fps reading right after a mode switch). ---- */
+#define WIND_MAX_PARTICLES 6000
 #define WIND_MAX_AGE_SEC 8.0f
 #define WIND_TEX_SIZE 1024
 /* Visual only -- not physical accuracy, just clamps how fast a particle
